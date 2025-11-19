@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="nokandro/nokandro.csproj">
+    <Deploy />
+  </Project>
+</Solution>

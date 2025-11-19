@@ -1,0 +1,11 @@
+<linker>
+  <!-- Preserve JSON serializer reflection metadata and service types used via reflection -->
+  <assembly fullname="System.Text.Json">
+    <type fullname="System.Text.Json.JsonSerializer" preserve="all" />
+    <type fullname="System.Text.Json.JsonDocument" preserve="all" />
+    <type fullname="System.Text.Json.JsonElement" preserve="all" />
+  </assembly>
+  <assembly fullname="nokandro">
+    <type fullname="nokandro.NostrService" preserve="all" />
+  </assembly>
+</linker>

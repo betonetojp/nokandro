@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+  <!-- Brighter pink hiragana "の", transformed into pathData rotated/mirrored and baked into coordinates -->
+  <path
+      android:fillColor="@android:color/transparent"
+      android:strokeColor="#FF4081"
+      android:strokeWidth="10"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:pathData="M69.556,69.556 C80.870,58.243 87.941,39.858 69.556,35.615 C52.586,29.958 32.787,38.444 29.958,55.414 C28.544,68.142 41.272,69.556 54,56.828 C68.142,42.686 65.314,25.716 49.757,29.958" />
+
+</vector>

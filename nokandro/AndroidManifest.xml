@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.nokakoi.nokandro">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <!-- Android 13+ notification runtime permission -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true">
+    <!-- Foreground service declaration with required type -->
+    <service
+      android:name="crc6437977a5f6f4ed3be.NostrService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
+  </application>
+</manifest>

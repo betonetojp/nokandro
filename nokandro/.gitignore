@@ -1,0 +1,4 @@
+# Ignore keystore and local secrets
+secrets.props
+**/myrelease.jks
+**/*.jks
