@@ -33,6 +33,42 @@ namespace nokandro
             // Set our view from the "main" layout resource
             SetContentView(Resource.Layout.activity_main);
 
+            // Use custom action bar layout to display app title with right-aligned small version
+            try
+            {
+                var inflater = LayoutInflater.From(this);
+                var custom = inflater.Inflate(Resource.Layout.actionbar_title_with_version, null);
+                var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
+                var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
+                if (titleTv != null) titleTv.Text = GetString(Resource.String.app_name);
+                var versionName = "v0.0.0";
+                try
+                {
+                    var pkg = PackageManager.GetPackageInfo(PackageName, 0);
+                    versionName = "v" + (pkg?.VersionName ?? "0.0.0");
+                }
+                catch { }
+                if (verTv != null) verTv.Text = versionName;
+
+                try
+                {
+                    if (ActionBar != null)
+                    {
+                        ActionBar.SetDisplayShowCustomEnabled(true);
+                        ActionBar.SetDisplayShowTitleEnabled(false);
+                        var layoutParams = new ActionBar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+                        ActionBar.SetCustomView(custom, layoutParams);
+                    }
+                    else
+                    {
+                        // fallback: set Activity title with version appended
+                        this.Title = GetString(Resource.String.app_name) + " " + versionName;
+                    }
+                }
+                catch { }
+            }
+            catch { }
+
             // Find log UI
             var refreshLogBtn = FindViewById<Button>(Resource.Id.refreshLogBtn);
             var shareLogBtn = FindViewById<Button>(Resource.Id.shareLogBtn);
@@ -172,6 +208,31 @@ namespace nokandro
                 truncate.Text = savedLen.ToString();
                 // restore allowOthers switch
                 allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
+                // restore saved speech rate (mapped range 0.50..1.50)
+                try
+                {
+                    float savedRate = 1.0f;
+                    try { savedRate = prefs?.GetFloat("pref_speech_rate", 1.0f) ?? 1.0f; } catch { }
+                    // also support string fallback
+                    try
+                    {
+                        if (savedRate == 1.0f)
+                        {
+                            var s = prefs?.GetString("pref_speech_rate", null);
+                            if (!string.IsNullOrEmpty(s) && float.TryParse(s, out var fv)) savedRate = fv;
+                        }
+                    }
+                    catch { }
+
+                    if (speechSeek != null)
+                    {
+                        var prog = (int)Math.Round((savedRate - 0.5f) * 200.0f);
+                        prog = Math.Max(0, Math.Min(200, prog));
+                        speechSeek.Progress = prog;
+                        speechVal?.Text = string.Format("{0:0.00}x", savedRate);
+                    }
+                }
+                catch { }
             }
             catch { }
 
@@ -259,7 +320,8 @@ namespace nokandro
                 intent.PutExtra("voiceFollowed", followedVoice);
                 intent.PutExtra("voiceOther", otherVoice);
                 // include speech rate (float)
-                var speechRate = (float)speechSeek.Progress / 100.0f;
+                // map SeekBar progress (0..200) to speech rate range 0.50..1.50
+                var speechRate = 0.5f + ((speechSeek != null ? (float)speechSeek.Progress : 100f) / 200.0f);
                 intent.PutExtra("speechRate", speechRate);
 
                 // persist selections
@@ -273,6 +335,8 @@ namespace nokandro
                     edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
                     edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
+                    // persist speech rate as mapped value (0.50..1.50)
+                    try { edit.PutFloat("pref_speech_rate", speechRate); } catch { }
                     edit.Apply();
                 }
 
@@ -292,7 +356,8 @@ namespace nokandro
                 speechSeek.ProgressChanged += (s, e) =>
                 {
                     var p = speechSeek.Progress;
-                    var r = p / 100.0f;
+                    // map progress to 0.50..1.50
+                    var r = 0.5f + p / 200.0f;
                     speechVal?.Text = string.Format("{0:0.00}x", r);
                 };
 
@@ -304,7 +369,8 @@ namespace nokandro
                         var edit = prefs?.Edit();
                         if (edit != null)
                         {
-                            edit.PutFloat("pref_speech_rate", speechSeek.Progress / 100.0f);
+                            // save mapped speech rate (0.50..1.50)
+                            edit.PutFloat("pref_speech_rate", 0.5f + speechSeek.Progress / 200.0f);
                             edit.Apply();
                         }
                     }
@@ -314,7 +380,7 @@ namespace nokandro
                     try
                     {
                         var intent = new Intent("nokandro.ACTION_SET_SPEECH_RATE");
-                        intent.PutExtra("speechRate", speechSeek.Progress / 100.0f);
+                        intent.PutExtra("speechRate", 0.5f + speechSeek.Progress / 200.0f);
                         LocalBroadcast.SendBroadcast(this, intent);
                     }
                     catch { }
@@ -376,7 +442,7 @@ namespace nokandro
             try
             {
                 replaced = NpubPattern.Replace(replaced, "（メンション）");
-                replaced = EventNotePattern.Replace(replaced, "（引用）");
+                replaced = NeventNotePattern.Replace(replaced, "（引用）");
             }
             catch { }
 
@@ -478,13 +544,13 @@ namespace nokandro
 
         private static readonly Regex UrlPattern = CreateUrlRegex();
         private static readonly Regex NpubPattern = CreateNpubRegex();
-        private static readonly Regex EventNotePattern = CreateEventNoteRegex();
+        private static readonly Regex NeventNotePattern = CreateNeventNoteRegex();
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateUrlRegex();
         [GeneratedRegex("\\bnostr:npub1\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateNpubRegex();
-        [GeneratedRegex("\\bnostr:(?:event1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex CreateEventNoteRegex();
+        [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateNeventNoteRegex();
     }
 }

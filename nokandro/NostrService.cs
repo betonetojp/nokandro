@@ -766,6 +766,13 @@ namespace nokandro
             if (string.IsNullOrEmpty(input)) return input;
             var rx = UrlRegex();
             var replaced = rx.Replace(input, "（URL省略）");
+            // also replace nostr npub/event/note references so TTS speaks placeholders
+            try
+            {
+                replaced = NpubRegex().Replace(replaced, "（メンション）");
+                replaced = NeventNoteRegex().Replace(replaced, "（引用）");
+            }
+            catch { }
             if (replaced.Length > _truncateLen && _truncateLen > 0)
             {
                 return string.Concat(replaced.AsSpan(0, _truncateLen), "（以下略）");
@@ -940,6 +947,10 @@ namespace nokandro
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex UrlRegex();
+        [GeneratedRegex("\\bnostr:npub1\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex NpubRegex();
+        [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex NeventNoteRegex();
 
         private class LocalReceiver(NostrService service) : BroadcastReceiver
         {
