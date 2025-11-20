@@ -2,3 +2,34 @@
 secrets.props
 **/myrelease.jks
 **/*.jks
+
+# Build outputs
+bin/
+obj/
+
+# Visual Studio / Rider / JetBrains
+.vs/
+*.user
+*.suo
+*.userosscache
+
+# NuGet
+packages/
+*.nupkg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Resharper
+_ReSharper*/
+*.ReSharper
+
+# Mono
+*.pidb
+
+# Other
+*.dotCover
