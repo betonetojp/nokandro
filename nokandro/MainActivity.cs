@@ -325,8 +325,16 @@ namespace nokandro
         {
             if (string.IsNullOrEmpty(input)) return input;
             // replace any URL with the placeholder "（URL省略）"
-            var rx = UrlRegex();
-            var replaced = rx.Replace(input, "（URL省略）");
+            var replaced = UrlPattern.Replace(input, "（URL省略）");
+
+            // replace nostr npub/event/note references
+            try
+            {
+                replaced = NpubPattern.Replace(replaced, "（メンション）");
+                replaced = EventNotePattern.Replace(replaced, "（引用）");
+            }
+            catch { }
+
             int len = CONTENT_TRUNCATE_LENGTH;
             // try to read current preference value from shared prefs
             try
@@ -423,7 +431,15 @@ namespace nokandro
             }
         }
 
+        private static readonly Regex UrlPattern = CreateUrlRegex();
+        private static readonly Regex NpubPattern = CreateNpubRegex();
+        private static readonly Regex EventNotePattern = CreateEventNoteRegex();
+
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex UrlRegex();
+        private static partial Regex CreateUrlRegex();
+        [GeneratedRegex("\\bnostr:npub1\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateNpubRegex();
+        [GeneratedRegex("\\bnostr:(?:event1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateEventNoteRegex();
     }
 }
