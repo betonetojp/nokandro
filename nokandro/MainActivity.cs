@@ -90,7 +90,6 @@ namespace nokandro
 #endif
 
             // Request POST_NOTIFICATIONS runtime permission (Android 13+)
-#pragma warning disable CA1416
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
             {
                 if (CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Android.Content.PM.Permission.Granted)
@@ -98,10 +97,8 @@ namespace nokandro
                     RequestPermissions([Android.Manifest.Permission.PostNotifications], 1001);
                 }
             }
-#pragma warning restore CA1416
 
             // Ensure notification channel exists so system Settings shows controllable channel
-#pragma warning disable CA1416, CA1422
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
                 var chanId = "nostr_tts_channel";
@@ -117,7 +114,6 @@ namespace nokandro
                 }
                 catch { }
             }
-#pragma warning restore CA1416, CA1422
 
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
@@ -130,12 +126,14 @@ namespace nokandro
             var stopBtn = FindViewById<Button>(Resource.Id.stopBtn);
             _lastContentView = FindViewById<TextView>(Resource.Id.lastContentText);
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
+            var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
 
             // Ensure required views are present to satisfy nullability and avoid runtime NREs
             if (relayEdit == null || npubEdit == null || allowOthersSwitch == null ||
                 voiceFollowedSpinner == null || voiceOtherSpinner == null || refreshVoicesBtn == null ||
                 startBtn == null || stopBtn == null || _lastContentView == null || followStatusText == null ||
+                muteStatusText == null ||
                 truncateEdit == null)
             {
                 // Critical layout elements missing; bail out
@@ -154,6 +152,7 @@ namespace nokandro
             var stop = (Button)stopBtn!;
             var lastContent = (TextView)_lastContentView!;
             var followStatus = (TextView)followStatusText!;
+            var muteStatus = (TextView)muteStatusText!;
             var truncate = (EditText)truncateEdit!;
 
             // restore saved relay + npub and truncate length if present
@@ -290,6 +289,15 @@ namespace nokandro
                     return;
                 }
 
+                if (intent.Action == "nokandro.ACTION_MUTE_UPDATE")
+                {
+                    var loaded = intent.GetBooleanExtra("muteLoaded", false);
+                    var count = intent.GetIntExtra("muteCount", 0);
+                    var text = loaded ? $"Mute list: loaded ({count})" : "Mute list: (not loaded)";
+                    RunOnUiThread(() => { muteStatus.Text = text; });
+                    return;
+                }
+
                 var text2 = intent.GetStringExtra("content") ?? string.Empty;
                 var isFollowed = intent.GetBooleanExtra("isFollowed", false);
                 var displayText = ShortenUrls(text2);
@@ -299,6 +307,7 @@ namespace nokandro
             var filter = new IntentFilter();
             filter.AddAction(ACTION_LAST_CONTENT);
             filter.AddAction("nokandro.ACTION_FOLLOW_UPDATE");
+            filter.AddAction("nokandro.ACTION_MUTE_UPDATE");
             LocalBroadcast.RegisterReceiver(_receiver, filter);
 #pragma warning restore CS8600,CS8601,CS8602
         }

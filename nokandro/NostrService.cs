@@ -32,6 +32,7 @@ namespace nokandro
         private bool _allowOthers = false;
         private readonly CancellationTokenSource _cts = new();
         private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
+        private HashSet<string> _muted = []; // store muted hex pubkeys (public mute lists)
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
@@ -45,6 +46,7 @@ namespace nokandro
         private const string BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
         private static readonly uint[] BECH32_GENERATOR = [0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u];
         private const int CONTENT_TRUNCATE_LENGTH = 20;
+        private const string ACTION_MUTE_UPDATE = "nokandro.ACTION_MUTE_UPDATE";
 
         public override void OnCreate()
         {
@@ -264,11 +266,15 @@ namespace nokandro
                 // Request kind=1 events only from now onwards (live)
                 // Construct JSON strings without anonymous types to avoid reflection-required serialization
                 var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
+                var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
                 var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
 
                 AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
                 WriteLog("Sending follow request: " + reqFollowJson);
                 await SendTextAsync(reqFollowJson, ct);
+                AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
+                WriteLog("Sending mute request: " + reqMuteJson);
+                await SendTextAsync(reqMuteJson, ct);
                 AppLog.D(TAG, "Sending events request: " + reqEventsJson);
                 WriteLog("Sending events request: " + reqEventsJson);
                 await SendTextAsync(reqEventsJson, ct);
@@ -297,8 +303,9 @@ namespace nokandro
                     while (!result.EndOfMessage);
 
                     var message = sb.ToString();
-                    AppLog.D(TAG, "Received message: " + (message?[..Math.Min(200, message.Length)] ?? "(empty)"));
-                    WriteLog("Received message: " + (message?[..Math.Min(200, message.Length)] ?? "(empty)"));
+                    var preview = message != null && message.Length > 0 ? message[..Math.Min(200, message.Length)] : "(empty)";
+                    AppLog.D(TAG, "Received message: " + preview);
+                    WriteLog("Received message: " + preview);
                     if (!string.IsNullOrEmpty(message))
                     {
                         HandleRawMessage(message);
@@ -342,6 +349,12 @@ namespace nokandro
                             AppLog.D(TAG, "Received kind=3 event");
                             WriteLog("Received kind=3 event");
                             _ = UpdateFollowedFromEvent(eventObj);
+                        }
+                        else if (eventObj.TryGetProperty("kind", out kindEl) && kindEl.GetInt32() == 10000)
+                        {
+                            AppLog.D(TAG, "Received kind=10000 event (mute)");
+                            WriteLog("Received kind=10000 event (mute)");
+                            _ = UpdateMutedFromEvent(eventObj);
                         }
                         else if (eventObj.TryGetProperty("kind", out kindEl) && kindEl.GetInt32() == 1)
                         {
@@ -476,6 +489,119 @@ namespace nokandro
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
         }
 
+        private async Task UpdateMutedFromEvent(JsonElement eventObj)
+        {
+            var newSet = new HashSet<string>();
+
+            // Similar parsing to UpdateFollowedFromEvent: prefer tags, fallback to content
+            if (eventObj.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var tag in tagsEl.EnumerateArray())
+                {
+                    if (tag.ValueKind == JsonValueKind.Array && tag.GetArrayLength() >= 2)
+                    {
+                        var tagType = tag[0].GetString();
+                        if (tagType == "p")
+                        {
+                            var pub = tag[1].GetString();
+                            if (string.IsNullOrEmpty(pub)) continue;
+
+                            var hex = pub;
+                            if (pub.StartsWith("npub"))
+                            {
+                                var decoded = DecodeBech32Npub(pub);
+                                if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
+                            }
+
+                            hex = NormalizeHexPubkey(hex);
+                            if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (eventObj.TryGetProperty("content", out var contentEl))
+                {
+                    var content = contentEl.GetString() ?? string.Empty;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(content);
+                        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var el in doc.RootElement.EnumerateArray())
+                            {
+                                if (el.ValueKind == JsonValueKind.Array && el.GetArrayLength() >= 2)
+                                {
+                                    var candidate = el[1].GetString();
+                                    if (string.IsNullOrEmpty(candidate)) continue;
+                                    var hex = candidate;
+                                    if (candidate.StartsWith("npub"))
+                                    {
+                                        var decoded = DecodeBech32Npub(candidate);
+                                        if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
+                                    }
+                                    hex = NormalizeHexPubkey(hex);
+                                    if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var parts = content.Split(' ', ',', '\n', '\r');
+                            foreach (var p in parts)
+                            {
+                                var t = p.Trim();
+                                if (string.IsNullOrEmpty(t)) continue;
+                                if (t.StartsWith("npub"))
+                                {
+                                    var decoded = DecodeBech32Npub(t);
+                                    if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
+                                }
+                                else
+                                {
+                                    var hex = NormalizeHexPubkey(t);
+                                    if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        var parts = content.Split(' ', ',', '\n', '\r');
+                        foreach (var p in parts)
+                        {
+                            var t = p.Trim();
+                            if (string.IsNullOrEmpty(t)) continue;
+                            if (t.StartsWith("npub"))
+                            {
+                                var decoded = DecodeBech32Npub(t);
+                                if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
+                            }
+                            else
+                            {
+                                var hex = NormalizeHexPubkey(t);
+                                if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
+                            }
+                        }
+                    }
+                }
+            }
+
+            _muted = newSet;
+            AppLog.D(TAG, $"Mute list updated: count={_muted.Count}");
+            WriteLog($"Mute list updated: count={_muted.Count}");
+
+            try
+            {
+                var b = new Intent(ACTION_MUTE_UPDATE);
+                b.PutExtra("muteLoaded", true);
+                b.PutExtra("muteCount", _muted.Count);
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
+        }
+
         private static string? NormalizeHexPubkey(string hex)
         {
             if (string.IsNullOrEmpty(hex)) return null;
@@ -492,6 +618,14 @@ namespace nokandro
             pubkey = pubkey.ToLowerInvariant();
             if (!eventObj.TryGetProperty("content", out var contentEl)) return;
             var content = contentEl.GetString() ?? string.Empty;
+
+            // respect public mute list: if the author is muted, skip
+            if (_muted.Contains(pubkey))
+            {
+                AppLog.D(TAG, $"Skipping muted author: {pubkey}");
+                WriteLog($"Skipping muted author: {pubkey}");
+                return;
+            }
 
             var isFollowed = _followed.Contains(pubkey);
             if (!isFollowed && !_allowOthers) return;
@@ -543,7 +677,7 @@ namespace nokandro
 
             try
             {
-                AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? text[..100] + "..." : text));
+                AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
                 WriteLog("Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
                 tts.Speak(text, QueueMode.Add, null, Guid.NewGuid().ToString());
             }
