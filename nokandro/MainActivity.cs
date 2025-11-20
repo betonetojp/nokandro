@@ -122,6 +122,11 @@ namespace nokandro
             var voiceFollowedSpinner = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
             var voiceOtherSpinner = FindViewById<Spinner>(Resource.Id.voiceOtherSpinner);
             var refreshVoicesBtn = FindViewById<Button>(Resource.Id.refreshVoicesBtn);
+            // Resolve new view IDs via GetIdentifier to avoid requiring regenerated Resource.designer here
+            var speechRateSeekBarId = Resources.GetIdentifier("speechRateSeekBar", "id", PackageName);
+            var speechRateValueId = Resources.GetIdentifier("speechRateValue", "id", PackageName);
+            var speechRateSeekBar = speechRateSeekBarId != 0 ? FindViewById<SeekBar>(speechRateSeekBarId) : null;
+            var speechRateValue = speechRateValueId != 0 ? FindViewById<TextView>(speechRateValueId) : null;
             var startBtn = FindViewById<Button>(Resource.Id.startBtn);
             var stopBtn = FindViewById<Button>(Resource.Id.stopBtn);
             _lastContentView = FindViewById<TextView>(Resource.Id.lastContentText);
@@ -148,6 +153,8 @@ namespace nokandro
             var voiceFollowed = (Spinner)voiceFollowedSpinner!;
             var voiceOther = (Spinner)voiceOtherSpinner!;
             var refreshVoices = (Button)refreshVoicesBtn!;
+            var speechSeek = (SeekBar?)speechRateSeekBar;
+            var speechVal = (TextView?)speechRateValue;
             var start = (Button)startBtn!;
             var stop = (Button)stopBtn!;
             var lastContent = (TextView)_lastContentView!;
@@ -251,6 +258,9 @@ namespace nokandro
                 var otherVoice = voiceOther.SelectedItem?.ToString() ?? string.Empty;
                 intent.PutExtra("voiceFollowed", followedVoice);
                 intent.PutExtra("voiceOther", otherVoice);
+                // include speech rate (float)
+                var speechRate = (float)speechSeek.Progress / 100.0f;
+                intent.PutExtra("speechRate", speechRate);
 
                 // persist selections
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
@@ -275,6 +285,41 @@ namespace nokandro
                 var intent = new Intent(this, typeof(NostrService));
                 StopService(intent);
             };
+
+            // Handle SeekBar changes
+            if (speechSeek != null)
+            {
+                speechSeek.ProgressChanged += (s, e) =>
+                {
+                    var p = speechSeek.Progress;
+                    var r = p / 100.0f;
+                    speechVal?.Text = string.Format("{0:0.00}x", r);
+                };
+
+                speechSeek.StopTrackingTouch += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutFloat("pref_speech_rate", speechSeek.Progress / 100.0f);
+                            edit.Apply();
+                        }
+                    }
+                    catch { }
+
+                    // notify service in-process to update speech rate immediately
+                    try
+                    {
+                        var intent = new Intent("nokandro.ACTION_SET_SPEECH_RATE");
+                        intent.PutExtra("speechRate", speechSeek.Progress / 100.0f);
+                        LocalBroadcast.SendBroadcast(this, intent);
+                    }
+                    catch { }
+                };
+            }
 
             // register receiver
             _receiver = new BroadcastReceiver();

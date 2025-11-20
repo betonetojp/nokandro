@@ -36,6 +36,8 @@ namespace nokandro
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
+        private float _speechRate = 1.0f;
+        private Android.Content.BroadcastReceiver? _localReceiver;
 
         // Voice selection names received from UI
         private string? _voiceFollowedName;
@@ -64,6 +66,16 @@ namespace nokandro
 
             // initialize TTS
             _tts = new TextToSpeech(this, null);
+
+            // register local receiver to accept speech rate updates from Activity
+            try
+            {
+                _localReceiver = new LocalReceiver(this);
+                var filter = new IntentFilter();
+                filter.AddAction("nokandro.ACTION_SET_SPEECH_RATE");
+                LocalBroadcast.RegisterReceiver(_localReceiver, filter);
+            }
+            catch { }
 
             try
             {
@@ -117,6 +129,8 @@ namespace nokandro
                 // read voice selections
                 _voiceFollowedName = intent.GetStringExtra("voiceFollowed");
                 _voiceOtherName = intent.GetStringExtra("voiceOther");
+                // read speech rate if provided
+                try { _speechRate = intent.GetFloatExtra("speechRate", _speechRate); } catch { }
             }
 
             // Compute PendingIntent flags once and reuse
@@ -207,6 +221,7 @@ namespace nokandro
         {
             AppLog.D(TAG, "OnDestroy");
             WriteLog("OnDestroy");
+            try { if (_localReceiver != null) LocalBroadcast.UnregisterReceiver(_localReceiver); } catch { }
             _cts.Cancel();
             try
             {
@@ -634,7 +649,7 @@ namespace nokandro
             WriteLog($"HandleNoteEvent pubkey={pubkey} isFollowed={isFollowed}");
 
             var pitch = isFollowed ? 1.2f : 0.9f;
-            var speechRate = 1.0f;
+            var speechRate = _speechRate;
 
             // Broadcast latest content for UI
             try
@@ -679,7 +694,53 @@ namespace nokandro
             {
                 AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
                 WriteLog("Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
-                tts.Speak(text, QueueMode.Add, null, Guid.NewGuid().ToString());
+                // Attempt to pass a per-utterance volume parameter. Engines may ignore this key.
+                try
+                {
+                    var bundle = new Bundle();
+
+                    // default multiplier read from shared prefs (optional setting)
+                    float volMult = 1.0f;
+                    try
+                    {
+                        var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                        // GetFloat may not exist in some bindings; use GetString fallback if necessary
+                        try { volMult = prefs?.GetFloat("pref_tts_volume", 1.0f) ?? 1.0f; } catch { }
+                        // also support string-based stored value
+                        try
+                        {
+                            if (volMult == 1.0f)
+                            {
+                                var s = prefs?.GetString("pref_tts_volume", null);
+                                if (!string.IsNullOrEmpty(s) && float.TryParse(s, out var fv)) volMult = fv;
+                            }
+                        }
+                        catch { }
+                    }
+                    catch { }
+
+                    // If other media is active, apply a modest auto-boost so TTS is more audible.
+                    try
+                    {
+                        if (_audioManager != null && _audioManager.IsMusicActive)
+                        {
+                            volMult = Math.Min(volMult * 1.6f, 2.0f);
+                        }
+                    }
+                    catch { }
+
+                    // put volume (engine-dependent)
+                    try { bundle.PutFloat(TextToSpeech.Engine.KeyParamVolume, volMult); } catch { }
+
+                    tts.Speak(text, QueueMode.Add, bundle, Guid.NewGuid().ToString());
+                }
+                catch (Exception ex)
+                {
+                    // If per-utterance params fail, fall back to basic speak
+                    AppLog.W(TAG, "Speak with bundle failed: " + ex.Message);
+                    WriteLog("Speak with bundle failed: " + ex.Message);
+                    tts.Speak(text, QueueMode.Add, null, Guid.NewGuid().ToString());
+                }
             }
             catch (Exception ex)
             {
@@ -879,5 +940,24 @@ namespace nokandro
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex UrlRegex();
+
+        private class LocalReceiver(NostrService service) : BroadcastReceiver
+        {
+            private readonly NostrService _service = service;
+
+            public override void OnReceive(Context? context, Intent? intent)
+            {
+                try
+                {
+                    if (intent == null || !"nokandro.ACTION_SET_SPEECH_RATE".Equals(intent.Action)) return;
+                    var rate = intent.GetFloatExtra("speechRate", 1.0f);
+                    _service._speechRate = rate;
+                    _service._tts?.SetSpeechRate(rate);
+                    AppLog.D(TAG, "Speech rate updated: " + rate);
+                    _service.WriteLog("Speech rate updated: " + rate);
+                }
+                catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); _service.WriteLog("LocalReceiver.OnReceive error: " + ex.Message); }
+            }
+        }
     }
 }

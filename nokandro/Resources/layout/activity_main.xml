@@ -46,6 +46,7 @@
                 android:layout_marginStart="8dp" />
         </LinearLayout>
 
+        <!-- Relay / npub inputs -->
         <EditText
             android:id="@+id/relayEdit"
             android:layout_width="match_parent"
@@ -87,6 +88,36 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Refresh Voices" />
+
+        <!-- Speech rate control -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/speechRateLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Speech rate" />
+
+            <TextView
+                android:id="@+id/speechRateValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1.00x"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/speechRateSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="200"
+            android:progress="100" />
 
         <Button
             android:id="@+id/startBtn"
