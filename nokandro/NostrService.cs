@@ -1,21 +1,13 @@
-using Android.App;
 using Android.Content;
-using Android.OS;
 using Android.Media;
+using Android.OS;
 using Android.Speech.Tts;
 using Android.Util;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Net.WebSockets;
-using SysText = System.Text;
-using System;
-using System.Text.RegularExpressions;
-using System.IO;
 using System.Diagnostics;
+using System.Net.WebSockets;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using SysText = System.Text;
 
 namespace nokandro
 {
@@ -30,16 +22,16 @@ namespace nokandro
     }
 
     [Service]
-    public class NostrService : Service
+    public partial class NostrService : Service
     {
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
         private ClientWebSocket? _ws;
-        private string _relay = "wss://relay.damus.io";
+        private string _relay = "wss://yabu.me";
         private string _npub = string.Empty;
         private bool _allowOthers = false;
-        private CancellationTokenSource _cts = new();
-        private HashSet<string> _followed = new(); // store hex pubkeys (lowercase, 64 chars)
+        private readonly CancellationTokenSource _cts = new();
+        private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
@@ -51,14 +43,23 @@ namespace nokandro
         private string _logPath = string.Empty;
 
         private const string BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-        private static readonly uint[] BECH32_GENERATOR = { 0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u };
+        private static readonly uint[] BECH32_GENERATOR = [0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u];
         private const int CONTENT_TRUNCATE_LENGTH = 20;
 
         public override void OnCreate()
         {
             base.OnCreate();
             AppLog.D(TAG, "OnCreate");
-            _audioManager = (AudioManager)GetSystemService(AudioService);
+            // Get AudioManager safely
+            var am = GetSystemService(AudioService) as AudioManager;
+            if (am == null)
+            {
+                AppLog.W(TAG, "AudioManager not available");
+                // fallback to Application.Context
+                am = Android.App.Application.Context.GetSystemService(AudioService) as AudioManager;
+            }
+            _audioManager = am ?? throw new InvalidOperationException("AudioManager unavailable");
+
             // initialize TTS
             _tts = new TextToSpeech(this, null);
 
@@ -124,12 +125,21 @@ namespace nokandro
                 piFlags |= PendingIntentFlags.Immutable;
             }
 
+            // Notification APIs target Android O+; analyzer warns about platform compatibility.
+            // Surround these blocks with pragmas to suppress CA1416/CA1422 analyzer warnings because runtime checks exist.
+#pragma warning disable CA1416, CA1422
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
                 var chanId = "nostr_tts_channel";
                 var chan = new NotificationChannel(chanId, "Nostr TTS", NotificationImportance.Low);
-                var nm = (NotificationManager)GetSystemService(NotificationService);
-                nm.CreateNotificationChannel(chan);
+                if (GetSystemService(NotificationService) is NotificationManager nm)
+                {
+                    nm.CreateNotificationChannel(chan);
+                }
+                else
+                {
+                    AppLog.W(TAG, "NotificationManager not available");
+                }
 
                 // PendingIntent to open app when tapping notification
                 var mainIntent = new Intent(this, typeof(MainActivity));
@@ -181,6 +191,8 @@ namespace nokandro
                 AppLog.D(TAG, "Started foreground notification (pre-O)");
                 WriteLog("Started foreground notification (pre-O)");
             }
+#pragma warning restore CA1416, CA1422
+
 
             Task.Run(() => RunAsync(_cts.Token));
             AppLog.D(TAG, "Spawned RunAsync task");
@@ -285,8 +297,8 @@ namespace nokandro
                     while (!result.EndOfMessage);
 
                     var message = sb.ToString();
-                    AppLog.D(TAG, "Received message: " + (message?.Substring(0, Math.Min(200, message.Length)) ?? "(empty)"));
-                    WriteLog("Received message: " + (message?.Substring(0, Math.Min(200, message.Length)) ?? "(empty)"));
+                    AppLog.D(TAG, "Received message: " + (message?[..Math.Min(200, message.Length)] ?? "(empty)"));
+                    WriteLog("Received message: " + (message?[..Math.Min(200, message.Length)] ?? "(empty)"));
                     if (!string.IsNullOrEmpty(message))
                     {
                         HandleRawMessage(message);
@@ -405,7 +417,7 @@ namespace nokandro
                         else
                         {
                             // plain text fallback
-                            var parts = content.Split(' ', ',' , '\n', '\r');
+                            var parts = content.Split(' ', ',', '\n', '\r');
                             foreach (var p in parts)
                             {
                                 var t = p.Trim();
@@ -428,7 +440,7 @@ namespace nokandro
                         AppLog.W(TAG, "Parsing content fallback failed: " + ex.Message);
                         WriteLog("Parsing content fallback failed: " + ex.Message);
                         // basic scan
-                        var parts = content.Split(' ', ',' , '\n', '\r');
+                        var parts = content.Split(' ', ',', '\n', '\r');
                         foreach (var p in parts)
                         {
                             var t = p.Trim();
@@ -464,11 +476,11 @@ namespace nokandro
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
         }
 
-        private string? NormalizeHexPubkey(string hex)
+        private static string? NormalizeHexPubkey(string hex)
         {
             if (string.IsNullOrEmpty(hex)) return null;
             hex = hex.Trim();
-            if (hex.StartsWith("0x")) hex = hex.Substring(2);
+            if (hex.StartsWith("0x")) hex = hex[2..];
             if (hex.Length == 64 && hex.All(c => Uri.IsHexDigit(c))) return hex.ToLowerInvariant();
             return null;
         }
@@ -531,26 +543,37 @@ namespace nokandro
 
             try
             {
-                AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? text.Substring(0, 100) + "..." : text));
-                WriteLog("Speaking: " + (text.Length > 100 ? text.Substring(0, 100) + "..." : text));
+                AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? text[..100] + "..." : text));
+                WriteLog("Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
                 tts.Speak(text, QueueMode.Add, null, Guid.NewGuid().ToString());
             }
             catch (Exception ex)
             {
                 AppLog.W(TAG, "Speak failed (new API): " + ex.Message);
                 WriteLog("Speak failed (new API): " + ex.Message);
-                try { tts.Speak(text, QueueMode.Add, null); } catch (Exception ex2) { AppLog.W(TAG, "Speak failed (old API): " + ex2.Message); WriteLog("Speak failed (old API): " + ex2.Message); }
+                // The old Speak overload is marked obsolete; suppress the warning locally while still attempting fallback.
+                try
+                {
+#pragma warning disable CS0618
+                    tts.Speak(text, QueueMode.Add, null);
+#pragma warning restore CS0618
+                }
+                catch (Exception ex2)
+                {
+                    AppLog.W(TAG, "Speak failed (old API): " + ex2.Message);
+                    WriteLog("Speak failed (old API): " + ex2.Message);
+                }
             }
         }
 
         private string ReplaceUrlsForSpeech(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
-            var rx = new Regex("(https?://\\S+|www\\.\\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            var rx = UrlRegex();
             var replaced = rx.Replace(input, "（URL省略）");
             if (replaced.Length > _truncateLen && _truncateLen > 0)
             {
-                return replaced.Substring(0, _truncateLen) + "（以下略）";
+                return string.Concat(replaced.AsSpan(0, _truncateLen), "（以下略）");
             }
             return replaced;
         }
@@ -577,24 +600,23 @@ namespace nokandro
             }
         }
 
-        private string EncodeHexToNpub(string hex)
+        private static string EncodeHexToNpub(string hex)
         {
             // input hex 64 chars
             var bytes = HexStringToBytes(hex);
-            var data = ConvertBits(bytes, 8, 5, true);
-            if (data == null) throw new ArgumentException("Invalid hex");
+            var data = ConvertBits(bytes, 8, 5, true) ?? throw new ArgumentException("Invalid hex");
             var combined = Bech32Encode("npub", data);
             return combined;
         }
 
-        private (string? hrp, byte[]? data) Bech32Decode(string bech)
+        private static (string? hrp, byte[]? data) Bech32Decode(string bech)
         {
             if (string.IsNullOrEmpty(bech)) return (null, null);
             bech = bech.ToLowerInvariant();
             var pos = bech.LastIndexOf('1');
             if (pos < 1 || pos + 7 > bech.Length) return (null, null); // need at least 6 checksum chars
-            var hrp = bech.Substring(0, pos);
-            var dataPart = bech.Substring(pos + 1);
+            var hrp = bech[..pos];
+            var dataPart = bech[(pos + 1)..];
             var data = new byte[dataPart.Length];
             for (int i = 0; i < dataPart.Length; i++)
             {
@@ -608,7 +630,7 @@ namespace nokandro
             var values = new List<uint>();
             foreach (var v in hrpExpanded) values.Add(v);
             foreach (var d in data) values.Add(d);
-            if (Bech32Polymod(values.ToArray()) != 1u) return (null, null);
+            if (Bech32Polymod([.. values]) != 1u) return (null, null);
 
             // strip checksum (last 6)
             var payload = new byte[data.Length - 6];
@@ -616,7 +638,7 @@ namespace nokandro
             return (hrp, payload);
         }
 
-        private string Bech32Encode(string hrp, byte[] data)
+        private static string Bech32Encode(string hrp, byte[] data)
         {
             var combined = new List<byte>(data);
             var checksum = CreateChecksum(hrp, data);
@@ -631,29 +653,29 @@ namespace nokandro
             return sb.ToString();
         }
 
-        private byte[] CreateChecksum(string hrp, byte[] data)
+        private static byte[] CreateChecksum(string hrp, byte[] data)
         {
             var hrpExp = HrpExpand(hrp);
             var values = new List<uint>();
             foreach (var v in hrpExp) values.Add(v);
             foreach (var d in data) values.Add(d);
             for (int i = 0; i < 6; i++) values.Add(0);
-            var polymod = Bech32Polymod(values.ToArray()) ^ 1u;
+            var polymod = Bech32Polymod([.. values]) ^ 1u;
             var checksum = new byte[6];
             for (int i = 0; i < 6; i++) checksum[i] = (byte)((polymod >> (5 * (5 - i))) & 0x1fu);
             return checksum;
         }
 
-        private uint[] HrpExpand(string hrp)
+        private static uint[] HrpExpand(string hrp)
         {
             var exp = new List<uint>();
             foreach (var c in hrp) exp.Add((uint)(c >> 5));
             exp.Add(0);
             foreach (var c in hrp) exp.Add((uint)(c & 31));
-            return exp.ToArray();
+            return [.. exp];
         }
 
-        private uint Bech32Polymod(uint[] values)
+        private static uint Bech32Polymod(uint[] values)
         {
             uint chk = 1;
             foreach (var v in values)
@@ -668,7 +690,7 @@ namespace nokandro
             return chk;
         }
 
-        private byte[]? ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
+        private static byte[]? ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
         {
             int acc = 0;
             int bits = 0;
@@ -697,29 +719,31 @@ namespace nokandro
                 if (bits >= fromBits) return null;
                 if (((acc << (toBits - bits)) & maxv) != 0) return null;
             }
-            return result.ToArray();
+            return [.. result];
         }
 
-        private byte[]? ConvertBits(IEnumerable<byte> data, int fromBits, int toBits, bool pad)
+        private static byte[]? ConvertBits(IEnumerable<byte> data, int fromBits, int toBits, bool pad)
         {
-            return ConvertBits(data.ToArray(), fromBits, toBits, pad);
+            return ConvertBits([.. data], fromBits, toBits, pad);
         }
 
-        private byte[] HexStringToBytes(string hex)
+        private static byte[] HexStringToBytes(string hex)
         {
             var clean = hex.Trim();
-            if (clean.StartsWith("0x")) clean = clean.Substring(2);
+            if (clean.StartsWith("0x")) clean = clean[2..];
             var bytes = new byte[clean.Length / 2];
             for (int i = 0; i < bytes.Length; i++) bytes[i] = Convert.ToByte(clean.Substring(i * 2, 2), 16);
             return bytes;
         }
 
-        private string BytesToHex(byte[] bytes)
+        private static string BytesToHex(byte[] bytes)
         {
             var sb = new System.Text.StringBuilder(bytes.Length * 2);
             foreach (var b in bytes) sb.AppendFormat("{0:x2}", b);
             return sb.ToString();
         }
 
+        [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex UrlRegex();
     }
 }

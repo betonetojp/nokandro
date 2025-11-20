@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Android.Content;
 
 namespace nokandro
@@ -7,8 +5,8 @@ namespace nokandro
     // Simple in-process broadcast manager for the app process.
     public static class LocalBroadcast
     {
-        private static readonly object _sync = new object();
-        private static readonly List<(BroadcastReceiver receiver, IntentFilter filter)> _receivers = new();
+        private static readonly Lock _sync = new();
+        private static readonly List<(BroadcastReceiver receiver, IntentFilter filter)> _receivers = [];
 
         public static void RegisterReceiver(BroadcastReceiver receiver, IntentFilter filter)
         {
@@ -34,7 +32,7 @@ namespace nokandro
             List<(BroadcastReceiver receiver, IntentFilter filter)> snapshot;
             lock (_sync)
             {
-                snapshot = new List<(BroadcastReceiver, IntentFilter)>(_receivers);
+                snapshot = [.. _receivers];
             }
 
             foreach (var (receiver, filter) in snapshot)

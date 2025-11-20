@@ -1,19 +1,13 @@
-using Android.App;
-using Android.Content;
+Ôªøusing Android.Content;
 using Android.OS;
-using Android.Widget;
 using Android.Speech.Tts;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Text.RegularExpressions;
-using System.IO;
 using Android.Views;
+using System.Text.RegularExpressions;
 
 namespace nokandro
 {
     [Activity(Label = "@string/app_name", MainLauncher = true)]
-    public class MainActivity : Activity
+    public partial class MainActivity : Activity
     {
         const string PREFS_NAME = "nokandro_prefs";
         const string PREF_VOICE_FOLLOWED = "pref_voice_followed";
@@ -33,6 +27,7 @@ namespace nokandro
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
+#pragma warning disable CS8600,CS8601,CS8602
             base.OnCreate(savedInstanceState);
 
             // Set our view from the "main" layout resource
@@ -44,60 +39,69 @@ namespace nokandro
             _logTextView = FindViewById<TextView>(Resource.Id.logTextView);
 
             // Refresh log display
-            refreshLogBtn.Click += (s, e) =>
+            if (refreshLogBtn != null)
             {
-                try
+                refreshLogBtn.Click += (s, e) =>
                 {
+                    try
+                    {
 #if ENABLE_LOG
-                    var content = ReadLogContent();
-                    RunOnUiThread(() => { _logTextView.Text = content; });
+                        var content = ReadLogContent();
+                        RunOnUiThread(() => { _logTextView?.Text = content; });
 #else
-                    RunOnUiThread(() => { _logTextView.Text = "(logging disabled in production build)"; });
+                        RunOnUiThread(() => { _logTextView?.Text = "(logging disabled in production build)"; });
 #endif
-                }
-                catch { }
-            };
+                    }
+                    catch { }
+                };
+            }
 
             // Share log content
-            shareLogBtn.Click += (s, e) =>
+            if (shareLogBtn != null)
             {
-                try
+                shareLogBtn.Click += (s, e) =>
                 {
+                    try
+                    {
 #if ENABLE_LOG
-                    var content = ReadLogContent();
-                    var send = new Intent(Intent.ActionSend);
-                    send.SetType("text/plain");
-                    send.PutExtra(Intent.ExtraSubject, "Nostr log");
-                    send.PutExtra(Intent.ExtraText, content);
-                    StartActivity(Intent.CreateChooser(send, "Share log"));
+                        var content = ReadLogContent();
+                        var send = new Intent(Intent.ActionSend);
+                        send.SetType("text/plain");
+                        send.PutExtra(Intent.ExtraSubject, "Nostr log");
+                        send.PutExtra(Intent.ExtraText, content);
+                        StartActivity(Intent.CreateChooser(send, "Share log"));
 #else
-                    Toast.MakeText(this, "Logging disabled in production build", ToastLength.Short).Show();
+                        Toast.MakeText(this, "Logging disabled in production build", ToastLength.Short).Show();
 #endif
-                }
-                catch { }
-            };
+                    }
+                    catch { }
+                };
+            }
 
             // Hide log UI entirely in production builds (when ENABLE_LOG not defined)
 #if !ENABLE_LOG
             try
             {
-                refreshLogBtn.Visibility = ViewStates.Gone;
-                shareLogBtn.Visibility = ViewStates.Gone;
-                if (_logTextView != null) _logTextView.Visibility = ViewStates.Gone;
+                refreshLogBtn?.Visibility = ViewStates.Gone;
+                shareLogBtn?.Visibility = ViewStates.Gone;
+                _logTextView?.Visibility = ViewStates.Gone;
             }
             catch { }
 #endif
 
             // Request POST_NOTIFICATIONS runtime permission (Android 13+)
+#pragma warning disable CA1416
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
             {
                 if (CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Android.Content.PM.Permission.Granted)
                 {
-                    RequestPermissions(new string[] { Android.Manifest.Permission.PostNotifications }, 1001);
+                    RequestPermissions([Android.Manifest.Permission.PostNotifications], 1001);
                 }
             }
+#pragma warning restore CA1416
 
             // Ensure notification channel exists so system Settings shows controllable channel
+#pragma warning disable CA1416, CA1422
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
                 var chanId = "nostr_tts_channel";
@@ -113,6 +117,7 @@ namespace nokandro
                 }
                 catch { }
             }
+#pragma warning restore CA1416, CA1422
 
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
@@ -127,104 +132,146 @@ namespace nokandro
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
 
+            // Ensure required views are present to satisfy nullability and avoid runtime NREs
+            if (relayEdit == null || npubEdit == null || allowOthersSwitch == null ||
+                voiceFollowedSpinner == null || voiceOtherSpinner == null || refreshVoicesBtn == null ||
+                startBtn == null || stopBtn == null || _lastContentView == null || followStatusText == null ||
+                truncateEdit == null)
+            {
+                // Critical layout elements missing; bail out
+                try { Toast.MakeText(this, "UI initialization failed", ToastLength.Short).Show(); } catch { }
+                return;
+            }
+
+            // From this point locals are known to be non-null ‚Äî create non-nullable aliases to inform the compiler
+            var relay = (EditText)relayEdit!;
+            var npub = (EditText)npubEdit!;
+            var allowOthers = (Switch)allowOthersSwitch!;
+            var voiceFollowed = (Spinner)voiceFollowedSpinner!;
+            var voiceOther = (Spinner)voiceOtherSpinner!;
+            var refreshVoices = (Button)refreshVoicesBtn!;
+            var start = (Button)startBtn!;
+            var stop = (Button)stopBtn!;
+            var lastContent = (TextView)_lastContentView!;
+            var followStatus = (TextView)followStatusText!;
+            var truncate = (EditText)truncateEdit!;
+
             // restore saved relay + npub and truncate length if present
             try
             {
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                relayEdit.Text = prefs.GetString(PREF_RELAY, "wss://yabu.me");
-                npubEdit.Text = prefs.GetString(PREF_NPUB, string.Empty);
+                relay.Text = prefs.GetString(PREF_RELAY, "wss://yabu.me");
+                npub.Text = prefs.GetString(PREF_NPUB, string.Empty);
                 var savedLen = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
-                truncateEdit.Text = savedLen.ToString();
+                truncate.Text = savedLen.ToString();
                 // restore allowOthers switch
-                allowOthersSwitch.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
+                allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
             }
             catch { }
 
             // save allowOthers when toggled
-            allowOthersSwitch.CheckedChange += (s, e) =>
+            allowOthers.CheckedChange += (s, e) =>
             {
                 try
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                    var edit = prefs.Edit();
-                    edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthersSwitch.Checked);
-                    edit.Apply();
+                    var edit = prefs?.Edit();
+                    if (edit != null)
+                    {
+                        edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
+                        edit.Apply();
+                    }
                 }
                 catch { }
             };
 
             // save truncate length when edit loses focus
-            truncateEdit.FocusChange += (s, e) =>
+            if (truncate != null)
             {
-                if (!e.HasFocus)
+                truncate.FocusChange += (s, e) =>
                 {
-                    try
+                    if (!e.HasFocus)
                     {
-                        var val = int.Parse(truncateEdit.Text ?? string.Empty);
-                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                        var edit = prefs.Edit();
-                        edit.PutInt(PREF_TRUNCATE_LEN, val);
-                        edit.Apply();
+                        try
+                        {
+                            var val = int.Parse(truncate.Text ?? string.Empty);
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null)
+                            {
+                                edit.PutInt(PREF_TRUNCATE_LEN, val);
+                                edit.Apply();
+                            }
+                        }
+                        catch { }
                     }
-                    catch { }
+                };
+            }
+
+            // Populate voices initially (async)
+            _ = PopulateVoicesAsync(voiceFollowed, voiceOther);
+
+            refreshVoices.Click += async (s, e) => await PopulateVoicesAsync(voiceFollowed, voiceOther);
+
+            // Save preference when spinner selection changes
+            voiceFollowed.ItemSelected += (s, e) =>
+            {
+                var selected = voiceFollowed.SelectedItem?.ToString() ?? string.Empty;
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var edit = prefs?.Edit();
+                if (edit != null)
+                {
+                    edit.PutString(PREF_VOICE_FOLLOWED, selected);
+                    edit.Apply();
                 }
             };
 
-            // Populate voices initially (async)
-            _ = PopulateVoicesAsync(voiceFollowedSpinner, voiceOtherSpinner);
-
-            refreshVoicesBtn.Click += async (s, e) => await PopulateVoicesAsync(voiceFollowedSpinner, voiceOtherSpinner);
-
-            // Save preference when spinner selection changes
-            voiceFollowedSpinner.ItemSelected += (s, e) =>
+            voiceOther.ItemSelected += (s, e) =>
             {
-                var selected = voiceFollowedSpinner.SelectedItem?.ToString() ?? string.Empty;
+                var selected = voiceOther.SelectedItem?.ToString() ?? string.Empty;
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var edit = prefs.Edit();
-                edit.PutString(PREF_VOICE_FOLLOWED, selected);
-                edit.Apply();
+                var edit = prefs?.Edit();
+                if (edit != null)
+                {
+                    edit.PutString(PREF_VOICE_OTHER, selected);
+                    edit.Apply();
+                }
             };
 
-            voiceOtherSpinner.ItemSelected += (s, e) =>
-            {
-                var selected = voiceOtherSpinner.SelectedItem?.ToString() ?? string.Empty;
-                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var edit = prefs.Edit();
-                edit.PutString(PREF_VOICE_OTHER, selected);
-                edit.Apply();
-            };
-
-            startBtn.Click += (s, e) =>
+            start.Click += (s, e) =>
             {
                 var intent = new Intent(this, typeof(NostrService));
                 var truncateLen = CONTENT_TRUNCATE_LENGTH;
-                try { truncateLen = int.Parse(truncateEdit.Text ?? string.Empty); } catch { }
+                try { truncateLen = int.Parse(truncate.Text ?? string.Empty); } catch { }
 
-                intent.PutExtra("relay", relayEdit.Text ?? "wss://relay.damus.io");
-                intent.PutExtra("npub", npubEdit.Text ?? string.Empty);
-                intent.PutExtra("allowOthers", allowOthersSwitch.Checked);
+                intent.PutExtra("relay", relay.Text ?? "wss://yabu.me");
+                intent.PutExtra("npub", npub.Text ?? string.Empty);
+                intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("truncateLen", truncateLen);
-                var followedVoice = voiceFollowedSpinner.SelectedItem?.ToString() ?? string.Empty;
-                var otherVoice = voiceOtherSpinner.SelectedItem?.ToString() ?? string.Empty;
+                var followedVoice = voiceFollowed.SelectedItem?.ToString() ?? string.Empty;
+                var otherVoice = voiceOther.SelectedItem?.ToString() ?? string.Empty;
                 intent.PutExtra("voiceFollowed", followedVoice);
                 intent.PutExtra("voiceOther", otherVoice);
 
                 // persist selections
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var edit = prefs.Edit();
-                edit.PutString(PREF_VOICE_FOLLOWED, followedVoice);
-                edit.PutString(PREF_VOICE_OTHER, otherVoice);
-                edit.PutString(PREF_RELAY, relayEdit.Text ?? "wss://yabu.me");
-                edit.PutString(PREF_NPUB, npubEdit.Text ?? string.Empty);
-                edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
-                edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthersSwitch.Checked);
-                edit.Apply();
+                var edit = prefs?.Edit();
+                if (edit != null)
+                {
+                    edit.PutString(PREF_VOICE_FOLLOWED, followedVoice);
+                    edit.PutString(PREF_VOICE_OTHER, otherVoice);
+                    edit.PutString(PREF_RELAY, relay.Text ?? "wss://yabu.me");
+                    edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
+                    edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
+                    edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
+                    edit.Apply();
+                }
 
                 // Use StartService; the service will call StartForeground
                 StartService(intent);
             };
 
-            stopBtn.Click += (s, e) =>
+            stop.Click += (s, e) =>
             {
                 var intent = new Intent(this, typeof(NostrService));
                 StopService(intent);
@@ -239,7 +286,7 @@ namespace nokandro
                     var loaded = intent.GetBooleanExtra("followLoaded", false);
                     var count = intent.GetIntExtra("followCount", 0);
                     var text = loaded ? $"Follow list: loaded ({count})" : "Follow list: (not loaded)";
-                    RunOnUiThread(() => { followStatusText.Text = text; });
+                    RunOnUiThread(() => { followStatus.Text = text; });
                     return;
                 }
 
@@ -247,12 +294,13 @@ namespace nokandro
                 var isFollowed = intent.GetBooleanExtra("isFollowed", false);
                 var displayText = ShortenUrls(text2);
                 var prefix = isFollowed ? "* " : "- ";
-                RunOnUiThread(() => { _lastContentView.Text = prefix + displayText; });
+                RunOnUiThread(() => { lastContent.Text = prefix + displayText; });
             };
             var filter = new IntentFilter();
             filter.AddAction(ACTION_LAST_CONTENT);
             filter.AddAction("nokandro.ACTION_FOLLOW_UPDATE");
             LocalBroadcast.RegisterReceiver(_receiver, filter);
+#pragma warning restore CS8600,CS8601,CS8602
         }
 
         protected override void OnDestroy()
@@ -267,28 +315,28 @@ namespace nokandro
         private string ShortenUrls(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
-            // replace any URL with the placeholder "ÅiURLè»ó™Åj"
-            var rx = new Regex("(https?://\\S+|www\\.\\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            var replaced = rx.Replace(input, "ÅiURLè»ó™Åj");
+            // replace any URL with the placeholder "ÔºàURLÁúÅÁï•Ôºâ"
+            var rx = UrlRegex();
+            var replaced = rx.Replace(input, "ÔºàURLÁúÅÁï•Ôºâ");
             int len = CONTENT_TRUNCATE_LENGTH;
             // try to read current preference value from shared prefs
             try
             {
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                len = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
+                len = prefs?.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH) ?? len;
             }
             catch { }
 
             if (replaced.Length > len)
             {
-                return replaced.Substring(0, len) + "Åià»â∫ó™Åj";
+                return string.Concat(replaced.AsSpan(0, len), "Ôºà‰ª•‰∏ãÁï•Ôºâ");
             }
             return replaced;
         }
 
         private async Task PopulateVoicesAsync(Spinner followedSpinner, Spinner otherSpinner)
         {
-            List<string> voices = new List<string> { "default" };
+            List<string> voices = ["default"];
             TextToSpeech? tts = null;
             try
             {
@@ -297,18 +345,20 @@ namespace nokandro
                 // Wait until voices are available (polling), timeout after 3 seconds
                 var timeout = 3000;
                 var waited = 0;
-                while ((tts.Voices == null || tts.Voices.Count == 0) && waited < timeout)
+                while ((tts == null || tts.Voices == null || tts.Voices.Count == 0) && waited < timeout)
                 {
                     await Task.Delay(200);
                     waited += 200;
                 }
 
-                voices = tts?.Voices?.Select(v => v.Name).ToList() ?? voices;
-                if (voices.Count == 0) voices = new List<string> { "default" };
+                // Build a non-nullable list of voice names
+                var names = tts?.Voices?.Where(v => !string.IsNullOrEmpty(v?.Name)).Select(v => v!.Name!).ToList();
+                if (names != null && names.Count > 0) voices = names;
+                if (voices.Count == 0) voices = ["default"];
             }
             catch
             {
-                voices = new List<string> { "default" };
+                voices = ["default"];
             }
             finally
             {
@@ -322,8 +372,8 @@ namespace nokandro
 
             // restore saved selections if present
             var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-            var savedFollowed = prefs.GetString(PREF_VOICE_FOLLOWED, null);
-            var savedOther = prefs.GetString(PREF_VOICE_OTHER, null);
+            var savedFollowed = prefs?.GetString(PREF_VOICE_FOLLOWED, null);
+            var savedOther = prefs?.GetString(PREF_VOICE_OTHER, null);
             if (!string.IsNullOrEmpty(savedFollowed))
             {
                 var idx = voices.IndexOf(savedFollowed);
@@ -355,7 +405,7 @@ namespace nokandro
                 try { path = Path.Combine(FilesDir?.AbsolutePath ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal), "nostr_log.txt"); } catch { }
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "(no log)";
                 var text = File.ReadAllText(path);
-                if (text.Length > 20000) return "..." + text.Substring(text.Length - 20000);
+                if (text.Length > 20000) return string.Concat("...", text.AsSpan(text.Length - 20000));
                 return text;
             }
             catch
@@ -363,5 +413,8 @@ namespace nokandro
                 return "(failed to read log)";
             }
         }
+
+        [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex UrlRegex();
     }
 }
