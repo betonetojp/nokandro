@@ -59,6 +59,13 @@
             android:layout_height="wrap_content"
             android:hint="Your npub" />
 
+        <!-- Amber から取得ボタン -->
+        <Button
+            android:id="@+id/amberGetBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Get from Amber" />
+
         <Switch
             android:id="@+id/allowOthersSwitch"
             android:layout_width="wrap_content"

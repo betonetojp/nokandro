@@ -3,6 +3,7 @@ using Android.OS;
 using Android.Speech.Tts;
 using Android.Views;
 using System.Text.RegularExpressions;
+using System.Text;
 
 namespace nokandro
 {
@@ -14,16 +15,20 @@ namespace nokandro
         const string PREF_VOICE_OTHER = "pref_voice_other";
         const string PREF_RELAY = "pref_relay";
         const string PREF_NPUB = "pref_npub";
+        const string PREF_SIGNER_PACKAGE = "pref_signer_package";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
         const string PREF_ALLOW_OTHERS = "pref_allow_others";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 20;
 
         private const string ACTION_LAST_CONTENT = "nokandro.ACTION_LAST_CONTENT";
+        private const int RC_GET_PUBKEY = 1002;
 
         private TextView? _lastContentView;
         private BroadcastReceiver? _receiver;
         private TextView? _logTextView;
+        // keep a reference to npub EditText so incoming intents can update it
+        private EditText? _npubEditField;
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -40,7 +45,7 @@ namespace nokandro
                 var custom = inflater.Inflate(Resource.Layout.actionbar_title_with_version, null);
                 var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
                 var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
-                if (titleTv != null) titleTv.Text = GetString(Resource.String.app_name);
+                titleTv?.Text = GetString(Resource.String.app_name);
                 var versionName = "v0.0.0";
                 try
                 {
@@ -48,7 +53,7 @@ namespace nokandro
                     versionName = "v" + (pkg?.VersionName ?? "0.0.0");
                 }
                 catch { }
-                if (verTv != null) verTv.Text = versionName;
+                verTv?.Text = versionName;
 
                 try
                 {
@@ -154,6 +159,7 @@ namespace nokandro
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
             var npubEdit = FindViewById<EditText>(Resource.Id.npubEdit);
+            var amberBtn = FindViewById<Button>(Resource.Id.amberGetBtn);
             var allowOthersSwitch = FindViewById<Switch>(Resource.Id.allowOthersSwitch);
             var voiceFollowedSpinner = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
             var voiceOtherSpinner = FindViewById<Spinner>(Resource.Id.voiceOtherSpinner);
@@ -185,6 +191,8 @@ namespace nokandro
             // From this point locals are known to be non-null — create non-nullable aliases to inform the compiler
             var relay = (EditText)relayEdit!;
             var npub = (EditText)npubEdit!;
+            // keep reference for updating from incoming intents
+            _npubEditField = npub;
             var allowOthers = (Switch)allowOthersSwitch!;
             var voiceFollowed = (Spinner)voiceFollowedSpinner!;
             var voiceOther = (Spinner)voiceOtherSpinner!;
@@ -305,6 +313,90 @@ namespace nokandro
                 }
             };
 
+            // Amber button: try to invoke Amber (NIP-55) via a VIEW intent; use nostrsigner scheme when available and prefer matching package
+            if (amberBtn != null)
+            {
+                amberBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        var callback = "nokandro://amber_callback";
+                        string reqUri;
+
+                        // Build base intent using nostrsigner or nostr scheme per NIP-55 Using Intents
+                        var baseUri = IsExternalSignerInstalled(this) ? Android.Net.Uri.Parse("nostrsigner:") : Android.Net.Uri.Parse("nostr:");
+                        var intent = new Intent(Intent.ActionView, baseUri);
+
+                        // Mark this as a get_public_key request per NIP-55 Using Intents
+                        try { intent.PutExtra("type", "get_public_key"); } catch { }
+
+                        // Provide optional default permissions for user to approve permanently
+                        try
+                        {
+                            var permissionsJson = "[{\"type\":\"sign_event\",\"kind\":22242},{\"type\":\"nip44_decrypt\"}]";
+                            intent.PutExtra("permissions", permissionsJson);
+                        }
+                        catch { }
+
+                        // Add flags so signer can handle multiple requests without opening multiple activities
+                        intent.AddFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+
+                        // prefer using stored signer package if present
+                        try
+                        {
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var storedPkg = prefs?.GetString(PREF_SIGNER_PACKAGE, null);
+                            if (!string.IsNullOrEmpty(storedPkg))
+                            {
+                                intent.SetPackage(storedPkg);
+                            }
+                            else
+                            {
+                                // Prefer Amber package if installed
+                                var amberPkg = "com.greenart7c3.nostrsigner";
+                                try
+                                {
+                                    var info = PackageManager.GetPackageInfo(amberPkg, 0);
+                                    if (info != null)
+                                    {
+                                        intent.SetPackage(amberPkg);
+                                        try
+                                        {
+                                            var edit = prefs?.Edit();
+                                            if (edit != null) { edit.PutString(PREF_SIGNER_PACKAGE, amberPkg); edit.Apply(); }
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                catch (Android.Content.PM.PackageManager.NameNotFoundException)
+                                {
+                                    // Amber not installed — fallback to any handler
+                                    try
+                                    {
+                                        var infos = PackageManager.QueryIntentActivities(intent, 0);
+                                        if (infos != null && infos.Count > 0)
+                                        {
+                                            var pkgName = infos[0].ActivityInfo?.PackageName;
+                                            if (!string.IsNullOrEmpty(pkgName)) intent.SetPackage(pkgName);
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                catch { }
+                            }
+                        }
+                        catch { }
+
+                        // Use StartActivityForResult to receive pubkey/package back
+                        StartActivityForResult(intent, RC_GET_PUBKEY);
+                    }
+                    catch
+                    {
+                        try { Toast.MakeText(this, "Failed to invoke Amber (no handler)", ToastLength.Short).Show(); } catch { }
+                    }
+                };
+            }
+
             start.Click += (s, e) =>
             {
                 var intent = new Intent(this, typeof(NostrService));
@@ -423,6 +515,113 @@ namespace nokandro
 #pragma warning restore CS8600,CS8601,CS8602
         }
 
+        protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+        {
+            base.OnActivityResult(requestCode, resultCode, data);
+            try
+            {
+                if (requestCode == RC_GET_PUBKEY)
+                {
+                    if (resultCode != Result.Ok)
+                    {
+                        try { Toast.MakeText(this, "Sign request rejected", ToastLength.Short).Show(); } catch { }
+                        return;
+                    }
+
+                    string? result = null;
+                    string? signerPkg = null;
+
+                    // try extras
+                    try { if (data != null) { result = data.GetStringExtra("result"); signerPkg = data.GetStringExtra("package"); } } catch { }
+                    // try uri query parameters if not in extras
+                    try
+                    {
+                        if (string.IsNullOrEmpty(result) && data?.Data != null)
+                        {
+                            var uri = data.Data;
+                            result = uri.GetQueryParameter("result");
+                            if (string.IsNullOrEmpty(signerPkg)) signerPkg = uri.GetQueryParameter("package");
+                        }
+                    }
+                    catch { }
+
+                    if (string.IsNullOrEmpty(result))
+                    {
+                        // fallback: try DataString body
+                        try { var ds = data?.DataString; if (!string.IsNullOrEmpty(ds)) result = ds; } catch { }
+                    }
+
+                    if (string.IsNullOrEmpty(result))
+                    {
+                        try { Toast.MakeText(this, "No pubkey returned", ToastLength.Short).Show(); } catch { }
+                        return;
+                    }
+
+                    // normalize: if result contains npub, extract; if hex 64 chars, convert to npub via bech32 if needed
+                    string npubVal = result;
+                    var m = CreateNpubPlainRegex().Match(result);
+                    if (m.Success) npubVal = m.Value;
+                    else
+                    {
+                        // if looks like 64-hex
+                        var hexm = CreateHex64Regex().Match(result);
+                        if (hexm.Success)
+                        {
+                            try { var bytes = HexToBytes(hexm.Value); npubVal = Bech32Encode("npub", ConvertBits(bytes, 8, 5, true)); } catch { }
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(npubVal))
+                    {
+                        try { Toast.MakeText(this, "Invalid pubkey format", ToastLength.Short).Show(); } catch { }
+                        return;
+                    }
+
+                    // Save to prefs and update UI
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutString(PREF_NPUB, npubVal);
+                            if (!string.IsNullOrEmpty(signerPkg)) edit.PutString(PREF_SIGNER_PACKAGE, signerPkg);
+                            edit.Apply();
+                        }
+                    }
+                    catch { }
+
+                    RunOnUiThread(() =>
+                    {
+                        try { _npubEditField?.Text = npubVal; } catch { }
+                        try { Toast.MakeText(this, "npub acquired", ToastLength.Short).Show(); } catch { }
+                    });
+                }
+            }
+            catch { }
+        }
+
+        private static bool IsExternalSignerInstalled(Context context)
+        {
+            try
+            {
+                var intent = new Intent(Intent.ActionView);
+                intent.SetData(Android.Net.Uri.Parse("nostrsigner:"));
+                var infos = context.PackageManager.QueryIntentActivities(intent, 0);
+                return infos != null && infos.Count > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        protected override void OnNewIntent(Intent? intent)
+        {
+            base.OnNewIntent(intent);
+            try { HandleIncomingNpub(intent); } catch { }
+        }
+
         protected override void OnDestroy()
         {
             if (_receiver != null)
@@ -430,6 +629,154 @@ namespace nokandro
                 try { LocalBroadcast.UnregisterReceiver(_receiver); } catch { }
             }
             base.OnDestroy();
+        }
+
+        private void HandleIncomingNpub(Intent? intent)
+        {
+            if (intent == null) return;
+            try
+            {
+                // Try to extract npub from data URI first
+                var data = intent.DataString ?? string.Empty;
+
+                // If no data, try common extras
+                if (string.IsNullOrEmpty(data))
+                {
+                    data = intent.GetStringExtra("npub") ?? intent.GetStringExtra("pubkey") ?? string.Empty;
+                }
+
+                if (string.IsNullOrEmpty(data)) return;
+
+                // Normalize and extract npub (support "nostr:npub1..." and plain "npub1...")
+                var m = CreateNeventNoteRegex().Match(data);
+                string npubVal = string.Empty;
+                if (m.Success) npubVal = m.Value;
+                else
+                {
+                    // fallback: if data is like nostr:<npub>
+                    if (data.StartsWith("nostr:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var rest = data[6..];
+                        var mm = CreateNpubPlainRegex().Match(rest);
+                        if (mm.Success) npubVal = mm.Value;
+                        else npubVal = rest;
+                    }
+                    else
+                    {
+                        npubVal = data;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(npubVal)) return;
+
+                // Save to prefs and update UI
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var edit = prefs?.Edit();
+                    if (edit != null)
+                    {
+                        edit.PutString(PREF_NPUB, npubVal);
+                        edit.Apply();
+                    }
+                }
+                catch { }
+
+                RunOnUiThread(() =>
+                {
+                    try { _npubEditField?.Text = npubVal; } catch { }
+                    try { Toast.MakeText(this, "npub acquired", ToastLength.Short).Show(); } catch { }
+                });
+            }
+            catch { }
+        }
+
+        private static byte[] HexToBytes(string hex)
+        {
+            if (hex.Length % 2 != 0) throw new ArgumentException("Invalid hex length");
+            var bytes = new byte[hex.Length / 2];
+            for (int i = 0; i < bytes.Length; i++) bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+            return bytes;
+        }
+
+        // convertbits from BIP173 reference
+        private static byte[] ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
+        {
+            var acc = 0;
+            var bits = 0;
+            var maxv = (1 << toBits) - 1;
+            var result = new List<byte>();
+            foreach (var value in data)
+            {
+                acc = (acc << fromBits) | (value & ((1 << fromBits) - 1));
+                bits += fromBits;
+                while (bits >= toBits)
+                {
+                    bits -= toBits;
+                    result.Add((byte)((acc >> bits) & maxv));
+                }
+            }
+            if (pad)
+            {
+                if (bits > 0) result.Add((byte)((acc << (toBits - bits)) & maxv));
+            }
+            else
+            {
+                if (bits >= fromBits) throw new ArgumentException("Illegal zero padding");
+                if (((acc << (toBits - bits)) & maxv) != 0) throw new ArgumentException("Non-zero padding");
+            }
+            return [.. result];
+        }
+
+        private static readonly string Bech32Chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+        private static int Polymod(byte[] values)
+        {
+            var chk = 1;
+            var generators = new int[] { 0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3 };
+            foreach (var v in values)
+            {
+                var top = chk >> 25;
+                chk = ((chk & 0x1ffffff) << 5) ^ v;
+                for (int i = 0; i < 5; i++) if (((top >> i) & 1) != 0) chk ^= generators[i];
+            }
+            return chk;
+        }
+
+        private static byte[] HrpExpand(string hrp)
+        {
+            var hrpBytes = Encoding.ASCII.GetBytes(hrp);
+            var expand = new List<byte>();
+            foreach (var b in hrpBytes) expand.Add((byte)(b >> 5));
+            expand.Add(0);
+            foreach (var b in hrpBytes) expand.Add((byte)(b & 31));
+            return [.. expand];
+        }
+
+        private static string Bech32Encode(string hrp, byte[] data)
+        {
+            var combined = new List<byte>();
+            combined.AddRange(data);
+            // create checksum
+            var checksum = CreateChecksum(hrp, data);
+            combined.AddRange(checksum);
+            var sb = new StringBuilder();
+            sb.Append(hrp);
+            sb.Append('1');
+            foreach (var b in combined) sb.Append(Bech32Chars[b]);
+            return sb.ToString();
+        }
+
+        private static byte[] CreateChecksum(string hrp, byte[] data)
+        {
+            var values = new List<byte>();
+            values.AddRange(HrpExpand(hrp));
+            values.AddRange(data);
+            values.AddRange(new byte[6]);
+            var polymod = Polymod([.. values]) ^ 1;
+            var ret = new byte[6];
+            for (int i = 0; i < 6; ++i) ret[i] = (byte)((polymod >> (5 * (5 - i))) & 31);
+            return ret;
         }
 
         private string ShortenUrls(string input)
@@ -552,5 +899,9 @@ namespace nokandro
         private static partial Regex CreateNpubRegex();
         [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateNeventNoteRegex();
+        [GeneratedRegex("npub1[0-9a-zA-Z]+", RegexOptions.IgnoreCase, "ja-JP")]
+        private static partial Regex CreateNpubPlainRegex();
+        [GeneratedRegex("^[0-9a-fA-F]{64}$")]
+        private static partial Regex CreateHex64Regex();
     }
 }
