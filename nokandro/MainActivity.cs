@@ -496,7 +496,7 @@ namespace nokandro
                 {
                     var loaded = intent.GetBooleanExtra("muteLoaded", false);
                     var count = intent.GetIntExtra("muteCount", 0);
-                    var text = loaded ? $"Mute list: loaded ({count})" : "Mute list: (not loaded)";
+                    var text = loaded ? $"Public mute: loaded ({count})" : "Public mute: (not loaded)";
                     RunOnUiThread(() => { muteStatus.Text = text; });
                     return;
                 }

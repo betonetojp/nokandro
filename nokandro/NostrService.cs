@@ -262,10 +262,31 @@ namespace nokandro
                 var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                 // ensure author filter uses hex pubkey (decode npub if necessary)
-                var authorFilter = _npub ?? string.Empty;
+                var authorFilter = (_npub ?? string.Empty).Trim();
                 try
                 {
-                    if (authorFilter.StartsWith("npub"))
+                    // If a plain npub is embedded anywhere in the supplied value, extract it
+                    var m = PlainNpubRegex.Match(authorFilter);
+                    if (!m.Success)
+                    {
+                        // try to find an npub token anywhere in the string
+                        var m2 = PlainNpubRegex.Match(authorFilter);
+                        if (m2.Success) m = m2;
+                        else
+                        {
+                            // also try nostr:npub1... or nostr:nprofile1... styles
+                            var m3 = NpubNprofileRegex().Match(authorFilter);
+                            if (m3.Success)
+                            {
+                                // extract inner npub if present
+                                var inner = PlainNpubRegex.Match(m3.Value);
+                                if (inner.Success) m = inner;
+                            }
+                        }
+                    }
+                    if (m.Success) authorFilter = m.Value;
+
+                    if (authorFilter.StartsWith("npub", StringComparison.OrdinalIgnoreCase))
                     {
                         var dec = DecodeBech32Npub(authorFilter);
                         if (!string.IsNullOrEmpty(dec)) authorFilter = dec;
@@ -1003,6 +1024,7 @@ namespace nokandro
         // Fallback compiled regexes for extensions used in speech replacement
         private static readonly Regex ImageExtensionRegex = CreateImageExtensionRegex();
         private static readonly Regex VideoExtensionRegex = CreateVideoExtensionRegex();
+        private static readonly Regex PlainNpubRegex = CreatePlainNpubRegex();
         private static readonly string[] evaluator = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng"];
         private static readonly string[] evaluatorArray = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv"];
 
@@ -1016,5 +1038,7 @@ namespace nokandro
         private static partial Regex NpubNprofileRegex();
         [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex NeventNoteRegex();
+        [GeneratedRegex("npub1[0-9a-zA-Z]+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreatePlainNpubRegex();
     }
 }

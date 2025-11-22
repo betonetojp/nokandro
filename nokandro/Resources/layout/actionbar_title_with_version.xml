@@ -19,7 +19,6 @@
         android:id="@+id/versionText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="v0.3.1"
         android:textSize="12sp"
         android:textColor="@android:color/white"
         android:gravity="end"
