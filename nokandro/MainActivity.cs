@@ -782,8 +782,40 @@ namespace nokandro
         private string ShortenUrls(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
-            // replace any URL with the placeholder "[URL]"
-            var replaced = UrlPattern.Replace(input, "[URL]");
+            // Replace URLs with context-aware placeholders: image -> [picture], video -> [movie], else -> [URL]
+            var replaced = UrlPattern.Replace(input, new MatchEvaluator(match =>
+            {
+                var url = match.Value ?? string.Empty;
+                var checkUrl = url;
+                if (checkUrl.StartsWith("www.", StringComparison.OrdinalIgnoreCase)) checkUrl = "http://" + checkUrl;
+
+                try
+                {
+                    if (Uri.TryCreate(checkUrl, UriKind.Absolute, out var uri))
+                    {
+                        var ext = Path.GetExtension(uri.LocalPath ?? string.Empty);
+                        if (!string.IsNullOrEmpty(ext))
+                        {
+                            ext = ext.ToLowerInvariant();
+                            var imageExts = evaluator;
+                            var videoExts = evaluatorArray;
+                            if (Array.IndexOf(imageExts, ext) >= 0) return "[picture]";
+                            if (Array.IndexOf(videoExts, ext) >= 0) return "[movie]";
+                        }
+                    }
+                }
+                catch { }
+
+                // Fallback: check common extensions inside the URL string
+                try
+                {
+                    if (CreateImageExtensionRegex().IsMatch(url)) return "[picture]";
+                    if (CreateVideoExtensionRegex().IsMatch(url)) return "[movie]";
+                }
+                catch { }
+
+                return "[URL]";
+            }));
 
             // replace nostr npub/event/note references
             try
@@ -892,10 +924,16 @@ namespace nokandro
         private static readonly Regex UrlPattern = CreateUrlRegex();
         private static readonly Regex NpubNprofilePattern = CreateNpubNprofileRegex();
         private static readonly Regex NeventNotePattern = CreateNeventNoteRegex();
+        private static readonly string[] evaluator = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng"];
+        private static readonly string[] evaluatorArray = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv"];
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateUrlRegex();
-        [GeneratedRegex("\\b(?:nostr:npub1|nprofile1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        [GeneratedRegex("\\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff|ico|apng)(?:[?#]|$)", RegexOptions.IgnoreCase, "ja-JP")]
+        private static partial Regex CreateImageExtensionRegex();
+        [GeneratedRegex("\\.(mp4|mov|webm|mkv|avi|flv|mpeg|mpg|3gp|ogg|ogv|m4v|ts|m2ts|wmv)(?:[?#]|$)", RegexOptions.IgnoreCase, "ja-JP")]
+        private static partial Regex CreateVideoExtensionRegex();
+        [GeneratedRegex("\\bnostr:(?:npub1|nprofile1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateNpubNprofileRegex();
         [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateNeventNoteRegex();

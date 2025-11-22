@@ -8,6 +8,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SysText = System.Text;
+using System.IO;
 
 namespace nokandro
 {
@@ -765,17 +766,51 @@ namespace nokandro
         {
             if (string.IsNullOrEmpty(input)) return input;
             var rx = UrlRegex();
-            var replaced = rx.Replace(input, "（URL省略）");
-            // also replace nostr npub/event/note references so TTS speaks placeholders
+            // Replace URLs with context-aware placeholders: image -> [picture], video -> [movie], else -> [URL]
+            var replaced = rx.Replace(input, new MatchEvaluator(match =>
+            {
+                var url = match.Value ?? string.Empty;
+                var checkUrl = url;
+                if (checkUrl.StartsWith("www.", StringComparison.OrdinalIgnoreCase)) checkUrl = "http://" + checkUrl;
+
+                try
+                {
+                    if (Uri.TryCreate(checkUrl, UriKind.Absolute, out var uri))
+                    {
+                        var ext = Path.GetExtension(uri.LocalPath ?? string.Empty);
+                        if (!string.IsNullOrEmpty(ext))
+                        {
+                            ext = ext.ToLowerInvariant();
+                            var imageExts = evaluator;
+                            var videoExts = evaluatorArray;
+                            if (Array.IndexOf(imageExts, ext) >= 0) return "[picture]";
+                            if (Array.IndexOf(videoExts, ext) >= 0) return "[movie]";
+                        }
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    if (ImageExtensionRegex.IsMatch(url)) return "[picture]";
+                    if (VideoExtensionRegex.IsMatch(url)) return "[movie]";
+                }
+                catch { }
+
+                return "[URL]";
+            }));
+
+            // also replace nostr npub/event/note references so TTS speaks placeholders matching UI
             try
             {
-                replaced = NpubRegex().Replace(replaced, "（メンション）");
-                replaced = NeventNoteRegex().Replace(replaced, "（引用）");
+                replaced = NpubNprofileRegex().Replace(replaced, "[mention]");
+                replaced = NeventNoteRegex().Replace(replaced, "[quote]");
             }
             catch { }
+
             if (replaced.Length > _truncateLen && _truncateLen > 0)
             {
-                return string.Concat(replaced.AsSpan(0, _truncateLen), "（以下略）");
+                return string.Concat(replaced.AsSpan(0, _truncateLen), " ...");
             }
             return replaced;
         }
@@ -945,13 +980,6 @@ namespace nokandro
             return sb.ToString();
         }
 
-        [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex UrlRegex();
-        [GeneratedRegex("\\bnostr:npub1\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex NpubRegex();
-        [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex NeventNoteRegex();
-
         private class LocalReceiver(NostrService service) : BroadcastReceiver
         {
             private readonly NostrService _service = service;
@@ -970,5 +998,23 @@ namespace nokandro
                 catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); _service.WriteLog("LocalReceiver.OnReceive error: " + ex.Message); }
             }
         }
+
+        
+        // Fallback compiled regexes for extensions used in speech replacement
+        private static readonly Regex ImageExtensionRegex = CreateImageExtensionRegex();
+        private static readonly Regex VideoExtensionRegex = CreateVideoExtensionRegex();
+        private static readonly string[] evaluator = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng"];
+        private static readonly string[] evaluatorArray = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv"];
+
+        [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex UrlRegex();
+        [GeneratedRegex("\\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff|ico|apng)(?:[?#]|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateImageExtensionRegex();
+        [GeneratedRegex("\\.(mp4|mov|webm|mkv|avi|flv|mpeg|mpg|3gp|ogg|ogv|m4v|ts|m2ts|wmv)(?:[?#]|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateVideoExtensionRegex();
+        [GeneratedRegex("\\bnostr:(?:npub1|nprofile1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex NpubNprofileRegex();
+        [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex NeventNoteRegex();
     }
 }
