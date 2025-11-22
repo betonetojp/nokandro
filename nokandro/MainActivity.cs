@@ -782,14 +782,14 @@ namespace nokandro
         private string ShortenUrls(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
-            // replace any URL with the placeholder "（URL省略）"
-            var replaced = UrlPattern.Replace(input, "（URL省略）");
+            // replace any URL with the placeholder "[URL]"
+            var replaced = UrlPattern.Replace(input, "[URL]");
 
             // replace nostr npub/event/note references
             try
             {
-                replaced = NpubPattern.Replace(replaced, "（メンション）");
-                replaced = NeventNotePattern.Replace(replaced, "（引用）");
+                replaced = NpubNprofilePattern.Replace(replaced, "[mention]");
+                replaced = NeventNotePattern.Replace(replaced, "[quote]");
             }
             catch { }
 
@@ -804,7 +804,7 @@ namespace nokandro
 
             if (replaced.Length > len)
             {
-                return string.Concat(replaced.AsSpan(0, len), "（以下略）");
+                return string.Concat(replaced.AsSpan(0, len), " ...");
             }
             return replaced;
         }
@@ -890,13 +890,13 @@ namespace nokandro
         }
 
         private static readonly Regex UrlPattern = CreateUrlRegex();
-        private static readonly Regex NpubPattern = CreateNpubRegex();
+        private static readonly Regex NpubNprofilePattern = CreateNpubNprofileRegex();
         private static readonly Regex NeventNotePattern = CreateNeventNoteRegex();
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateUrlRegex();
-        [GeneratedRegex("\\bnostr:npub1\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
-        private static partial Regex CreateNpubRegex();
+        [GeneratedRegex("\\b(?:nostr:npub1|nprofile1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        private static partial Regex CreateNpubNprofileRegex();
         [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateNeventNoteRegex();
         [GeneratedRegex("npub1[0-9a-zA-Z]+", RegexOptions.IgnoreCase, "ja-JP")]
