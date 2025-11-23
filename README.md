@@ -22,20 +22,23 @@
 
 ## メイン画面の説明
 
-- `Follow list: (not loaded)` — フォローリストの読み込み状態を表示します。
-- `Public mute: (not loaded)` — 公開ミュートの読み込み状態を表示します。
-- `Max characters:` — 表示用の最大文字数を入力します。
-- `Relay (wss://...)` — 接続先リレーの URL を入力します。
-- `Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
-- `Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
-- `Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
-- `Voice for others` — フォロー外ユーザー用の TTS 音声を選択します。
-- `Refresh Voices` — 利用可能な TTS 音声を再取得します。
-- `Start` — バックグラウンドサービスを開始します。
-- `Stop` — バックグラウンドサービスを停止します。
-- `(no note yet)` — ここに最後に受信したメッセージが表示されます。
-- `Refresh Log` — ログ表示を更新します（`ENABLE_LOG` が有効な開発ビルド時のみ）。
-- `Share Log` — ログを共有します（`ENABLE_LOG` が有効な開発ビルド時のみ）。
+`Follow list: not loaded` — フォローリストの読み込み状態を表示します（読み込み後は件数が表示されます）。
+`Public mute: not loaded` — 公開ミュートの読み込み状態を表示します（読み込み後は件数が表示されます）。
+`Max characters:` — 表示用の最大文字数（切り詰め）を指定します。
+`Relay (wss://...)` — 接続先リレーの URL を入力します。
+`Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
+(検証エラー表示) `Invalid npub` — 入力が不正な場合のエラー表示（通常は非表示）。
+`Get from Amber` — Amber から npub を取得します。
+`Speak petname` — フォローリスト内の petnameを読み上げの先頭に付けるかどうかの切り替えます。
+`Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
+`Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
+`Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
+`Refresh Voices` — 利用可能な TTS 音声を再取得します。
+`Speech rate` — TTS の発話速度をスライダーや入力で調整します（サービスに即時反映されます）。
+`Start` — バックグラウンドサービスを開始します。
+`Stop` — バックグラウンドサービスを停止します。
+`(no note yet)` — ここに最後に受信したメッセージが表示されます。
+`Refresh Log` / `Share Log` — ログ表示の更新と共有（`ENABLE_LOG` が有効な開発ビルド時のみ）。
 
 ## フォローリストと公開ミュート（Follow list / Public mute）
 
@@ -63,7 +66,4 @@
 
 - 配布される APK は配布元が署名しています。署名が異なる APK を上書きしようとするとインストールに失敗します。
 
-
-
-
-
+*備考*: 詳細な操作説明や履歴は別ドキュメントに分けて管理してください。
