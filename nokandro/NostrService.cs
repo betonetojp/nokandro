@@ -8,7 +8,6 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SysText = System.Text;
-using System.IO;
 
 namespace nokandro
 {
@@ -25,6 +24,8 @@ namespace nokandro
     [Service]
     public partial class NostrService : Service
     {
+        // indicate service running state for Activity UI
+        public static bool IsRunning { get; private set; } = false;
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
         private ClientWebSocket? _ws;
@@ -38,7 +39,7 @@ namespace nokandro
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
         private float _speechRate = 1.0f;
-        private Android.Content.BroadcastReceiver? _localReceiver;
+        private BroadcastReceiver? _localReceiver;
 
         // Voice selection names received from UI
         private string? _voiceFollowedName;
@@ -48,11 +49,11 @@ namespace nokandro
 
         private const string BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
         private static readonly uint[] BECH32_GENERATOR = [0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u];
-        private const int CONTENT_TRUNCATE_LENGTH = 20;
         private const string ACTION_MUTE_UPDATE = "nokandro.ACTION_MUTE_UPDATE";
 
         public override void OnCreate()
         {
+            IsRunning = true;
             base.OnCreate();
             AppLog.D(TAG, "OnCreate");
             // Get AudioManager safely
@@ -215,6 +216,14 @@ namespace nokandro
             AppLog.D(TAG, "Spawned RunAsync task");
             WriteLog("Spawned RunAsync task");
 
+            // notify UI that service started
+            try
+            {
+                var b = new Intent("nokandro.ACTION_SERVICE_STARTED");
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch { }
+
             return StartCommandResult.Sticky;
         }
 
@@ -222,6 +231,13 @@ namespace nokandro
         {
             AppLog.D(TAG, "OnDestroy");
             WriteLog("OnDestroy");
+            IsRunning = false;
+            try
+            {
+                var b = new Intent("nokandro.ACTION_SERVICE_STOPPED");
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch { }
             try { if (_localReceiver != null) LocalBroadcast.UnregisterReceiver(_localReceiver); } catch { }
             _cts.Cancel();
             try
@@ -1020,7 +1036,7 @@ namespace nokandro
             }
         }
 
-        
+
         // Fallback compiled regexes for extensions used in speech replacement
         private static readonly Regex ImageExtensionRegex = CreateImageExtensionRegex();
         private static readonly Regex VideoExtensionRegex = CreateVideoExtensionRegex();

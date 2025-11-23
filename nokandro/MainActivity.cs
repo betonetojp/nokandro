@@ -2,8 +2,8 @@
 using Android.OS;
 using Android.Speech.Tts;
 using Android.Views;
-using System.Text.RegularExpressions;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace nokandro
 {
@@ -26,6 +26,7 @@ namespace nokandro
 
         private TextView? _lastContentView;
         private BroadcastReceiver? _receiver;
+        private BroadcastReceiver? _serviceStateReceiver;
         private TextView? _logTextView;
         // keep a reference to npub EditText so incoming intents can update it
         private EditText? _npubEditField;
@@ -175,6 +176,13 @@ namespace nokandro
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
+            TextView? npubError = null;
+            try
+            {
+                var npubErrId = Resources.GetIdentifier("npubErrorText", "id", PackageName);
+                if (npubErrId != 0) npubError = FindViewById<TextView>(npubErrId);
+            }
+            catch { }
 
             // Ensure required views are present to satisfy nullability and avoid runtime NREs
             if (relayEdit == null || npubEdit == null || allowOthersSwitch == null ||
@@ -205,6 +213,67 @@ namespace nokandro
             var followStatus = (TextView)followStatusText!;
             var muteStatus = (TextView)muteStatusText!;
             var truncate = (EditText)truncateEdit!;
+
+            // helper to set Enabled + visual appearance
+            void SetControlEnabled(View? v, bool enabled)
+            {
+                if (v == null) return;
+                try
+                {
+                    v.Enabled = enabled;
+                    // subtle visual cue when disabled
+                    v.Alpha = enabled ? 1.0f : 0.45f;
+
+                    if (v is EditText et)
+                    {
+                        // make non-focusable when disabled so keyboard won't appear
+                        try { et.Focusable = enabled; } catch { }
+                        try { et.FocusableInTouchMode = enabled; } catch { }
+                        et.Clickable = enabled;
+                        try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                    }
+
+                    if (v is Spinner sp)
+                    {
+                        try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
+
+                    if (v is Button btn)
+                    {
+                        try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
+
+                    if (v is Switch sw)
+                    {
+                        try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
+                }
+                catch { }
+            }
+
+            // Helper to validate npub input format
+            bool IsNpubValid(string? input)
+            {
+                if (string.IsNullOrWhiteSpace(input)) return false;
+                var s = input.Trim();
+
+                // Accept only exact npub1... token or exact 64-hex string
+                try
+                {
+                    var m = CreateNpubPlainRegex().Match(s);
+                    if (m.Success && m.Index == 0 && m.Length == s.Length)
+                    {
+                        // Typical npub bech32 length for 32-byte payload + 6 checksum: hrp(4) + '1' + 58 = 63
+                        if (s.Length == 63) return true;
+                        return false;
+                    }
+                }
+                catch { }
+
+                try { if (CreateHex64Regex().IsMatch(s)) return true; } catch { }
+
+                return false;
+            }
 
             // restore saved relay + npub and truncate length if present
             try
@@ -243,6 +312,40 @@ namespace nokandro
                 catch { }
             }
             catch { }
+
+            // Update start button enabled state based on npub validity (and service running state)
+            try
+            {
+                var npubText = npub.Text ?? string.Empty;
+                var canStart = !NostrService.IsRunning && IsNpubValid(npubText);
+                SetControlEnabled(start, canStart);
+            }
+            catch { }
+
+            // React to changes in npub field and enable/disable Start accordingly
+            npub.TextChanged += (s, e) =>
+            {
+                try
+                {
+                    var txt = npub.Text ?? string.Empty;
+                    var canStartNow = !NostrService.IsRunning && IsNpubValid(txt);
+                    SetControlEnabled(start, canStartNow);
+                    // show inline validation when user types invalid non-empty value
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(txt) && !IsNpubValid(txt))
+                        {
+                            if (npubError != null) { npubError.Text = "Invalid npub format"; npubError.Visibility = ViewStates.Visible; }
+                        }
+                        else
+                        {
+                            npubError?.Visibility = ViewStates.Gone;
+                        }
+                    }
+                    catch { }
+                }
+                catch { }
+            };
 
             // save allowOthers when toggled
             allowOthers.CheckedChange += (s, e) =>
@@ -320,9 +423,6 @@ namespace nokandro
                 {
                     try
                     {
-                        var callback = "nokandro://amber_callback";
-                        string reqUri;
-
                         // Build base intent using nostrsigner or nostr scheme per NIP-55 Using Intents
                         var baseUri = IsExternalSignerInstalled(this) ? Android.Net.Uri.Parse("nostrsigner:") : Android.Net.Uri.Parse("nostr:");
                         var intent = new Intent(Intent.ActionView, baseUri);
@@ -397,8 +497,38 @@ namespace nokandro
                 };
             }
 
+            // set initial start/stop button state from service flag and npub validity
+            try
+            {
+                SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text));
+                SetControlEnabled(stop, NostrService.IsRunning);
+                // disable all settings if service already running
+                SetControlEnabled(relay, !NostrService.IsRunning);
+                SetControlEnabled(npub, !NostrService.IsRunning);
+                SetControlEnabled(truncate, !NostrService.IsRunning);
+                SetControlEnabled(amberBtn, !NostrService.IsRunning);
+                SetControlEnabled(allowOthers, !NostrService.IsRunning);
+                SetControlEnabled(voiceFollowed, !NostrService.IsRunning);
+                SetControlEnabled(voiceOther, !NostrService.IsRunning);
+                SetControlEnabled(refreshVoices, !NostrService.IsRunning);
+                // keep speechSeek enabled because speech rate is applied immediately
+            }
+            catch { }
+
             start.Click += (s, e) =>
             {
+                // validate npub before attempting to start
+                try
+                {
+                    if (!IsNpubValid(npub.Text))
+                    {
+                        try { Toast.MakeText(this, "Invalid npub format", ToastLength.Short).Show(); } catch { }
+                        if (npubError != null) { npubError.Text = "Invalid npub format"; npubError.Visibility = ViewStates.Visible; }
+                        return;
+                    }
+                }
+                catch { }
+
                 var intent = new Intent(this, typeof(NostrService));
                 var truncateLen = CONTENT_TRUNCATE_LENGTH;
                 try { truncateLen = int.Parse(truncate.Text ?? string.Empty); } catch { }
@@ -415,6 +545,10 @@ namespace nokandro
                 // map SeekBar progress (0..200) to speech rate range 0.50..1.50
                 var speechRate = 0.5f + ((speechSeek != null ? (float)speechSeek.Progress : 100f) / 200.0f);
                 intent.PutExtra("speechRate", speechRate);
+
+                // Reset UI status to not loaded; service will broadcast updates when lists are loaded
+                try { followStatus.Text = "Follow list: not loaded"; } catch { }
+                try { muteStatus.Text = "Public mute: not loaded"; } catch { }
 
                 // persist selections
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
@@ -434,13 +568,91 @@ namespace nokandro
 
                 // Use StartService; the service will call StartForeground
                 StartService(intent);
+                // update UI state
+                try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
+                // disable all settings while running
+                SetControlEnabled(relay, false);
+                SetControlEnabled(npub, false);
+                SetControlEnabled(truncate, false);
+                SetControlEnabled(amberBtn, false);
+                SetControlEnabled(allowOthers, false);
+                SetControlEnabled(voiceFollowed, false);
+                SetControlEnabled(voiceOther, false);
+                SetControlEnabled(refreshVoices, false);
+                // keep speechSeek enabled because speech rate updates apply immediately
             };
 
             stop.Click += (s, e) =>
             {
                 var intent = new Intent(this, typeof(NostrService));
                 StopService(intent);
+                try { SetControlEnabled(start, true); SetControlEnabled(stop, false); } catch { }
+                // re-enable all settings
+                SetControlEnabled(relay, true);
+                SetControlEnabled(npub, true);
+                SetControlEnabled(truncate, true);
+                SetControlEnabled(amberBtn, true);
+                SetControlEnabled(allowOthers, true);
+                SetControlEnabled(voiceFollowed, true);
+                SetControlEnabled(voiceOther, true);
+                SetControlEnabled(refreshVoices, true);
+                // speechSeek remains enabled
+
+                // Immediately reset follow/mute UI to not loaded when stopping
+                try { followStatus.Text = "Follow list: not loaded"; } catch { }
+                try { muteStatus.Text = "Public mute: not loaded"; } catch { }
             };
+
+            // register for service start/stop broadcasts to update button state
+            try
+            {
+                _serviceStateReceiver = new BroadcastReceiver();
+                _serviceStateReceiver.Receive += (ctx, intent) =>
+                {
+                    if (intent == null) return;
+                    if (intent.Action == "nokandro.ACTION_SERVICE_STARTED")
+                    {
+                        RunOnUiThread(() =>
+                        {
+                            try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
+                            try { SetControlEnabled(relay, false); } catch { }
+                            try { SetControlEnabled(npub, false); } catch { }
+                            try { SetControlEnabled(truncate, false); } catch { }
+                            try { SetControlEnabled(amberBtn, false); } catch { }
+                            try { SetControlEnabled(allowOthers, false); } catch { }
+                            try { SetControlEnabled(voiceFollowed, false); } catch { }
+                            try { SetControlEnabled(voiceOther, false); } catch { }
+                            try { SetControlEnabled(refreshVoices, false); } catch { }
+                            // do not disable speechSeek; speech rate applies immediately
+                        });
+                    }
+                    else if (intent.Action == "nokandro.ACTION_SERVICE_STOPPED")
+                    {
+                        RunOnUiThread(() =>
+                        {
+                            try { SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text)); SetControlEnabled(stop, false); } catch { }
+                            try { SetControlEnabled(relay, true); } catch { }
+                            try { SetControlEnabled(npub, true); } catch { }
+                            try { SetControlEnabled(truncate, true); } catch { }
+                            try { SetControlEnabled(amberBtn, true); } catch { }
+                            try { SetControlEnabled(allowOthers, true); } catch { }
+                            try { SetControlEnabled(voiceFollowed, true); } catch { }
+                            try { SetControlEnabled(voiceOther, true); } catch { }
+                            try { SetControlEnabled(refreshVoices, true); } catch { }
+                            // speechSeek remains enabled
+
+                            // Ensure follow/mute UI reflect unloaded state when service has stopped
+                            try { followStatus.Text = "Follow list: not loaded"; } catch { }
+                            try { muteStatus.Text = "Public mute: not loaded"; } catch { }
+                        });
+                    }
+                };
+                var svcFilter = new IntentFilter();
+                svcFilter.AddAction("nokandro.ACTION_SERVICE_STARTED");
+                svcFilter.AddAction("nokandro.ACTION_SERVICE_STOPPED");
+                LocalBroadcast.RegisterReceiver(_serviceStateReceiver, svcFilter);
+            }
+            catch { }
 
             // Handle SeekBar changes
             if (speechSeek != null)
@@ -487,7 +699,7 @@ namespace nokandro
                 {
                     var loaded = intent.GetBooleanExtra("followLoaded", false);
                     var count = intent.GetIntExtra("followCount", 0);
-                    var text = loaded ? $"Follow list: loaded ({count})" : "Follow list: (not loaded)";
+                    var text = loaded ? $"Follow list: loaded ({count})" : "Follow list: not loaded";
                     RunOnUiThread(() => { followStatus.Text = text; });
                     return;
                 }
@@ -496,7 +708,7 @@ namespace nokandro
                 {
                     var loaded = intent.GetBooleanExtra("muteLoaded", false);
                     var count = intent.GetIntExtra("muteCount", 0);
-                    var text = loaded ? $"Public mute: loaded ({count})" : "Public mute: (not loaded)";
+                    var text = loaded ? $"Public mute: loaded ({count})" : "Public mute: not loaded";
                     RunOnUiThread(() => { muteStatus.Text = text; });
                     return;
                 }
@@ -627,6 +839,10 @@ namespace nokandro
             if (_receiver != null)
             {
                 try { LocalBroadcast.UnregisterReceiver(_receiver); } catch { }
+            }
+            if (_serviceStateReceiver != null)
+            {
+                try { LocalBroadcast.UnregisterReceiver(_serviceStateReceiver); } catch { }
             }
             base.OnDestroy();
         }

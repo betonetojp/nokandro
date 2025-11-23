@@ -15,14 +15,14 @@
             android:id="@+id/followStatusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Follow list: (not loaded)"
+            android:text="Follow list: not loaded"
             android:layout_marginBottom="4dp" />
 
         <TextView
             android:id="@+id/muteStatusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Public mute: (not loaded)"
+            android:text="Public mute: not loaded"
             android:layout_marginBottom="8dp" />
 
         <LinearLayout
@@ -58,6 +58,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Your npub" />
+
+        <!-- Validation error for npub -->
+        <TextView
+            android:id="@+id/npubErrorText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#D32F2F"
+            android:textSize="12sp"
+            android:visibility="gone"
+            android:text="Invalid npub" />
 
         <!-- Amber から取得ボタン -->
         <Button
