@@ -10,7 +10,7 @@
 
 - リレー（WebSocket）へ接続してリアルタイムでイベントを受信する。デフォルト接続先は `wss://yabu.me` または設定されたリレー。
 - 指定した `npub`（自分の公開鍵）に基づくフォローリストを取得して、フォローしているユーザーの投稿を優先して読み上げる。
-- フォローしていないユーザーの投稿は設定により読み上げを無効化可能（「Allow others」切り替え）。
+- フォローしていないユーザーの投稿は設定により読み上げを無効化可能（`Allow non-followed posts`切り替え）。
 - フォロー済みユーザーとそれ以外で TTS の声を分けて指定可能（2つのボイス選択）。
 - 受信したメッセージの表示（最後に受信した内容）とログの確認・共有（ロギングはビルド設定に依存し、配布ビルドでは非表示の場合があります）。
 - バックグラウンドで常駐して TTS を行うサービスはフォアグラウンド通知を使用し、通知から停止操作が可能。
@@ -22,23 +22,23 @@
 
 ## メイン画面の説明
 
-`Follow list: not loaded` — フォローリストの読み込み状態を表示します（読み込み後は件数が表示されます）。
-`Public mute: not loaded` — 公開ミュートの読み込み状態を表示します（読み込み後は件数が表示されます）。
-`Max characters:` — 表示用の最大文字数（切り詰め）を指定します。
-`Relay (wss://...)` — 接続先リレーの URL を入力します。
-`Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
-(検証エラー表示) `Invalid npub` — 入力が不正な場合のエラー表示（通常は非表示）。
-`Get from Amber` — Amber から npub を取得します。
-`Speak petname` — フォローリスト内の petnameを読み上げの先頭に付けるかどうかの切り替えます。
-`Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
-`Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
-`Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
-`Refresh Voices` — 利用可能な TTS 音声を再取得します。
-`Speech rate` — TTS の発話速度をスライダーや入力で調整します（サービスに即時反映されます）。
-`Start` — バックグラウンドサービスを開始します。
-`Stop` — バックグラウンドサービスを停止します。
-`(no note yet)` — ここに最後に受信したメッセージが表示されます。
-`Refresh Log` / `Share Log` — ログ表示の更新と共有（`ENABLE_LOG` が有効な開発ビルド時のみ）。
+- `Follow list: not loaded` — フォローリストの読み込み状態を表示します。
+- `Public mute: not loaded` — 公開ミュートの読み込み状態を表示します。
+- `Max characters:` — 表示用の最大文字数（切り詰め）を指定します。
+- `Relay (wss://...)` — 接続先リレーの URL を入力します。
+- `Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
+- `Invalid npub` — 入力が不正な場合のエラー表示（通常は非表示）。
+- `Get from Amber` — Amber から npub を取得します。
+- `Speak petname` — フォローリスト内の petnameを読み上げの先頭に付けるかどうかの切り替えます。
+- `Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
+- `Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
+- `Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
+- `Refresh Voices` — 利用可能な TTS 音声を再取得します。
+- `Speech rate` — TTS の発話速度をスライダーや入力で調整します（サービスに即時反映されます）。
+- `Start` — バックグラウンドサービスを開始します。
+- `Stop` — バックグラウンドサービスを停止します。
+- `(no note yet)` — ここに最後に受信したメッセージが表示されます。
+- `Refresh Log` / `Share Log` — ログ表示の更新と共有（`ENABLE_LOG` が有効な開発ビルド時のみ）。
 
 ## フォローリストと公開ミュート（Follow list / Public mute）
 
