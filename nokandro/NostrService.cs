@@ -34,11 +34,13 @@ namespace nokandro
         private bool _allowOthers = false;
         private readonly CancellationTokenSource _cts = new();
         private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
+        private Dictionary<string, string> _petnames = [];
         private HashSet<string> _muted = []; // store muted hex pubkeys (public mute lists)
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
         private float _speechRate = 1.0f;
+        private bool _speakPetname = false;
         private BroadcastReceiver? _localReceiver;
 
         // Voice selection names received from UI
@@ -89,6 +91,18 @@ namespace nokandro
             {
                 AppLog.W(TAG, "Failed to initialize log path: " + ex.Message);
             }
+
+            _followed = [];
+            _petnames = [];
+            _muted = [];
+
+            // default: read saved preference (default false for first run)
+            try
+            {
+                var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                _speakPetname = prefs?.GetBoolean("pref_speak_petname", false) ?? false;
+            }
+            catch { _speakPetname = false; }
         }
 
         [Conditional("ENABLE_LOG")]
@@ -133,6 +147,7 @@ namespace nokandro
                 _voiceOtherName = intent.GetStringExtra("voiceOther");
                 // read speech rate if provided
                 try { _speechRate = intent.GetFloatExtra("speechRate", _speechRate); } catch { }
+                try { _speakPetname = intent.GetBooleanExtra("speakPetname", _speakPetname); } catch { }
             }
 
             // Compute PendingIntent flags once and reuse
@@ -528,6 +543,64 @@ namespace nokandro
 
             // Replace follow list atomically
             _followed = newSet;
+            // Also extract petnames from tags into mapping (only when tag has 4 elements: ["p", "HEX", "relay", "petname"]).
+            try
+            {
+                if (eventObj.TryGetProperty("tags", out var tags2) && tags2.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var tag in tags2.EnumerateArray())
+                    {
+                        try
+                        {
+                            if (tag.ValueKind == JsonValueKind.Array && tag.GetArrayLength() >= 2)
+                            {
+                                var tagType = tag[0].GetString();
+                                if (tagType == "p")
+                                {
+                                    var pub = tag[1].GetString();
+                                    if (string.IsNullOrEmpty(pub)) continue;
+
+                                    var hex = pub;
+                                    if (pub.StartsWith("npub"))
+                                    {
+                                        var decoded = DecodeBech32Npub(pub);
+                                        if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
+                                    }
+                                    hex = NormalizeHexPubkey(hex);
+                                    if (string.IsNullOrEmpty(hex)) continue;
+
+                                    // Only accept petname if tag array has 4 elements and index 3 is non-empty.
+                                    string? pet = null;
+                                    if (tag.GetArrayLength() >= 4)
+                                    {
+                                        pet = tag[3].GetString();
+                                    }
+
+                                    if (!string.IsNullOrEmpty(pet))
+                                    {
+                                        _petnames[hex] = pet!;
+                                        AppLog.D(TAG, $"Stored petname for {hex}: {pet}");
+                                        WriteLog($"Stored petname for {hex}: {pet}");
+                                    }
+                                    else
+                                    {
+                                        // If no 4th element, ensure any previous mapping is removed so absence means no petname
+                                        // Use Remove directly and check its return value instead of ContainsKey + Remove
+                                        if (_petnames.Remove(hex))
+                                        {
+                                            AppLog.D(TAG, $"Removed petname for {hex} (no 4th tag element)");
+                                            WriteLog($"Removed petname for {hex} (no 4th tag element)");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
             AppLog.D(TAG, $"Follow list updated: count={_followed.Count}");
             WriteLog($"Follow list updated: count={_followed.Count}");
 
@@ -689,26 +762,47 @@ namespace nokandro
             var pitch = isFollowed ? 1.2f : 0.9f;
             var speechRate = _speechRate;
 
+            // determine petname if known
+            string? petname = null;
+            try { if (_petnames != null && _petnames.TryGetValue(pubkey, out var pn)) petname = pn; } catch { }
+            try { AppLog.D(TAG, $"Petname lookup for {pubkey}: {(petname ?? "(none)")}"); WriteLog($"Petname lookup for {pubkey}: {(petname ?? "(none)")}"); } catch { }
+
             // Broadcast latest content for UI
             try
             {
                 var b = new Intent("nokandro.ACTION_LAST_CONTENT");
                 b.PutExtra("content", content);
                 b.PutExtra("isFollowed", isFollowed);
+                if (!string.IsNullOrEmpty(petname)) b.PutExtra("petname", petname);
                 LocalBroadcast.SendBroadcast(this, b);
             }
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
 
-            SpeakText(content, pitch, speechRate, isFollowed);
+            SpeakText(content, pitch, speechRate, isFollowed, petname);
         }
 
-        private void SpeakText(string text, float pitch, float rate, bool isFollowed)
+        private void SpeakText(string text, float pitch, float rate, bool isFollowed, string? petname)
         {
             var tts = _tts;
             if (tts == null) { AppLog.W(TAG, "TTS is null"); WriteLog("TTS is null"); return; }
 
             // replace URLs so they are not spoken verbatim
             text = ReplaceUrlsForSpeech(text);
+
+            // prepend petname if preference enabled and petname provided
+            try
+            {
+                if (!string.IsNullOrEmpty(petname))
+                {
+                    if (_speakPetname)
+                    {
+                        text = petname + ": " + text;
+                        AppLog.D(TAG, "Prepended petname to speech: " + petname);
+                        WriteLog("Prepended petname to speech: " + petname);
+                    }
+                }
+            }
+            catch { }
 
             // choose voice name
             string? selectedName = isFollowed ? _voiceFollowedName : _voiceOtherName;

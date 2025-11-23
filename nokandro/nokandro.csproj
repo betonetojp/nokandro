@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.companyname.nokandro</ApplicationId>
     <ApplicationVersion>3</ApplicationVersion>
-    <ApplicationDisplayVersion>0.3.3</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>0.3.0</ApplicationDisplayVersion>
     <!--
       Use conservative trimming to avoid runtime removal of APIs needed by JSON parsing and TTS.
       'link' is a valid TrimMode for publishing; setting 'none' caused ILLink errors.

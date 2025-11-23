@@ -18,6 +18,7 @@ namespace nokandro
         const string PREF_SIGNER_PACKAGE = "pref_signer_package";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
         const string PREF_ALLOW_OTHERS = "pref_allow_others";
+        const string PREF_SPEAK_PETNAME = "pref_speak_petname";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 20;
 
@@ -165,7 +166,21 @@ namespace nokandro
             var voiceFollowedSpinner = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
             var voiceOtherSpinner = FindViewById<Spinner>(Resource.Id.voiceOtherSpinner);
             var refreshVoicesBtn = FindViewById<Button>(Resource.Id.refreshVoicesBtn);
-            // Resolve new view IDs via GetIdentifier to avoid requiring regenerated Resource.designer here
+            // speak petname switch (optional)
+            TextView? npubError = null;
+            Switch? speakPetSwitch = null;
+            try
+            {
+                var npubErrId = Resources.GetIdentifier("npubErrorText", "id", PackageName);
+                if (npubErrId != 0) npubError = FindViewById<TextView>(npubErrId);
+            }
+            catch { }
+            try
+            {
+                var speakId = Resources.GetIdentifier("speakPetnameSwitch", "id", PackageName);
+                if (speakId != 0) speakPetSwitch = FindViewById<Switch>(speakId);
+            }
+            catch { }
             var speechRateSeekBarId = Resources.GetIdentifier("speechRateSeekBar", "id", PackageName);
             var speechRateValueId = Resources.GetIdentifier("speechRateValue", "id", PackageName);
             var speechRateSeekBar = speechRateSeekBarId != 0 ? FindViewById<SeekBar>(speechRateSeekBarId) : null;
@@ -176,7 +191,6 @@ namespace nokandro
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
-            TextView? npubError = null;
             try
             {
                 var npubErrId = Resources.GetIdentifier("npubErrorText", "id", PackageName);
@@ -285,6 +299,8 @@ namespace nokandro
                 truncate.Text = savedLen.ToString();
                 // restore allowOthers switch
                 allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
+                // restore speak petname switch
+                try { speakPetSwitch?.Checked = prefs.GetBoolean(PREF_SPEAK_PETNAME, true); } catch { }
                 // restore saved speech rate (mapped range 0.50..1.50)
                 try
                 {
@@ -508,6 +524,7 @@ namespace nokandro
                 SetControlEnabled(truncate, !NostrService.IsRunning);
                 SetControlEnabled(amberBtn, !NostrService.IsRunning);
                 SetControlEnabled(allowOthers, !NostrService.IsRunning);
+                SetControlEnabled(speakPetSwitch, !NostrService.IsRunning);
                 SetControlEnabled(voiceFollowed, !NostrService.IsRunning);
                 SetControlEnabled(voiceOther, !NostrService.IsRunning);
                 SetControlEnabled(refreshVoices, !NostrService.IsRunning);
@@ -545,6 +562,8 @@ namespace nokandro
                 // map SeekBar progress (0..200) to speech rate range 0.50..1.50
                 var speechRate = 0.5f + ((speechSeek != null ? (float)speechSeek.Progress : 100f) / 200.0f);
                 intent.PutExtra("speechRate", speechRate);
+                // pass speakPetname preference to service so it consistently uses the UI setting
+                try { intent.PutExtra("speakPetname", speakPetSwitch == null || speakPetSwitch.Checked); } catch { }
 
                 // Reset UI status to not loaded; service will broadcast updates when lists are loaded
                 try { followStatus.Text = "Follow list: not loaded"; } catch { }
@@ -576,6 +595,7 @@ namespace nokandro
                 SetControlEnabled(truncate, false);
                 SetControlEnabled(amberBtn, false);
                 SetControlEnabled(allowOthers, false);
+                SetControlEnabled(speakPetSwitch, false);
                 SetControlEnabled(voiceFollowed, false);
                 SetControlEnabled(voiceOther, false);
                 SetControlEnabled(refreshVoices, false);
@@ -593,6 +613,7 @@ namespace nokandro
                 SetControlEnabled(truncate, true);
                 SetControlEnabled(amberBtn, true);
                 SetControlEnabled(allowOthers, true);
+                SetControlEnabled(speakPetSwitch, true);
                 SetControlEnabled(voiceFollowed, true);
                 SetControlEnabled(voiceOther, true);
                 SetControlEnabled(refreshVoices, true);
@@ -620,6 +641,7 @@ namespace nokandro
                             try { SetControlEnabled(truncate, false); } catch { }
                             try { SetControlEnabled(amberBtn, false); } catch { }
                             try { SetControlEnabled(allowOthers, false); } catch { }
+                            try { SetControlEnabled(speakPetSwitch, false); } catch { }
                             try { SetControlEnabled(voiceFollowed, false); } catch { }
                             try { SetControlEnabled(voiceOther, false); } catch { }
                             try { SetControlEnabled(refreshVoices, false); } catch { }
@@ -636,6 +658,7 @@ namespace nokandro
                             try { SetControlEnabled(truncate, true); } catch { }
                             try { SetControlEnabled(amberBtn, true); } catch { }
                             try { SetControlEnabled(allowOthers, true); } catch { }
+                            try { SetControlEnabled(speakPetSwitch, true); } catch { }
                             try { SetControlEnabled(voiceFollowed, true); } catch { }
                             try { SetControlEnabled(voiceOther, true); } catch { }
                             try { SetControlEnabled(refreshVoices, true); } catch { }
@@ -715,9 +738,18 @@ namespace nokandro
 
                 var text2 = intent.GetStringExtra("content") ?? string.Empty;
                 var isFollowed = intent.GetBooleanExtra("isFollowed", false);
+                var pet = intent.GetStringExtra("petname");
                 var displayText = ShortenUrls(text2);
                 var prefix = isFollowed ? "* " : "- ";
-                RunOnUiThread(() => { lastContent.Text = prefix + displayText; });
+                RunOnUiThread(() =>
+                {
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(pet)) lastContent.Text = prefix + pet + " " + displayText;
+                        else lastContent.Text = prefix + displayText;
+                    }
+                    catch { }
+                });
             };
             var filter = new IntentFilter();
             filter.AddAction(ACTION_LAST_CONTENT);

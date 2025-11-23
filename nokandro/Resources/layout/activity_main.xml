@@ -23,14 +23,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Public mute: not loaded"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="4dp" />
 
         <LinearLayout
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:layout_marginBottom="8dp">
+            android:layout_marginBottom="4dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -68,20 +68,23 @@
             android:textSize="12sp"
             android:visibility="gone"
             android:text="Invalid npub" />
-
+        
         <!-- Amber から取得ボタン -->
         <Button
             android:id="@+id/amberGetBtn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Get from Amber" />
-
-        <Switch
-            android:id="@+id/allowOthersSwitch"
+		
+		<!-- Option: speak petname switch -->
+		<Switch
+            android:id="@+id/speakPetnameSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Allow non-followed posts" />
-
+            android:text="Speak petname"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp" />
+		
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -91,10 +94,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
-        <TextView
+		<Switch
+            android:id="@+id/allowOthersSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Voice for others" />
+            android:text="Allow non-followed posts"
+			android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp" />
+
+		<TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Voice for non-followed users" />
         <Spinner
             android:id="@+id/voiceOtherSpinner"
             android:layout_width="match_parent"
@@ -134,7 +145,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="200"
-            android:progress="100" />
+            android:progress="100"
+			android:layout_marginBottom="8dp" />
 
         <Button
             android:id="@+id/startBtn"
