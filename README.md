@@ -1,6 +1,72 @@
 ﻿# nokandro
 
-パッケージ名: `com.nokakoi.nokandro`
+Package name: `com.nokakoi.nokandro`
+
+## Overview
+
+`nokandro` is a lightweight Android app that connects to the Nostr protocol and reads received messages using TTS (Text-to-Speech). You can start and stop the background service from the main screen, and control its operation from the notification area.
+
+## Main Features
+
+- Connects to a relay (WebSocket) to receive events in real-time. The default connection is `wss://yabu.me` or a configured relay.
+- Retrieves the follow list based on the specified `npub` (your public key) and prioritizes reading posts from followed users.
+- Posts from non-followed users can be disabled for reading (via the `Allow non-followed posts` toggle).
+- Different TTS voices can be specified for followed users and others (two voice selections).
+- Displays received messages (last received content) and allows checking/sharing logs (logging depends on build settings and may be hidden in distribution builds).
+- The background service that performs TTS uses foreground notifications, and the service can be stopped from the notification.
+
+## Installation and First Launch (APK Distribution)
+
+1. Download and install the provided APK.
+2. On first launch, you may be prompted for permissions such as network or notifications. If not granted, some features may be restricted.
+
+## Main Screen Description
+
+- `Follow list: not loaded` — Displays the loading status of the follow list.
+- `Public mute: not loaded` — Displays the loading status of the public mute.
+- `Max characters:` — Specifies the maximum number of characters for display (truncation).
+- `Relay (wss://...)` — Enter the URL of the relay to connect to.
+- `Your npub` — Enter your npub (bech32) or 64-character hex public key.
+- `Invalid npub` — Error display if the input is invalid (usually hidden).
+- `Get from Amber` — Retrieve npub from Amber.
+- `Speak petname` — Toggle whether to prepend the petname from the follow list to the reading.
+- `Voice for followed users` — Select the TTS voice for followed users.
+- `Allow non-followed posts` — Toggle whether to read posts from non-followed users.
+- `Voice for non-followed users` — Select the TTS voice for non-followed users.
+- `Refresh Voices` — Re-fetch available TTS voices.
+- `Speech rate` — Adjust the TTS speech rate with a slider or input (reflected immediately in the service).
+- `Start` — Start the background service.
+- `Stop` — Stop the background service.
+- `(no note yet)` — The last received message is displayed here.
+- `Refresh Log` / `Share Log` — Refresh log display and share (only in development builds with `ENABLE_LOG` enabled).
+
+## Follow List and Public Mute
+
+- Follow list: Retrieves the list of public keys followed by the specified `npub` from the relay. The app displays the loading status of the follow list on the screen, and followed posts are prioritized (with different TTS voices or display prefixes), used for reading judgments.
+
+- Public mute: Public keys included in the public mute list provided by the relay or events are excluded from reading. The app also displays the loading status of the public mute on the screen. Muting only affects reading, and handling of logs or internal records depends on the implementation.
+
+## Notifications and Service Operation
+
+- While the service is running, it resides in the notification area, and you can stop the service from actions like "Stop".
+- On Android 13 and above, runtime permission for notifications (`POST_NOTIFICATIONS`) may be required.
+
+## Common Issues and Troubleshooting
+
+- Not receiving/reading:
+  - `npub` may not be set, or `Allow others` is off and the user is not followed.
+  - Check network connection or the specified relay URL.
+- TTS not playing:
+  - Check the device's volume/media volume.
+  - If the selected TTS voice is not available on the device, it falls back to the default voice.
+- Cannot stop from notification/service crashes:
+  - Check the device's battery optimization settings or app permissions.
+
+## Signing and Security
+
+- The distributed APK is signed by the distributor. Attempting to overwrite with an APK signed differently will fail installation.
+
+---
 
 ## 概要
 
@@ -65,5 +131,3 @@
 ## 署名と安全性
 
 - 配布される APK は配布元が署名しています。署名が異なる APK を上書きしようとするとインストールに失敗します。
-
-*備考*: 詳細な操作説明や履歴は別ドキュメントに分けて管理してください。
