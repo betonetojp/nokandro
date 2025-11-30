@@ -16,21 +16,21 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Follow list: not loaded"
-            android:layout_marginBottom="4dp" />
+            android:layout_marginBottom="2dp" />
 
         <TextView
             android:id="@+id/muteStatusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Public mute: not loaded"
-            android:layout_marginBottom="4dp" />
+            android:layout_marginBottom="2dp" />
 
         <LinearLayout
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:layout_marginBottom="2dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -43,6 +43,26 @@
                 android:layout_height="wrap_content"
                 android:inputType="number"
                 android:hint="20"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ellipsis:" />
+
+            <EditText
+                android:id="@+id/truncateEllipsisEdit"
+                android:layout_width="120dp"
+                android:layout_height="wrap_content"
+                android:hint=" ..."
                 android:layout_marginStart="8dp" />
         </LinearLayout>
 
@@ -69,7 +89,7 @@
             android:visibility="gone"
             android:text="Invalid npub" />
         
-        <!-- Amber から取得ボタン -->
+        <!-- Get from Amber -->
         <Button
             android:id="@+id/amberGetBtn"
             android:layout_width="match_parent"
@@ -82,8 +102,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Speak petname"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp" />
 		
         <!-- NEW: TTS language selection -->
         <TextView
@@ -93,7 +113,8 @@
         <Spinner
             android:id="@+id/voiceLangSpinner"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+			android:layout_marginBottom="8dp"/>
 
         <TextView
             android:layout_width="wrap_content"
@@ -109,8 +130,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Allow non-followed posts"
-			android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp" />
+			android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp" />
 
 		<TextView
             android:layout_width="wrap_content"
@@ -133,8 +154,8 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp">
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp">
 
             <TextView
                 android:id="@+id/speechRateLabel"
@@ -156,7 +177,7 @@
             android:layout_height="wrap_content"
             android:max="200"
             android:progress="100"
-			android:layout_marginBottom="8dp" />
+			android:layout_marginBottom="4dp" />
 
         <Button
             android:id="@+id/startBtn"
@@ -175,7 +196,7 @@
             android:id="@+id/lastContentText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:text="(no note yet)"
             android:maxLines="6"
             android:ellipsize="end" />
@@ -185,7 +206,7 @@
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp">
+            android:layout_marginTop="8dp">
 
             <Button
                 android:id="@+id/refreshLogBtn"
@@ -207,7 +228,7 @@
             android:id="@+id/logTextView"
             android:layout_width="match_parent"
             android:layout_height="200dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:background="#11000000"
             android:padding="8dp"
             android:text="(log will appear here)"

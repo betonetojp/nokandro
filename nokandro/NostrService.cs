@@ -39,6 +39,7 @@ namespace nokandro
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
+        private string _truncateEllipsis = " ...";
         private float _speechRate = 1.0f;
         private bool _speakPetname = false;
         private BroadcastReceiver? _localReceiver;
@@ -148,6 +149,20 @@ namespace nokandro
                 // read speech rate if provided
                 try { _speechRate = intent.GetFloatExtra("speechRate", _speechRate); } catch { }
                 try { _speakPetname = intent.GetBooleanExtra("speakPetname", _speakPetname); } catch { }
+                try { _truncateEllipsis = intent.GetStringExtra("truncateEllipsis") ?? _truncateEllipsis; } catch { }
+
+                // register for runtime updates to truncate ellipsis from Activity while running
+                try
+                {
+                    if (_localReceiver == null)
+                    {
+                        _localReceiver = new LocalReceiver(this);
+                        var f2 = new IntentFilter();
+                        f2.AddAction("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS");
+                        LocalBroadcast.RegisterReceiver(_localReceiver, f2);
+                    }
+                }
+                catch { }
             }
 
             // Compute PendingIntent flags once and reuse
@@ -941,7 +956,7 @@ namespace nokandro
 
             if (replaced.Length > _truncateLen && _truncateLen > 0)
             {
-                return string.Concat(replaced.AsSpan(0, _truncateLen), " ...");
+                return string.Concat(replaced.AsSpan(0, _truncateLen), _truncateEllipsis);
             }
             return replaced;
         }
@@ -1119,12 +1134,24 @@ namespace nokandro
             {
                 try
                 {
-                    if (intent == null || !"nokandro.ACTION_SET_SPEECH_RATE".Equals(intent.Action)) return;
-                    var rate = intent.GetFloatExtra("speechRate", 1.0f);
-                    _service._speechRate = rate;
-                    _service._tts?.SetSpeechRate(rate);
-                    AppLog.D(TAG, "Speech rate updated: " + rate);
-                    _service.WriteLog("Speech rate updated: " + rate);
+                    if (intent == null) return;
+                    if ("nokandro.ACTION_SET_SPEECH_RATE".Equals(intent.Action))
+                    {
+                        var rate = intent.GetFloatExtra("speechRate", 1.0f);
+                        _service._speechRate = rate;
+                        _service._tts?.SetSpeechRate(rate);
+                        AppLog.D(TAG, "Speech rate updated: " + rate);
+                        _service.WriteLog("Speech rate updated: " + rate);
+                        return;
+                    }
+                    if ("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS".Equals(intent.Action))
+                    {
+                        var ell = intent.GetStringExtra("truncateEllipsis") ?? string.Empty;
+                        if (!string.IsNullOrEmpty(ell)) _service._truncateEllipsis = ell;
+                        AppLog.D(TAG, "Truncate ellipsis updated: " + ell);
+                        _service.WriteLog("Truncate ellipsis updated: " + ell);
+                        return;
+                    }
                 }
                 catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); _service.WriteLog("LocalReceiver.OnReceive error: " + ex.Message); }
             }

@@ -18,6 +18,7 @@ namespace nokandro
         const string PREF_NPUB = "pref_npub";
         const string PREF_SIGNER_PACKAGE = "pref_signer_package";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
+        const string PREF_TRUNCATE_ELLIPSIS = "pref_truncate_ellipsis";
         const string PREF_ALLOW_OTHERS = "pref_allow_others";
         const string PREF_SPEAK_PETNAME = "pref_speak_petname";
         // maximum length for displayed content before truncation
@@ -31,16 +32,17 @@ namespace nokandro
         private BroadcastReceiver? _serviceStateReceiver;
         private TextView? _logTextView;
         private Android.OS.Handler? _mainHandler;
-        private readonly object _logLock = new object();
-        private List<string> _logBuffer = new List<string>();
+        private readonly object _logLock = new();
+        private List<string> _logBuffer = [];
         private bool _logFlushScheduled = false;
         private const int LOG_FLUSH_MS = 150;
         // keep a reference to npub EditText so incoming intents can update it
         private EditText? _npubEdit_field;
+        private EditText? _truncateEllipsisField;
 
         // Language spinner state to avoid resetting while user interacts
         private bool _langPopulating = false;
-        private List<string> _availableLangCodes = new List<string>();
+        private List<string> _availableLangCodes = [];
         private string? _lastSelectedLangCode = null;
 
         protected override void OnCreate(Bundle? savedInstanceState)
@@ -216,6 +218,9 @@ namespace nokandro
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
+            // optional ellipsis field (may be absent in some layouts)
+            var truncateEllipsis = FindViewById<EditText>(Resource.Id.truncateEllipsisEdit);
+            _truncateEllipsisField = truncateEllipsis;
             try
             {
                 var npubErrId = Resources.GetIdentifier("npubErrorText", "id", PackageName);
@@ -253,6 +258,35 @@ namespace nokandro
             var followStatus = (TextView)followStatusText!;
             var muteStatus = (TextView)muteStatusText!;
             var truncate = (EditText)truncateEdit!;
+            // If ellipsis EditText exists, populate from prefs and wire saving on focus loss
+            try
+            {
+                if (truncateEllipsis != null)
+                {
+                    try
+                    {
+                        var prefss = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var ell = prefss?.GetString(PREF_TRUNCATE_ELLIPSIS, " ...") ?? " ...";
+                        truncateEllipsis.Text = ell;
+                    }
+                    catch { }
+                    truncateEllipsis.FocusChange += (s, e) =>
+                    {
+                        if (!e.HasFocus)
+                        {
+                            try
+                            {
+                                var val = truncateEllipsis.Text ?? string.Empty;
+                                var prefs2 = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                                var edit2 = prefs2?.Edit();
+                                if (edit2 != null) { edit2.PutString(PREF_TRUNCATE_ELLIPSIS, val); edit2.Apply(); }
+                            }
+                            catch { }
+                        }
+                    };
+                }
+            }
+            catch { }
 
             // helper to set Enabled + visual appearance
             void SetControlEnabled(View? v, bool enabled)
@@ -315,7 +349,8 @@ namespace nokandro
                 return false;
             }
 
-            // restore saved relay + npub and truncate length if present
+            // restore saved relay + npub and truncate length and ellipsis if present
+            string savedEllipsis = " ...";
             try
             {
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
@@ -323,6 +358,8 @@ namespace nokandro
                 npub.Text = prefs.GetString(PREF_NPUB, string.Empty);
                 var savedLen = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
                 truncate.Text = savedLen.ToString();
+                // read saved ellipsis string (default " ...")
+                try { savedEllipsis = prefs.GetString(PREF_TRUNCATE_ELLIPSIS, savedEllipsis) ?? savedEllipsis; } catch { }
                 // restore allowOthers switch
                 allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
                 // restore speak petname switch
@@ -602,6 +639,7 @@ namespace nokandro
                 SetControlEnabled(relay, !NostrService.IsRunning);
                 SetControlEnabled(npub, !NostrService.IsRunning);
                 SetControlEnabled(truncate, !NostrService.IsRunning);
+                try { SetControlEnabled(truncateEllipsis, !NostrService.IsRunning); } catch { }
                 SetControlEnabled(amberBtn, !NostrService.IsRunning);
                 SetControlEnabled(allowOthers, !NostrService.IsRunning);
                 SetControlEnabled(speakPetSwitch, !NostrService.IsRunning);
@@ -634,6 +672,14 @@ namespace nokandro
                 intent.PutExtra("npub", npub.Text ?? string.Empty);
                 intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("truncateLen", truncateLen);
+                // include user-configured ellipsis for truncation
+                try
+                {
+                    string ell = " ...";
+                    try { ell = _truncateEllipsisField?.Text ?? GetSharedPreferences(PREFS_NAME, FileCreationMode.Private)?.GetString(PREF_TRUNCATE_ELLIPSIS, ell) ?? ell; } catch { ell = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private)?.GetString(PREF_TRUNCATE_ELLIPSIS, " ...") ?? " ..."; }
+                    intent.PutExtra("truncateEllipsis", ell);
+                }
+                catch { intent.PutExtra("truncateEllipsis", " ..."); }
                 var followedVoice = voiceFollowed.SelectedItem?.ToString() ?? string.Empty;
                 var otherVoice = voiceOther.SelectedItem?.ToString() ?? string.Empty;
                 intent.PutExtra("voiceFollowed", followedVoice);
@@ -675,6 +721,7 @@ namespace nokandro
                 SetControlEnabled(relay, false);
                 SetControlEnabled(npub, false);
                 SetControlEnabled(truncate, false);
+                try { SetControlEnabled(truncateEllipsis, false); } catch { }
                 SetControlEnabled(amberBtn, false);
                 SetControlEnabled(allowOthers, false);
                 SetControlEnabled(speakPetSwitch, false);
@@ -693,6 +740,7 @@ namespace nokandro
                 SetControlEnabled(relay, true);
                 SetControlEnabled(npub, true);
                 SetControlEnabled(truncate, true);
+                try { SetControlEnabled(truncateEllipsis, true); } catch { }
                 SetControlEnabled(amberBtn, true);
                 SetControlEnabled(allowOthers, true);
                 SetControlEnabled(speakPetSwitch, true);
@@ -722,6 +770,7 @@ namespace nokandro
                             try { SetControlEnabled(relay, false); } catch { }
                             try { SetControlEnabled(npub, false); } catch { }
                             try { SetControlEnabled(truncate, false); } catch { }
+                            try { SetControlEnabled(truncateEllipsis, false); } catch { }
                             try { SetControlEnabled(amberBtn, false); } catch { }
                             try { SetControlEnabled(allowOthers, false); } catch { }
                             try { SetControlEnabled(speakPetSwitch, false); } catch { }
@@ -739,6 +788,7 @@ namespace nokandro
                             try { SetControlEnabled(relay, true); } catch { }
                             try { SetControlEnabled(npub, true); } catch { }
                             try { SetControlEnabled(truncate, true); } catch { }
+                            try { SetControlEnabled(truncateEllipsis, true); } catch { }
                             try { SetControlEnabled(amberBtn, true); } catch { }
                             try { SetControlEnabled(allowOthers, true); } catch { }
                             try { SetControlEnabled(speakPetSwitch, true); } catch { }
@@ -1165,9 +1215,18 @@ namespace nokandro
             }
             catch { }
 
+            // read ellipsis string (default " ...")
+            string ellipsis = " ...";
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                ellipsis = prefs?.GetString(PREF_TRUNCATE_ELLIPSIS, ellipsis) ?? ellipsis;
+            }
+            catch { }
+
             if (replaced.Length > len)
             {
-                return string.Concat(replaced.AsSpan(0, len), " ...");
+                return string.Concat(replaced.AsSpan(0, len), ellipsis);
             }
             return replaced;
         }
@@ -1184,7 +1243,7 @@ namespace nokandro
                 try { AppendLog($"Populate start: refreshLanguages={refreshLanguages} savedPref={saved} lastSelected={_lastSelectedLangCode}"); } catch { }
             }
             catch { }
-            List<string> voices = new List<string>() { "default" };
+            List<string> voices = ["default"];
             // parallel lists: codes (e.g., "ja-JP","ja") and labels (e.g., "Japanese (Japan)")
             var languageCodes = new List<string>() { "Any" };
             var languageLabels = new List<string>() { "Any" };
@@ -1276,13 +1335,13 @@ namespace nokandro
                     }
                 }
 
-                if (voices.Count == 0) voices = new List<string>() { "default" };
+                if (voices.Count == 0) voices = ["default"];
             }
             catch
             {
-                voices = new List<string>() { "default" };
-                languageCodes = new List<string>() { "Any" };
-                languageLabels = new List<string>() { "Any" };
+                voices = ["default"];
+                languageCodes = ["Any"];
+                languageLabels = ["Any"];
             }
             finally
             {
@@ -1336,14 +1395,14 @@ namespace nokandro
             else
             {
                 // Keep existing _availableLangCodes and _lastSelectedLangCode; ensure selectedLang reflects current selection
-                try { if (_availableLangCodes == null || _availableLangCodes.Count == 0) _availableLangCodes = new List<string>() { "Any" }; } catch { }
+                try { if (_availableLangCodes == null || _availableLangCodes.Count == 0) _availableLangCodes = ["Any"]; } catch { }
             }
 
             // Now filter voices by selected language code
             var selectedLang = _lastSelectedLangCode ?? "Any";
             try { Android.Util.Log.Info("nokandro", $"Filtering using selectedLang={selectedLang}"); } catch { }
             try { AppendLog($"Filtering using selectedLang={selectedLang}"); } catch { }
-            List<string> finalVoices = new List<string>();
+            List<string> finalVoices = [];
             if (selectedLang == "Any") finalVoices.AddRange(voices);
             else
             {
@@ -1411,11 +1470,11 @@ namespace nokandro
                                 {
                                     if (!string.IsNullOrEmpty(voicePrimary) && string.Equals(voicePrimary, selectedPrimary, StringComparison.OrdinalIgnoreCase))
                                     {
-                                        if (!set.Contains(name)) set.Add(name);
+                                        set.Add(name);
                                     }
                                     else if (!string.IsNullOrEmpty(fmt) && fmt.StartsWith(selectedPrimary, StringComparison.OrdinalIgnoreCase))
                                     {
-                                        if (!set.Contains(name)) set.Add(name);
+                                        set.Add(name);
                                     }
                                 }
                                 catch { }
@@ -1437,7 +1496,7 @@ namespace nokandro
             // Sort voice names for predictable UI order
             try
             {
-                finalVoices = finalVoices.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+                finalVoices = [.. finalVoices.OrderBy(s => s, StringComparer.OrdinalIgnoreCase)];
             }
             catch
             {
@@ -1565,8 +1624,8 @@ namespace nokandro
         private static readonly Regex UrlPattern = CreateUrlRegex();
         private static readonly Regex NpubNprofilePattern = CreateNpubNprofileRegex();
         private static readonly Regex NeventNotePattern = CreateNeventNoteRegex();
-        private static readonly string[] evaluator = new string[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng" };
-        private static readonly string[] evaluatorArray = new string[] { ".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv" };
+        private static readonly string[] evaluator = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng"];
+        private static readonly string[] evaluatorArray = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv"];
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateUrlRegex();
