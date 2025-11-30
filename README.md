@@ -25,11 +25,13 @@ Package name: `com.nokakoi.nokandro`
 - `Follow list: not loaded` — Displays the loading status of the follow list.
 - `Public mute: not loaded` — Displays the loading status of the public mute.
 - `Max characters:` — Specifies the maximum number of characters for display (truncation).
+- `Ellipsis` — Input the string used as the truncation ellipsis (appended when displayed text exceeds `Max characters`, e.g. ` ...` or ` [omitted]`).
 - `Relay (wss://...)` — Enter the URL of the relay to connect to.
 - `Your npub` — Enter your npub (bech32) or 64-character hex public key.
 - `Invalid npub` — Error display if the input is invalid (usually hidden).
 - `Get from Amber` — Retrieve npub from Amber (external signer apps supporting the NIP-55 style intent).
 - `Speak petname` — Toggle whether to prepend the petname from the follow list to the reading.
+- `TTS language` — Select the language filter for voices; used to limit voices shown in `Voice for followed users` and `Voice for non-followed users` spinners.
 - `Voice for followed users` — Select the TTS voice for followed users.
 - `Allow non-followed posts` — Toggle whether to read posts from non-followed users.
 - `Voice for non-followed users` — Select the TTS voice for non-followed users.
@@ -90,11 +92,13 @@ Package name: `com.nokakoi.nokandro`
 - `Follow list: not loaded` — フォローリストの読み込み状態を表示します。
 - `Public mute: not loaded` — 公開ミュートの読み込み状態を表示します。
 - `Max characters:` — 表示用の最大文字数（切り詰め）を指定します。
+- `Ellipsis` — 表示が `Max characters` を超えたときに末尾に付与する省略記号文字列を入力します（例: ` ...`、` [以下略]`）。
 - `Relay (wss://...)` — 接続先リレーの URL を入力します。
 - `Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
 - `Invalid npub` — 入力が不正な場合のエラー表示（通常は非表示）。
 - `Get from Amber` — Amber から npub を取得します。
 - `Speak petname` — フォローリスト内の petnameを読み上げの先頭に付けるかどうかの切り替えます。
+- `TTS language` — ボイス選択の言語フィルタ。`Voice for followed users` と `Voice for non-followed users` のスピナーに表示する音声を絞り込みます。
 - `Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
 - `Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
 - `Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
@@ -102,6 +106,8 @@ Package name: `com.nokakoi.nokandro`
 - `Speech rate` — TTS の発話速度をスライダーで調整します（サービスに即時反映されます）。
 - `Start` — バックグラウンドサービスを開始します。
 - `Stop` — バックグラウンドサービスを停止します。
+
+
 - `(no note yet)` — ここに最後に受信したメッセージが表示されます。
 
 ## フォローリストと公開ミュート（Follow list / Public mute）
