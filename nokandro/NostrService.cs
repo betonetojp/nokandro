@@ -48,8 +48,6 @@ namespace nokandro
         private string? _voiceFollowedName;
         private string? _voiceOtherName;
 
-        private string _logPath = string.Empty;
-
         private const string BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
         private static readonly uint[] BECH32_GENERATOR = [0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u];
         private const string ACTION_MUTE_UPDATE = "nokandro.ACTION_MUTE_UPDATE";
@@ -82,17 +80,6 @@ namespace nokandro
             }
             catch { }
 
-            try
-            {
-                var dir = FilesDir?.AbsolutePath ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
-                _logPath = Path.Combine(dir, "nostr_log.txt");
-                WriteLog("OnCreate");
-            }
-            catch (Exception ex)
-            {
-                AppLog.W(TAG, "Failed to initialize log path: " + ex.Message);
-            }
-
             _followed = [];
             _petnames = [];
             _muted = [];
@@ -106,29 +93,9 @@ namespace nokandro
             catch { _speakPetname = false; }
         }
 
-        [Conditional("ENABLE_LOG")]
-        private void WriteLog(string text)
-        {
-            try
-            {
-                var entry = $"{DateTime.UtcNow:O} {text}\n";
-                if (string.IsNullOrEmpty(_logPath))
-                {
-                    var dir = FilesDir?.AbsolutePath ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
-                    _logPath = Path.Combine(dir, "nostr_log.txt");
-                }
-                File.AppendAllText(_logPath, entry);
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
         public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
         {
             AppLog.D(TAG, "OnStartCommand: action=" + (intent?.Action ?? "(null)"));
-            WriteLog("OnStartCommand: action=" + (intent?.Action ?? "(null)"));
             if (intent != null && intent.Action == "STOP")
             {
                 // Stop requested from notification action
@@ -210,12 +177,11 @@ namespace nokandro
                 {
                     notifBuilder.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending);
                 }
-                catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); WriteLog("AddAction failed: " + ex.Message); }
+                catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); }
 
                 var notif = notifBuilder.Build();
                 StartForeground(NOTIF_ID, notif);
                 AppLog.D(TAG, "Started foreground notification");
-                WriteLog("Started foreground notification");
             }
             else
             {
@@ -233,18 +199,16 @@ namespace nokandro
                     .SetContentIntent(mainPending)
                     .SetOngoing(true);
 
-                try { notif.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending); } catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); WriteLog("AddAction failed: " + ex.Message); }
+                try { notif.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending); } catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); }
 
                 StartForeground(NOTIF_ID, notif.Build());
                 AppLog.D(TAG, "Started foreground notification (pre-O)");
-                WriteLog("Started foreground notification (pre-O)");
             }
 #pragma warning restore CA1416, CA1422
 
 
             Task.Run(() => RunAsync(_cts.Token));
             AppLog.D(TAG, "Spawned RunAsync task");
-            WriteLog("Spawned RunAsync task");
 
             // notify UI that service started
             try
@@ -260,7 +224,6 @@ namespace nokandro
         public override void OnDestroy()
         {
             AppLog.D(TAG, "OnDestroy");
-            WriteLog("OnDestroy");
             IsRunning = false;
             try
             {
@@ -275,7 +238,7 @@ namespace nokandro
                 _ws?.Abort();
                 _ws?.Dispose();
             }
-            catch (Exception ex) { AppLog.W(TAG, "Ws cleanup failed: " + ex.Message); WriteLog("Ws cleanup failed: " + ex.Message); }
+            catch (Exception ex) { AppLog.W(TAG, "Ws cleanup failed: " + ex.Message); }
             if (_tts != null)
             {
                 _tts.Stop();
@@ -289,7 +252,6 @@ namespace nokandro
         private async Task RunAsync(CancellationToken ct)
         {
             AppLog.D(TAG, $"RunAsync start npub={_npub} relay={_relay}");
-            WriteLog($"RunAsync start npub={_npub} relay={_relay}");
             if (string.IsNullOrEmpty(_npub))
                 return;
 
@@ -297,10 +259,8 @@ namespace nokandro
             {
                 _ws = new ClientWebSocket();
                 AppLog.D(TAG, "Connecting websocket...");
-                WriteLog("Connecting websocket...");
                 await _ws.ConnectAsync(new Uri(_relay), ct);
                 AppLog.D(TAG, "Websocket connected: state=" + _ws.State);
-                WriteLog("Websocket connected: state=" + _ws.State);
 
                 var subId = "sub1";
 
@@ -343,7 +303,7 @@ namespace nokandro
                         if (!string.IsNullOrEmpty(norm)) authorFilter = norm;
                     }
                 }
-                catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); WriteLog("Author filter normalization failed: " + ex.Message); }
+                catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); }
 
                 // Request kind=3 (contact list) without 'since' to fetch existing follow list from relay
                 // Request kind=1 events only from now onwards (live)
@@ -353,13 +313,10 @@ namespace nokandro
                 var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
 
                 AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
-                WriteLog("Sending follow request: " + reqFollowJson);
                 await SendTextAsync(reqFollowJson, ct);
                 AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
-                WriteLog("Sending mute request: " + reqMuteJson);
                 await SendTextAsync(reqMuteJson, ct);
                 AppLog.D(TAG, "Sending events request: " + reqEventsJson);
-                WriteLog("Sending events request: " + reqEventsJson);
                 await SendTextAsync(reqEventsJson, ct);
 
                 var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
@@ -375,7 +332,6 @@ namespace nokandro
                         if (result.MessageType == WebSocketMessageType.Close)
                         {
                             AppLog.D(TAG, "Websocket closed by server");
-                            WriteLog("Websocket closed by server");
                             await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
                             break;
                         }
@@ -388,20 +344,19 @@ namespace nokandro
                     var message = sb.ToString();
                     var preview = message != null && message.Length > 0 ? message[..Math.Min(200, message.Length)] : "(empty)";
                     AppLog.D(TAG, "Received message: " + preview);
-                    WriteLog("Received message: " + preview);
                     if (!string.IsNullOrEmpty(message))
                     {
                         HandleRawMessage(message);
                     }
                 }
             }
-            catch (System.OperationCanceledException) { AppLog.D(TAG, "RunAsync cancelled"); WriteLog("RunAsync cancelled"); }
-            catch (Exception ex) { AppLog.E(TAG, "RunAsync failed: " + ex); WriteLog("RunAsync failed: " + ex.ToString()); }
+            catch (System.OperationCanceledException) { AppLog.D(TAG, "RunAsync cancelled"); }
+            catch (Exception ex) { AppLog.E(TAG, "RunAsync failed: " + ex); }
         }
 
         private async Task SendTextAsync(string text, CancellationToken ct)
         {
-            if (_ws == null) { AppLog.W(TAG, "SendTextAsync called but _ws is null"); WriteLog("SendTextAsync called but _ws is null"); return; }
+            if (_ws == null) { AppLog.W(TAG, "SendTextAsync called but _ws is null"); return; }
             var bytes = SysText.Encoding.UTF8.GetBytes(text);
             var seg = new ArraySegment<byte>(bytes);
             try
@@ -411,7 +366,6 @@ namespace nokandro
             catch (Exception ex)
             {
                 AppLog.W(TAG, "SendTextAsync failed: " + ex.Message);
-                WriteLog("SendTextAsync failed: " + ex.Message);
             }
         }
 
@@ -430,25 +384,22 @@ namespace nokandro
                         if (eventObj.TryGetProperty("kind", out var kindEl) && kindEl.GetInt32() == 3)
                         {
                             AppLog.D(TAG, "Received kind=3 event");
-                            WriteLog("Received kind=3 event");
                             _ = UpdateFollowedFromEvent(eventObj);
                         }
                         else if (eventObj.TryGetProperty("kind", out kindEl) && kindEl.GetInt32() == 10000)
                         {
                             AppLog.D(TAG, "Received kind=10000 event (mute)");
-                            WriteLog("Received kind=10000 event (mute)");
                             _ = UpdateMutedFromEvent(eventObj);
                         }
                         else if (eventObj.TryGetProperty("kind", out kindEl) && kindEl.GetInt32() == 1)
                         {
                             AppLog.D(TAG, "Received kind=1 event");
-                            WriteLog("Received kind=1 event");
                             HandleNoteEvent(eventObj);
                         }
                     }
                 }
             }
-            catch (Exception ex) { AppLog.W(TAG, "HandleRawMessage failed: " + ex.Message); WriteLog("HandleRawMessage failed: " + ex.Message); }
+            catch (Exception ex) { AppLog.W(TAG, "HandleRawMessage failed: " + ex.Message); }
         }
 
         private async Task UpdateFollowedFromEvent(JsonElement eventObj)
@@ -534,7 +485,6 @@ namespace nokandro
                     catch (Exception ex)
                     {
                         AppLog.W(TAG, "Parsing content fallback failed: " + ex.Message);
-                        WriteLog("Parsing content fallback failed: " + ex.Message);
                         // basic scan
                         var parts = content.Split(' ', ',', '\n', '\r');
                         foreach (var p in parts)
@@ -595,7 +545,6 @@ namespace nokandro
                                     {
                                         _petnames[hex] = pet!;
                                         AppLog.D(TAG, $"Stored petname for {hex}: {pet}");
-                                        WriteLog($"Stored petname for {hex}: {pet}");
                                     }
                                     else
                                     {
@@ -604,7 +553,6 @@ namespace nokandro
                                         if (_petnames.Remove(hex))
                                         {
                                             AppLog.D(TAG, $"Removed petname for {hex} (no 4th tag element)");
-                                            WriteLog($"Removed petname for {hex} (no 4th tag element)");
                                         }
                                     }
                                 }
@@ -617,7 +565,6 @@ namespace nokandro
             catch { }
 
             AppLog.D(TAG, $"Follow list updated: count={_followed.Count}");
-            WriteLog($"Follow list updated: count={_followed.Count}");
 
             // notify UI about follow list load
             try
@@ -627,7 +574,7 @@ namespace nokandro
                 b.PutExtra("followCount", _followed.Count);
                 LocalBroadcast.SendBroadcast(this, b);
             }
-            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
+            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
         }
 
         private async Task UpdateMutedFromEvent(JsonElement eventObj)
@@ -731,7 +678,6 @@ namespace nokandro
 
             _muted = newSet;
             AppLog.D(TAG, $"Mute list updated: count={_muted.Count}");
-            WriteLog($"Mute list updated: count={_muted.Count}");
 
             try
             {
@@ -740,7 +686,7 @@ namespace nokandro
                 b.PutExtra("muteCount", _muted.Count);
                 LocalBroadcast.SendBroadcast(this, b);
             }
-            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
+            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
         }
 
         private static string? NormalizeHexPubkey(string hex)
@@ -764,7 +710,6 @@ namespace nokandro
             if (_muted.Contains(pubkey))
             {
                 AppLog.D(TAG, $"Skipping muted author: {pubkey}");
-                WriteLog($"Skipping muted author: {pubkey}");
                 return;
             }
 
@@ -772,7 +717,6 @@ namespace nokandro
             if (!isFollowed && !_allowOthers) return;
 
             AppLog.D(TAG, $"HandleNoteEvent pubkey={pubkey} isFollowed={isFollowed}");
-            WriteLog($"HandleNoteEvent pubkey={pubkey} isFollowed={isFollowed}");
 
             var pitch = isFollowed ? 1.2f : 0.9f;
             var speechRate = _speechRate;
@@ -780,7 +724,7 @@ namespace nokandro
             // determine petname if known
             string? petname = null;
             try { if (_petnames != null && _petnames.TryGetValue(pubkey, out var pn)) petname = pn; } catch { }
-            try { AppLog.D(TAG, $"Petname lookup for {pubkey}: {(petname ?? "(none)")}"); WriteLog($"Petname lookup for {pubkey}: {(petname ?? "(none)")}"); } catch { }
+            try { AppLog.D(TAG, $"Petname lookup for {pubkey}: {(petname ?? "(none)")}"); } catch { }
 
             // Broadcast latest content for UI
             try
@@ -791,7 +735,7 @@ namespace nokandro
                 if (!string.IsNullOrEmpty(petname)) b.PutExtra("petname", petname);
                 LocalBroadcast.SendBroadcast(this, b);
             }
-            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); WriteLog("LocalBroadcast failed: " + ex.Message); }
+            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
 
             SpeakText(content, pitch, speechRate, isFollowed, petname);
         }
@@ -799,7 +743,7 @@ namespace nokandro
         private void SpeakText(string text, float pitch, float rate, bool isFollowed, string? petname)
         {
             var tts = _tts;
-            if (tts == null) { AppLog.W(TAG, "TTS is null"); WriteLog("TTS is null"); return; }
+            if (tts == null) { AppLog.W(TAG, "TTS is null"); return; }
 
             // replace URLs so they are not spoken verbatim
             text = ReplaceUrlsForSpeech(text);
@@ -813,7 +757,6 @@ namespace nokandro
                     {
                         text = petname + ": " + text;
                         AppLog.D(TAG, "Prepended petname to speech: " + petname);
-                        WriteLog("Prepended petname to speech: " + petname);
                     }
                 }
             }
@@ -831,7 +774,7 @@ namespace nokandro
                         tts.SetVoice(voice);
                     }
                 }
-                catch (Exception ex) { AppLog.W(TAG, "SetVoice failed: " + ex.Message); WriteLog("SetVoice failed: " + ex.Message); }
+                catch (Exception ex) { AppLog.W(TAG, "SetVoice failed: " + ex.Message); }
             }
 
             tts.SetPitch(pitch);
@@ -840,7 +783,6 @@ namespace nokandro
             try
             {
                 AppLog.D(TAG, "Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
-                WriteLog("Speaking: " + (text.Length > 100 ? string.Concat(text.AsSpan(0, 100), "...") : text));
                 // Attempt to pass a per-utterance volume parameter. Engines may ignore this key.
                 try
                 {
@@ -885,14 +827,12 @@ namespace nokandro
                 {
                     // If per-utterance params fail, fall back to basic speak
                     AppLog.W(TAG, "Speak with bundle failed: " + ex.Message);
-                    WriteLog("Speak with bundle failed: " + ex.Message);
                     tts.Speak(text, QueueMode.Add, null, Guid.NewGuid().ToString());
                 }
             }
             catch (Exception ex)
             {
                 AppLog.W(TAG, "Speak failed (new API): " + ex.Message);
-                WriteLog("Speak failed (new API): " + ex.Message);
                 // The old Speak overload is marked obsolete; suppress the warning locally while still attempting fallback.
                 try
                 {
@@ -903,7 +843,6 @@ namespace nokandro
                 catch (Exception ex2)
                 {
                     AppLog.W(TAG, "Speak failed (old API): " + ex2.Message);
-                    WriteLog("Speak failed (old API): " + ex2.Message);
                 }
             }
         }
@@ -963,7 +902,7 @@ namespace nokandro
 
         // --- Bech32 helpers for npub <-> hex pubkey ---
 
-        private string? DecodeBech32Npub(string bech)
+        private static string? DecodeBech32Npub(string bech)
         {
             try
             {
@@ -978,7 +917,6 @@ namespace nokandro
             catch (Exception ex)
             {
                 AppLog.W(TAG, "DecodeBech32Npub failed: " + ex.Message);
-                WriteLog("DecodeBech32Npub failed: " + ex.Message);
                 return null;
             }
         }
@@ -1141,7 +1079,6 @@ namespace nokandro
                         _service._speechRate = rate;
                         _service._tts?.SetSpeechRate(rate);
                         AppLog.D(TAG, "Speech rate updated: " + rate);
-                        _service.WriteLog("Speech rate updated: " + rate);
                         return;
                     }
                     if ("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS".Equals(intent.Action))
@@ -1149,11 +1086,10 @@ namespace nokandro
                         var ell = intent.GetStringExtra("truncateEllipsis") ?? string.Empty;
                         if (!string.IsNullOrEmpty(ell)) _service._truncateEllipsis = ell;
                         AppLog.D(TAG, "Truncate ellipsis updated: " + ell);
-                        _service.WriteLog("Truncate ellipsis updated: " + ell);
                         return;
                     }
                 }
-                catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); _service.WriteLog("LocalReceiver.OnReceive error: " + ex.Message); }
+                catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); }
             }
         }
 

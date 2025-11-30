@@ -201,39 +201,6 @@
             android:maxLines="6"
             android:ellipsize="end" />
 
-        <!-- Log controls and display -->
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <Button
-                android:id="@+id/refreshLogBtn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Refresh Log" />
-
-            <Button
-                android:id="@+id/shareLogBtn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="Share Log" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/logTextView"
-            android:layout_width="match_parent"
-            android:layout_height="200dp"
-            android:layout_marginTop="4dp"
-            android:background="#11000000"
-            android:padding="8dp"
-            android:text="(log will appear here)"
-            android:scrollbars="vertical" />
-
     </LinearLayout>
 
 </ScrollView>

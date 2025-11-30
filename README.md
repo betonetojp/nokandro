@@ -12,7 +12,7 @@ Package name: `com.nokakoi.nokandro`
 - Retrieves the follow list based on the specified `npub` (your public key) and prioritizes reading posts from followed users.
 - Posts from non-followed users can be disabled for reading (via the `Allow non-followed posts` toggle).
 - Different TTS voices can be specified for followed users and others (two voice selections).
-- Displays received messages (last received content) and allows checking/sharing logs (logging depends on build settings and may be hidden in distribution builds).
+- Displays received messages (last received content) in the main UI.
 - The background service that performs TTS uses foreground notifications, and the service can be stopped from the notification.
 
 ## Installation and First Launch (APK Distribution)
@@ -28,17 +28,16 @@ Package name: `com.nokakoi.nokandro`
 - `Relay (wss://...)` — Enter the URL of the relay to connect to.
 - `Your npub` — Enter your npub (bech32) or 64-character hex public key.
 - `Invalid npub` — Error display if the input is invalid (usually hidden).
-- `Get from Amber` — Retrieve npub from Amber.
+- `Get from Amber` — Retrieve npub from Amber (external signer apps supporting the NIP-55 style intent).
 - `Speak petname` — Toggle whether to prepend the petname from the follow list to the reading.
 - `Voice for followed users` — Select the TTS voice for followed users.
 - `Allow non-followed posts` — Toggle whether to read posts from non-followed users.
 - `Voice for non-followed users` — Select the TTS voice for non-followed users.
 - `Refresh Voices` — Re-fetch available TTS voices.
-- `Speech rate` — Adjust the TTS speech rate with a slider or input (reflected immediately in the service).
+- `Speech rate` — Adjust the TTS speech rate with a slider (reflected immediately in the service).
 - `Start` — Start the background service.
 - `Stop` — Stop the background service.
 - `(no note yet)` — The last received message is displayed here.
-- `Refresh Log` / `Share Log` — Refresh log display and share (only in development builds with `ENABLE_LOG` enabled).
 
 ## Follow List and Public Mute
 
@@ -78,7 +77,7 @@ Package name: `com.nokakoi.nokandro`
 - 指定した `npub`（自分の公開鍵）に基づくフォローリストを取得して、フォローしているユーザーの投稿を優先して読み上げる。
 - フォローしていないユーザーの投稿は設定により読み上げを無効化可能（`Allow non-followed posts`切り替え）。
 - フォロー済みユーザーとそれ以外で TTS の声を分けて指定可能（2つのボイス選択）。
-- 受信したメッセージの表示（最後に受信した内容）とログの確認・共有（ロギングはビルド設定に依存し、配布ビルドでは非表示の場合があります）。
+- 受信したメッセージの表示（最後に受信した内容）をメイン画面で確認できます。
 - バックグラウンドで常駐して TTS を行うサービスはフォアグラウンド通知を使用し、通知から停止操作が可能。
 
 ## インストールと初回起動（APK 配布）
@@ -100,17 +99,16 @@ Package name: `com.nokakoi.nokandro`
 - `Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
 - `Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
 - `Refresh Voices` — 利用可能な TTS 音声を再取得します。
-- `Speech rate` — TTS の発話速度をスライダーや入力で調整します（サービスに即時反映されます）。
+- `Speech rate` — TTS の発話速度をスライダーで調整します（サービスに即時反映されます）。
 - `Start` — バックグラウンドサービスを開始します。
 - `Stop` — バックグラウンドサービスを停止します。
 - `(no note yet)` — ここに最後に受信したメッセージが表示されます。
-- `Refresh Log` / `Share Log` — ログ表示の更新と共有（`ENABLE_LOG` が有効な開発ビルド時のみ）。
 
 ## フォローリストと公開ミュート（Follow list / Public mute）
 
-- フォローリスト (Follow list): 指定した `npub` に紐づくフォローしている公開鍵の一覧をリレーから取得します。アプリはフォローリストの読み込み状態を画面上に表示し、フォロー済みの投稿は優先的に扱われ（別の TTS 音声や表示プレフィックスなど）、読み上げの判定に用いられます。
+- フォローリスト: 指定した `npub` に紐づくフォローしている公開鍵の一覧をリレーから取得します。アプリはフォローリストの読み込み状態を画面上に表示し、フォロー済みの投稿は優先的に扱われ（別の TTS 音声や表示プレフィックスなど）、読み上げの判定に用いられます。
 
-- 公開ミュート (Public mute): リレーやイベントで提供される公開ミュートリストに含まれる公開鍵は、読み上げ対象から除外されます。アプリは公開ミュートの読み込み状態も画面上に表示します。ミュートは読み上げのみの影響で、ログや内部記録の扱いは実装に依存します。
+- 公開ミュート: リレーやイベントで提供される公開ミュートリストに含まれる公開鍵は、読み上げ対象から除外されます。
 
 ## 通知とサービス動作
 

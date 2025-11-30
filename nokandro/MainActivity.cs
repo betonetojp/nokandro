@@ -30,13 +30,7 @@ namespace nokandro
         private TextView? _lastContentView;
         private BroadcastReceiver? _receiver;
         private BroadcastReceiver? _serviceStateReceiver;
-        private TextView? _logTextView;
-        private Android.OS.Handler? _mainHandler;
-        private readonly object _logLock = new();
-        private List<string> _logBuffer = [];
-        private bool _logFlushScheduled = false;
-        private const int LOG_FLUSH_MS = 150;
-        // keep a reference to npub EditText so incoming intents can update it
+        // keep references to EditText fields used elsewhere
         private EditText? _npubEdit_field;
         private EditText? _truncateEllipsisField;
 
@@ -88,75 +82,6 @@ namespace nokandro
                 catch { }
             }
             catch { }
-
-            // Find log UI
-            var refreshLogBtn = FindViewById<Button>(Resource.Id.refreshLogBtn);
-            var shareLogBtn = FindViewById<Button>(Resource.Id.shareLogBtn);
-            _logTextView = FindViewById<TextView>(Resource.Id.logTextView);
-
-            // Make log TextView scrollable and selectable so debug lines can be viewed/copied
-            try
-            {
-                if (_logTextView != null)
-                {
-                    try { _logTextView.MovementMethod = new Android.Text.Method.ScrollingMovementMethod(); } catch { }
-                    try { _logTextView.SetTextIsSelectable(true); } catch { }
-                    try { _logTextView.VerticalScrollBarEnabled = true; } catch { }
-                }
-            }
-            catch { }
-
-            // Refresh log display
-            if (refreshLogBtn != null)
-            {
-                refreshLogBtn.Click += (s, e) =>
-                {
-                    try
-                    {
-#if ENABLE_LOG
-                        var content = ReadLogContent();
-                        RunOnUiThread(() => { _logTextView?.Text = content; });
-#else
-                        RunOnUiThread(() => { _logTextView?.Text = "(logging disabled in production build)"; });
-#endif
-                    }
-                    catch { }
-                };
-            }
-
-            // Share log content
-            if (shareLogBtn != null)
-            {
-                shareLogBtn.Click += (s, e) =>
-                {
-                    try
-                    {
-#if ENABLE_LOG
-                        var content = ReadLogContent();
-                        var send = new Intent(Intent.ActionSend);
-                        send.SetType("text/plain");
-                        send.PutExtra(Intent.ExtraSubject, "Nostr log");
-                        send.PutExtra(Intent.ExtraText, content);
-                        StartActivity(Intent.CreateChooser(send, "Share log"));
-#else
-                        Toast.MakeText(this, "Logging disabled in production build", ToastLength.Short).Show();
-#endif
-                    }
-                    catch { }
-                };
-            }
-
-            // Hide log UI entirely in production builds (when ENABLE_LOG not defined)
-#if !ENABLE_LOG
-            try
-            {
-                refreshLogBtn?.Visibility = ViewStates.Gone;
-                shareLogBtn?.Visibility = ViewStates.Gone;
-                // hide log text view in production builds
-                try { _logTextView?.Visibility = ViewStates.Gone; } catch { }
-            }
-            catch { }
-#endif
 
             // Request POST_NOTIFICATIONS runtime permission (Android 13+)
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
@@ -399,7 +324,6 @@ namespace nokandro
                 var savedLangDbg = prefsDbg?.GetString(PREF_VOICE_LANG, null) ?? "(none)";
                 Android.Util.Log.Info("nokandro", $"OnCreate: saved PREF_VOICE_LANG={savedLangDbg}");
                 try { Toast.MakeText(this, $"Saved lang: {savedLangDbg}", ToastLength.Short).Show(); } catch { }
-                try { AppendLog($"OnCreate: saved PREF_VOICE_LANG={savedLangDbg}"); } catch { }
             }
             catch { }
 
@@ -1240,7 +1164,6 @@ namespace nokandro
                 var prefsDbg = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                 var saved = prefsDbg?.GetString(PREF_VOICE_LANG, null) ?? "(none)";
                 Android.Util.Log.Info("nokandro", $"PopulateVoicesAsync start: refreshLanguages={refreshLanguages} savedPref={saved} lastSelected={_lastSelectedLangCode}");
-                try { AppendLog($"Populate start: refreshLanguages={refreshLanguages} savedPref={saved} lastSelected={_lastSelectedLangCode}"); } catch { }
             }
             catch { }
             List<string> voices = ["default"];
@@ -1270,17 +1193,15 @@ namespace nokandro
                     try
                     {
                         // Fallback: try a fresh TextToSpeech instance in case the first wasn't ready
-                        try { AppendLog("Initial TTS voices empty — trying fallback TTS instance..."); } catch { }
                         var ttsFallback = new TextToSpeech(this, null);
                         try { initialVoiceObjs = ttsFallback?.Voices?.Where(v => v != null).ToList(); } catch { }
-                        try { AppendLog($"Fallback voices found: {(initialVoiceObjs?.Count ?? 0)}"); } catch { }
                         try { ttsFallback?.Shutdown(); } catch { }
                     }
                     catch { }
                 }
                 if (initialVoiceObjs == null || initialVoiceObjs.Count == 0)
                 {
-                    try { AppendLog("No TTS voices available after polling."); } catch { }
+                    try { Android.Util.Log.Info("nokandro", "No TTS voices available after polling."); } catch { }
                 }
                 if (initialVoiceObjs != null && initialVoiceObjs.Count > 0)
                 {
@@ -1326,12 +1247,7 @@ namespace nokandro
                             catch { label = code; }
                             languageLabels.Add(label);
                         }
-                        try
-                        {
-                            Android.Util.Log.Info("nokandro", $"Found languages: codes={string.Join(',', languageCodes)} labels={string.Join(',', languageLabels)}");
-                            try { AppendLog($"Found languages: codes={string.Join(',', languageCodes)} labels={string.Join(',', languageLabels)}"); } catch { }
-                        }
-                        catch { }
+                        try { Android.Util.Log.Info("nokandro", $"Found languages: codes={string.Join(',', languageCodes)} labels={string.Join(',', languageLabels)}"); } catch { }
                     }
                 }
 
@@ -1401,7 +1317,6 @@ namespace nokandro
             // Now filter voices by selected language code
             var selectedLang = _lastSelectedLangCode ?? "Any";
             try { Android.Util.Log.Info("nokandro", $"Filtering using selectedLang={selectedLang}"); } catch { }
-            try { AppendLog($"Filtering using selectedLang={selectedLang}"); } catch { }
             List<string> finalVoices = [];
             if (selectedLang == "Any") finalVoices.AddRange(voices);
             else
@@ -1433,7 +1348,6 @@ namespace nokandro
                 {
                     try
                     {
-                        try { AppendLog("No initial voice list available — creating fallback TTS and polling..."); } catch { }
                         var ttsFb = new TextToSpeech(this, null);
                         var waitedFb = 0;
                         var timeoutFb = 4000;
@@ -1450,7 +1364,7 @@ namespace nokandro
 
                 if (voiceListToInspect == null || voiceListToInspect.Count == 0)
                 {
-                    try { AppendLog("No voice list available for inspection"); } catch { }
+                    try { Android.Util.Log.Info("nokandro", "No voice list available for inspection"); } catch { }
                 }
                 else
                 {
@@ -1463,7 +1377,6 @@ namespace nokandro
                             var loc = v.Locale?.ToString() ?? string.Empty;
                             var fmt = loc.Replace('_', '-');
                             var voicePrimary = (fmt.Split('-')[0] ?? string.Empty).ToLowerInvariant();
-                            try { AppendLog($"voice: name='{name}' locale='{fmt}'"); } catch { }
                             if (!string.IsNullOrEmpty(name))
                             {
                                 try
@@ -1486,12 +1399,11 @@ namespace nokandro
                     if (set.Count > 0)
                     {
                         finalVoices.AddRange(set);
-                        try { AppendLog($"Matching voice names: {string.Join(',', set)}"); } catch { }
+                        try { Android.Util.Log.Info("nokandro", $"Matching voice names: {string.Join(',', set)}"); } catch { }
                     }
                 }
 
                 try { Android.Util.Log.Info("nokandro", $"Filtered voices count={finalVoices.Count}"); } catch { }
-                try { AppendLog($"Filtered voices count={finalVoices.Count}"); } catch { }
             }
             // Sort voice names for predictable UI order
             try
@@ -1510,8 +1422,6 @@ namespace nokandro
             {
                 try { followedSpinner.Adapter = adapter; } catch { }
                 try { otherSpinner.Adapter = adapter; } catch { }
-                try { Android.Util.Log.Info("nokandro", $"Adapters set: finalVoicesCount={finalVoices.Count}"); } catch { }
-                try { AppendLog($"Adapters set: finalVoicesCount={finalVoices.Count}"); } catch { }
                 // restore saved selections if present
                 try
                 {
@@ -1537,77 +1447,11 @@ namespace nokandro
                 if (selectedLang != "Any" && finalVoices.Count == 0)
                 {
                     RunOnUiThread(() => { try { Toast.MakeText(this, "No voices for selected language", ToastLength.Short).Show(); } catch { } });
-                    try { AppendLog("No voices for selected language"); } catch { }
+                    try { Android.Util.Log.Info("nokandro", "No voices for selected language"); } catch { }
                 }
             }
             catch { }
             _langPopulating = false;
-        }
-
-        private string ReadLogContent()
-        {
-            try
-            {
-                string path = string.Empty;
-                try { path = Path.Combine(FilesDir?.AbsolutePath ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal), "nostr_log.txt"); } catch { }
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "(no log)";
-                var text = File.ReadAllText(path);
-                if (text.Length > 20000) return string.Concat("...", text.AsSpan(text.Length - 20000));
-                return text;
-            }
-            catch
-            {
-                return "(failed to read log)";
-            }
-        }
-
-        private void AppendLog(string message)
-        {
-            try
-            {
-                var ts = DateTime.Now.ToString("HH:mm:ss");
-                var line = $"[{ts}] {message}\n";
-                lock (_logLock)
-                {
-                    _logBuffer.Add(line);
-                    if (!_logFlushScheduled)
-                    {
-                        _logFlushScheduled = true;
-                        try { _mainHandler?.PostDelayed(new Java.Lang.Runnable(() => FlushLog()), LOG_FLUSH_MS); } catch { /* fallback */ }
-                    }
-                }
-            }
-            catch { }
-        }
-
-        private void FlushLog()
-        {
-            string payload;
-            lock (_logLock)
-            {
-                if (_logBuffer.Count == 0) { _logFlushScheduled = false; return; }
-                payload = string.Concat(_logBuffer);
-                _logBuffer.Clear();
-                _logFlushScheduled = false;
-            }
-
-            try
-            {
-                // Update UI once with accumulated payload
-                RunOnUiThread(() =>
-                {
-                    try
-                    {
-                        if (_logTextView != null)
-                        {
-                            var prev = _logTextView.Text ?? string.Empty;
-                            _logTextView.Text = payload + prev;
-                        }
-                    }
-                    catch { }
-                });
-            }
-            catch { }
         }
 
         // local broadcast receiver wrapper
