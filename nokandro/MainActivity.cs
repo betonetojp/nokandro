@@ -13,6 +13,7 @@ namespace nokandro
         const string PREFS_NAME = "nokandro_prefs";
         const string PREF_VOICE_FOLLOWED = "pref_voice_followed";
         const string PREF_VOICE_OTHER = "pref_voice_other";
+        const string PREF_VOICE_LANG = "pref_voice_lang";
         const string PREF_RELAY = "pref_relay";
         const string PREF_NPUB = "pref_npub";
         const string PREF_SIGNER_PACKAGE = "pref_signer_package";
@@ -29,8 +30,18 @@ namespace nokandro
         private BroadcastReceiver? _receiver;
         private BroadcastReceiver? _serviceStateReceiver;
         private TextView? _logTextView;
+        private Android.OS.Handler? _mainHandler;
+        private readonly object _logLock = new object();
+        private List<string> _logBuffer = new List<string>();
+        private bool _logFlushScheduled = false;
+        private const int LOG_FLUSH_MS = 150;
         // keep a reference to npub EditText so incoming intents can update it
-        private EditText? _npubEditField;
+        private EditText? _npubEdit_field;
+
+        // Language spinner state to avoid resetting while user interacts
+        private bool _langPopulating = false;
+        private List<string> _availableLangCodes = new List<string>();
+        private string? _lastSelectedLangCode = null;
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -81,6 +92,18 @@ namespace nokandro
             var shareLogBtn = FindViewById<Button>(Resource.Id.shareLogBtn);
             _logTextView = FindViewById<TextView>(Resource.Id.logTextView);
 
+            // Make log TextView scrollable and selectable so debug lines can be viewed/copied
+            try
+            {
+                if (_logTextView != null)
+                {
+                    try { _logTextView.MovementMethod = new Android.Text.Method.ScrollingMovementMethod(); } catch { }
+                    try { _logTextView.SetTextIsSelectable(true); } catch { }
+                    try { _logTextView.VerticalScrollBarEnabled = true; } catch { }
+                }
+            }
+            catch { }
+
             // Refresh log display
             if (refreshLogBtn != null)
             {
@@ -127,7 +150,8 @@ namespace nokandro
             {
                 refreshLogBtn?.Visibility = ViewStates.Gone;
                 shareLogBtn?.Visibility = ViewStates.Gone;
-                _logTextView?.Visibility = ViewStates.Gone;
+                // hide log text view in production builds
+                try { _logTextView?.Visibility = ViewStates.Gone; } catch { }
             }
             catch { }
 #endif
@@ -166,6 +190,7 @@ namespace nokandro
             var voiceFollowedSpinner = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
             var voiceOtherSpinner = FindViewById<Spinner>(Resource.Id.voiceOtherSpinner);
             var refreshVoicesBtn = FindViewById<Button>(Resource.Id.refreshVoicesBtn);
+            var voiceLangSpinner = FindViewById<Spinner>(Resource.Id.voiceLangSpinner);
             // speak petname switch (optional)
             TextView? npubError = null;
             Switch? speakPetSwitch = null;
@@ -203,7 +228,7 @@ namespace nokandro
                 voiceFollowedSpinner == null || voiceOtherSpinner == null || refreshVoicesBtn == null ||
                 startBtn == null || stopBtn == null || _lastContentView == null || followStatusText == null ||
                 muteStatusText == null ||
-                truncateEdit == null)
+                truncateEdit == null || voiceLangSpinner == null)
             {
                 // Critical layout elements missing; bail out
                 try { Toast.MakeText(this, "UI initialization failed", ToastLength.Short).Show(); } catch { }
@@ -214,11 +239,12 @@ namespace nokandro
             var relay = (EditText)relayEdit!;
             var npub = (EditText)npubEdit!;
             // keep reference for updating from incoming intents
-            _npubEditField = npub;
+            _npubEdit_field = npub;
             var allowOthers = (Switch)allowOthersSwitch!;
             var voiceFollowed = (Spinner)voiceFollowedSpinner!;
             var voiceOther = (Spinner)voiceOtherSpinner!;
             var refreshVoices = (Button)refreshVoicesBtn!;
+            var voiceLang = (Spinner)voiceLangSpinner!;
             var speechSeek = (SeekBar?)speechRateSeekBar;
             var speechVal = (TextView?)speechRateValue;
             var start = (Button)startBtn!;
@@ -329,6 +355,17 @@ namespace nokandro
             }
             catch { }
 
+            // Debug: show saved language preference at startup
+            try
+            {
+                var prefsDbg = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var savedLangDbg = prefsDbg?.GetString(PREF_VOICE_LANG, null) ?? "(none)";
+                Android.Util.Log.Info("nokandro", $"OnCreate: saved PREF_VOICE_LANG={savedLangDbg}");
+                try { Toast.MakeText(this, $"Saved lang: {savedLangDbg}", ToastLength.Short).Show(); } catch { }
+                try { AppendLog($"OnCreate: saved PREF_VOICE_LANG={savedLangDbg}"); } catch { }
+            }
+            catch { }
+
             // Update start button enabled state based on npub validity (and service running state)
             try
             {
@@ -402,10 +439,53 @@ namespace nokandro
                 };
             }
 
-            // Populate voices initially (async)
-            _ = PopulateVoicesAsync(voiceFollowed, voiceOther);
+            // Populate voices initially (async) with language spinner
+            _ = PopulateVoicesAsync(voiceLang, voiceFollowed, voiceOther, true);
 
-            refreshVoices.Click += async (s, e) => await PopulateVoicesAsync(voiceFollowed, voiceOther);
+            refreshVoices.Click += async (s, e) => await PopulateVoicesAsync(voiceLang, voiceFollowed, voiceOther, true);
+
+            // When language selection changes, repopulate voices filtered by language (do not rebuild language list)
+            voiceLang.ItemSelected += (s, e) =>
+            {
+                try
+                {
+                    if (_langPopulating) return;
+                    // Determine selected code if available (use _availableLangCodes which stores primary codes)
+                    var pos = voiceLang.SelectedItemPosition;
+                    string? selCode = null;
+                    try
+                    {
+                        // Prefer mapping stored in Spinner.Tag (set when adapter was created)
+                        var tagStr = voiceLang.Tag?.ToString();
+                        if (!string.IsNullOrEmpty(tagStr))
+                        {
+                            var parts = tagStr.Split('\u001F');
+                            if (pos >= 0 && pos < parts.Length) selCode = parts[pos];
+                        }
+                        if (string.IsNullOrEmpty(selCode) && pos >= 0 && pos < _availableLangCodes.Count) selCode = _availableLangCodes[pos];
+                    }
+                    catch { }
+                    // fallback: if codes not available, try to map label back to code by searching languageLabels via PopulateVoices path (best-effort)
+                    if (string.IsNullOrEmpty(selCode)) selCode = voiceLang.SelectedItem?.ToString();
+                    if (string.IsNullOrEmpty(selCode)) return;
+                    if (selCode == _lastSelectedLangCode) return;
+                    _lastSelectedLangCode = selCode;
+
+                    // Persist language selection immediately
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutString(PREF_VOICE_LANG, _lastSelectedLangCode); edit.Apply(); }
+                    }
+                    catch { }
+
+                    // Rebuild language mappings and refresh voice lists so filtering uses up-to-date language->voice mapping.
+                    // Persist selection already done above; calling with refreshLanguages=true will restore selection from prefs.
+                    _ = PopulateVoicesAsync(voiceLang, voiceFollowed, voiceOther, true);
+                }
+                catch { }
+            };
 
             // Save preference when spinner selection changes
             voiceFollowed.ItemSelected += (s, e) =>
@@ -528,7 +608,7 @@ namespace nokandro
                 SetControlEnabled(voiceFollowed, !NostrService.IsRunning);
                 SetControlEnabled(voiceOther, !NostrService.IsRunning);
                 SetControlEnabled(refreshVoices, !NostrService.IsRunning);
-                // keep speechSeek enabled because speech rate is applied immediately
+                SetControlEnabled(voiceLang, !NostrService.IsRunning);
             }
             catch { }
 
@@ -582,6 +662,8 @@ namespace nokandro
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
                     // persist speech rate as mapped value (0.50..1.50)
                     try { edit.PutFloat("pref_speech_rate", speechRate); } catch { }
+                    // persist selected language
+                    try { edit.PutString(PREF_VOICE_LANG, _lastSelectedLangCode ?? voiceLang.SelectedItem?.ToString() ?? "Any"); } catch { }
                     edit.Apply();
                 }
 
@@ -599,7 +681,7 @@ namespace nokandro
                 SetControlEnabled(voiceFollowed, false);
                 SetControlEnabled(voiceOther, false);
                 SetControlEnabled(refreshVoices, false);
-                // keep speechSeek enabled because speech rate updates apply immediately
+                SetControlEnabled(voiceLang, false);
             };
 
             stop.Click += (s, e) =>
@@ -617,6 +699,7 @@ namespace nokandro
                 SetControlEnabled(voiceFollowed, true);
                 SetControlEnabled(voiceOther, true);
                 SetControlEnabled(refreshVoices, true);
+                try { SetControlEnabled(voiceLang, true); } catch { }
                 // speechSeek remains enabled
 
                 // Immediately reset follow/mute UI to not loaded when stopping
@@ -837,7 +920,7 @@ namespace nokandro
 
                     RunOnUiThread(() =>
                     {
-                        try { _npubEditField?.Text = npubVal; } catch { }
+                        try { _npubEdit_field?.Text = npubVal; } catch { }
                         try { Toast.MakeText(this, "npub acquired", ToastLength.Short).Show(); } catch { }
                     });
                 }
@@ -932,7 +1015,7 @@ namespace nokandro
 
                 RunOnUiThread(() =>
                 {
-                    try { _npubEditField?.Text = npubVal; } catch { }
+                    try { _npubEdit_field?.Text = npubVal; } catch { }
                     try { Toast.MakeText(this, "npub acquired", ToastLength.Short).Show(); } catch { }
                 });
             }
@@ -1089,16 +1172,31 @@ namespace nokandro
             return replaced;
         }
 
-        private async Task PopulateVoicesAsync(Spinner followedSpinner, Spinner otherSpinner)
+        private async Task PopulateVoicesAsync(Spinner langSpinner, Spinner followedSpinner, Spinner otherSpinner, bool refreshLanguages = true)
         {
-            List<string> voices = ["default"];
+            _langPopulating = true;
+            // Debug: show entering populate
+            try
+            {
+                var prefsDbg = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var saved = prefsDbg?.GetString(PREF_VOICE_LANG, null) ?? "(none)";
+                Android.Util.Log.Info("nokandro", $"PopulateVoicesAsync start: refreshLanguages={refreshLanguages} savedPref={saved} lastSelected={_lastSelectedLangCode}");
+                try { AppendLog($"Populate start: refreshLanguages={refreshLanguages} savedPref={saved} lastSelected={_lastSelectedLangCode}"); } catch { }
+            }
+            catch { }
+            List<string> voices = new List<string>() { "default" };
+            // parallel lists: codes (e.g., "ja-JP","ja") and labels (e.g., "Japanese (Japan)")
+            var languageCodes = new List<string>() { "Any" };
+            var languageLabels = new List<string>() { "Any" };
             TextToSpeech? tts = null;
+            List<Android.Speech.Tts.Voice>? initialVoiceObjs = null;
+
             try
             {
                 tts = new TextToSpeech(this, null);
 
-                // Wait until voices are available (polling), timeout after 3 seconds
-                var timeout = 3000;
+                // Wait until voices are available (polling), timeout after 8 seconds
+                var timeout = 8000;
                 var waited = 0;
                 while ((tts == null || tts.Voices == null || tts.Voices.Count == 0) && waited < timeout)
                 {
@@ -1106,50 +1204,285 @@ namespace nokandro
                     waited += 200;
                 }
 
-                // Build a non-nullable list of voice names
-                var names = tts?.Voices?.Where(v => !string.IsNullOrEmpty(v?.Name)).Select(v => v!.Name!).ToList();
-                if (names != null && names.Count > 0) voices = names;
-                if (voices.Count == 0) voices = ["default"];
+                // Build a non-nullable list of voice names and languages
+                initialVoiceObjs = tts?.Voices?.Where(v => v != null).ToList();
+                if ((initialVoiceObjs == null || initialVoiceObjs.Count == 0))
+                {
+                    try
+                    {
+                        // Fallback: try a fresh TextToSpeech instance in case the first wasn't ready
+                        try { AppendLog("Initial TTS voices empty — trying fallback TTS instance..."); } catch { }
+                        var ttsFallback = new TextToSpeech(this, null);
+                        try { initialVoiceObjs = ttsFallback?.Voices?.Where(v => v != null).ToList(); } catch { }
+                        try { AppendLog($"Fallback voices found: {(initialVoiceObjs?.Count ?? 0)}"); } catch { }
+                        try { ttsFallback?.Shutdown(); } catch { }
+                    }
+                    catch { }
+                }
+                if (initialVoiceObjs == null || initialVoiceObjs.Count == 0)
+                {
+                    try { AppendLog("No TTS voices available after polling."); } catch { }
+                }
+                if (initialVoiceObjs != null && initialVoiceObjs.Count > 0)
+                {
+                    var nameList = new List<string>();
+                    // Collect primary language codes (e.g., "ja", "en") to collapse regional variants
+                    var primarySet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var v in initialVoiceObjs)
+                    {
+                        try
+                        {
+                            var name = v?.Name ?? string.Empty;
+                            if (!string.IsNullOrEmpty(name) && !nameList.Contains(name)) nameList.Add(name);
+
+                            try
+                            {
+                                var loc = v.Locale?.ToString() ?? string.Empty; // may be like "ja_JP" or "ja"
+                                if (!string.IsNullOrEmpty(loc))
+                                {
+                                    var fmt = loc.Replace('_', '-');
+                                    var primary = fmt.Split('-')[0];
+                                    if (!string.IsNullOrEmpty(primary)) primarySet.Add(primary);
+                                }
+                            }
+                            catch { }
+                        }
+                        catch { }
+                    }
+
+                    if (nameList.Count > 0) voices = nameList;
+                    if (primarySet.Count > 0)
+                    {
+                        // build languageCodes/labels from primary language codes (sorted)
+                        var sortedPrimary = primarySet.OrderBy(s => s).ToList();
+                        foreach (var code in sortedPrimary)
+                        {
+                            languageCodes.Add(code);
+                            var label = code;
+                            try
+                            {
+                                try { var culture = new System.Globalization.CultureInfo(code); label = culture.EnglishName; }
+                                catch { label = code; }
+                            }
+                            catch { label = code; }
+                            languageLabels.Add(label);
+                        }
+                        try
+                        {
+                            Android.Util.Log.Info("nokandro", $"Found languages: codes={string.Join(',', languageCodes)} labels={string.Join(',', languageLabels)}");
+                            try { AppendLog($"Found languages: codes={string.Join(',', languageCodes)} labels={string.Join(',', languageLabels)}"); } catch { }
+                        }
+                        catch { }
+                    }
+                }
+
+                if (voices.Count == 0) voices = new List<string>() { "default" };
             }
             catch
             {
-                voices = ["default"];
+                voices = new List<string>() { "default" };
+                languageCodes = new List<string>() { "Any" };
+                languageLabels = new List<string>() { "Any" };
             }
             finally
             {
                 try { tts?.Shutdown(); } catch { }
             }
 
-            var adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerItem, voices);
+            // If requested, update language spinner adapter and available codes
+            if (refreshLanguages)
+            {
+                // remember available codes for selection handler
+                _availableLangCodes = languageCodes;
+
+                // capture previous requested code (prefer last saved or current selection)
+                string? prevCode = _lastSelectedLangCode;
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    if (string.IsNullOrEmpty(prevCode)) prevCode = prefs?.GetString(PREF_VOICE_LANG, null);
+                }
+                catch { }
+                try { if (string.IsNullOrEmpty(prevCode)) prevCode = langSpinner.SelectedItem?.ToString(); } catch { }
+
+                // set language spinner adapter using labels and restore selection on UI thread
+                var langAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerItem, languageLabels);
+                langAdapter.SetDropDownViewResource(Android.Resource.Layout.SimpleSpinnerDropDownItem);
+                // restore previous selection by matching code; fall back to 0
+                int sel = 0;
+                try
+                {
+                    if (!string.IsNullOrEmpty(prevCode))
+                    {
+                        var idx = languageCodes.IndexOf(prevCode);
+                        if (idx >= 0) sel = idx;
+                        else
+                        {
+                            var lblIdx = languageLabels.IndexOf(prevCode);
+                            if (lblIdx >= 0) sel = lblIdx;
+                        }
+                    }
+                }
+                catch { sel = 0; }
+
+                RunOnUiThread(() =>
+                {
+                    try { langSpinner.Adapter = langAdapter; } catch { }
+                    try { if (sel >= 0 && sel < languageLabels.Count) langSpinner.SetSelection(sel); } catch { }
+                    try { _lastSelectedLangCode = _availableLangCodes.ElementAtOrDefault(langSpinner.SelectedItemPosition) ?? (_availableLangCodes.Count > 0 ? _availableLangCodes[0] : "Any"); } catch { _lastSelectedLangCode = null; }
+                    try { langSpinner.Tag = string.Join("\u001F", _availableLangCodes); } catch { }
+                });
+            }
+            else
+            {
+                // Keep existing _availableLangCodes and _lastSelectedLangCode; ensure selectedLang reflects current selection
+                try { if (_availableLangCodes == null || _availableLangCodes.Count == 0) _availableLangCodes = new List<string>() { "Any" }; } catch { }
+            }
+
+            // Now filter voices by selected language code
+            var selectedLang = _lastSelectedLangCode ?? "Any";
+            try { Android.Util.Log.Info("nokandro", $"Filtering using selectedLang={selectedLang}"); } catch { }
+            try { AppendLog($"Filtering using selectedLang={selectedLang}"); } catch { }
+            List<string> finalVoices = new List<string>();
+            if (selectedLang == "Any") finalVoices.AddRange(voices);
+            else
+            {
+                // Normalize selected primary language (e.g., "ja-JP" -> "ja")
+                var selectedPrimary = selectedLang.Split('-')[0].ToLowerInvariant();
+                // prepare culture names for matching (English and native)
+                string selectedEnglishName = string.Empty;
+                string selectedNativeName = string.Empty;
+                try
+                {
+                    var ci = new System.Globalization.CultureInfo(selectedPrimary);
+                    selectedEnglishName = (ci.EnglishName ?? string.Empty).ToLowerInvariant();
+                    selectedNativeName = (ci.NativeName ?? string.Empty).ToLowerInvariant();
+                }
+                catch { }
+
+                // Re-query voices to get Locale info for filtering
+                var set = new HashSet<string>();
+                // Prefer the initial voice list we collected earlier (it succeeded to build language list)
+                var voiceListToInspect = initialVoiceObjs;
+                // If not available, try to use the original tts instance if still present
+                if ((voiceListToInspect == null || voiceListToInspect.Count == 0) && tts != null)
+                {
+                    try { voiceListToInspect = tts.Voices?.Where(v => v != null).ToList(); } catch { }
+                }
+                // Final fallback: try creating a fresh TTS and polling briefly
+                if (voiceListToInspect == null || voiceListToInspect.Count == 0)
+                {
+                    try
+                    {
+                        try { AppendLog("No initial voice list available — creating fallback TTS and polling..."); } catch { }
+                        var ttsFb = new TextToSpeech(this, null);
+                        var waitedFb = 0;
+                        var timeoutFb = 4000;
+                        while ((ttsFb == null || ttsFb.Voices == null || ttsFb.Voices.Count == 0) && waitedFb < timeoutFb)
+                        {
+                            await Task.Delay(200);
+                            waitedFb += 200;
+                        }
+                        try { voiceListToInspect = ttsFb?.Voices?.Where(v => v != null).ToList(); } catch { }
+                        try { ttsFb?.Shutdown(); } catch { }
+                    }
+                    catch { }
+                }
+
+                if (voiceListToInspect == null || voiceListToInspect.Count == 0)
+                {
+                    try { AppendLog("No voice list available for inspection"); } catch { }
+                }
+                else
+                {
+                    foreach (var v in voiceListToInspect)
+                    {
+                        try
+                        {
+                            var name = v?.Name ?? string.Empty;
+                            var nameLower = (name ?? string.Empty).ToLowerInvariant();
+                            var loc = v.Locale?.ToString() ?? string.Empty;
+                            var fmt = loc.Replace('_', '-');
+                            var voicePrimary = (fmt.Split('-')[0] ?? string.Empty).ToLowerInvariant();
+                            try { AppendLog($"voice: name='{name}' locale='{fmt}'"); } catch { }
+                            if (!string.IsNullOrEmpty(name))
+                            {
+                                try
+                                {
+                                    if (!string.IsNullOrEmpty(voicePrimary) && string.Equals(voicePrimary, selectedPrimary, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (!set.Contains(name)) set.Add(name);
+                                    }
+                                    else if (!string.IsNullOrEmpty(fmt) && fmt.StartsWith(selectedPrimary, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (!set.Contains(name)) set.Add(name);
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (set.Count > 0)
+                    {
+                        finalVoices.AddRange(set);
+                        try { AppendLog($"Matching voice names: {string.Join(',', set)}"); } catch { }
+                    }
+                }
+
+                try { Android.Util.Log.Info("nokandro", $"Filtered voices count={finalVoices.Count}"); } catch { }
+                try { AppendLog($"Filtered voices count={finalVoices.Count}"); } catch { }
+            }
+            // Sort voice names for predictable UI order
+            try
+            {
+                finalVoices = finalVoices.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            catch
+            {
+                try { finalVoices.Sort(StringComparer.OrdinalIgnoreCase); } catch { }
+            }
+
+            var adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerItem, finalVoices);
             adapter.SetDropDownViewResource(Android.Resource.Layout.SimpleSpinnerDropDownItem);
-            followedSpinner.Adapter = adapter;
-            otherSpinner.Adapter = adapter;
-
-            // restore saved selections if present
-            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-            var savedFollowed = prefs?.GetString(PREF_VOICE_FOLLOWED, null);
-            var savedOther = prefs?.GetString(PREF_VOICE_OTHER, null);
-            if (!string.IsNullOrEmpty(savedFollowed))
+            // Set adapters and selections on UI thread
+            RunOnUiThread(() =>
             {
-                var idx = voices.IndexOf(savedFollowed);
-                if (idx >= 0) followedSpinner.SetSelection(idx);
-            }
-            if (!string.IsNullOrEmpty(savedOther))
+                try { followedSpinner.Adapter = adapter; } catch { }
+                try { otherSpinner.Adapter = adapter; } catch { }
+                try { Android.Util.Log.Info("nokandro", $"Adapters set: finalVoicesCount={finalVoices.Count}"); } catch { }
+                try { AppendLog($"Adapters set: finalVoicesCount={finalVoices.Count}"); } catch { }
+                // restore saved selections if present
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var savedFollowed = prefs?.GetString(PREF_VOICE_FOLLOWED, null);
+                    var savedOther = prefs?.GetString(PREF_VOICE_OTHER, null);
+                    if (!string.IsNullOrEmpty(savedFollowed))
+                    {
+                        var idx = finalVoices.IndexOf(savedFollowed);
+                        if (idx >= 0) followedSpinner.SetSelection(idx);
+                    }
+                    if (!string.IsNullOrEmpty(savedOther))
+                    {
+                        var idx = finalVoices.IndexOf(savedOther);
+                        if (idx >= 0) otherSpinner.SetSelection(idx);
+                    }
+                }
+                catch { }
+            });
+            // Debug: if no voices and not Any, show toast
+            try
             {
-                var idx = voices.IndexOf(savedOther);
-                if (idx >= 0) otherSpinner.SetSelection(idx);
+                if (selectedLang != "Any" && finalVoices.Count == 0)
+                {
+                    RunOnUiThread(() => { try { Toast.MakeText(this, "No voices for selected language", ToastLength.Short).Show(); } catch { } });
+                    try { AppendLog("No voices for selected language"); } catch { }
+                }
             }
-        }
-
-        // local broadcast receiver wrapper
-        class BroadcastReceiver : Android.Content.BroadcastReceiver
-        {
-            public event Action<Context, Intent> Receive = delegate { };
-            public override void OnReceive(Context? context, Intent? intent)
-            {
-                if (context == null || intent == null) return;
-                Receive(context, intent);
-            }
+            catch { }
+            _langPopulating = false;
         }
 
         private string ReadLogContent()
@@ -1169,11 +1502,71 @@ namespace nokandro
             }
         }
 
+        private void AppendLog(string message)
+        {
+            try
+            {
+                var ts = DateTime.Now.ToString("HH:mm:ss");
+                var line = $"[{ts}] {message}\n";
+                lock (_logLock)
+                {
+                    _logBuffer.Add(line);
+                    if (!_logFlushScheduled)
+                    {
+                        _logFlushScheduled = true;
+                        try { _mainHandler?.PostDelayed(new Java.Lang.Runnable(() => FlushLog()), LOG_FLUSH_MS); } catch { /* fallback */ }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void FlushLog()
+        {
+            string payload;
+            lock (_logLock)
+            {
+                if (_logBuffer.Count == 0) { _logFlushScheduled = false; return; }
+                payload = string.Concat(_logBuffer);
+                _logBuffer.Clear();
+                _logFlushScheduled = false;
+            }
+
+            try
+            {
+                // Update UI once with accumulated payload
+                RunOnUiThread(() =>
+                {
+                    try
+                    {
+                        if (_logTextView != null)
+                        {
+                            var prev = _logTextView.Text ?? string.Empty;
+                            _logTextView.Text = payload + prev;
+                        }
+                    }
+                    catch { }
+                });
+            }
+            catch { }
+        }
+
+        // local broadcast receiver wrapper
+        class BroadcastReceiver : Android.Content.BroadcastReceiver
+        {
+            public event Action<Context, Intent> Receive = delegate { };
+            public override void OnReceive(Context? context, Intent? intent)
+            {
+                if (context == null || intent == null) return;
+                Receive(context, intent);
+            }
+        }
+
         private static readonly Regex UrlPattern = CreateUrlRegex();
         private static readonly Regex NpubNprofilePattern = CreateNpubNprofileRegex();
         private static readonly Regex NeventNotePattern = CreateNeventNoteRegex();
-        private static readonly string[] evaluator = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng"];
-        private static readonly string[] evaluatorArray = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv"];
+        private static readonly string[] evaluator = new string[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tiff", ".ico", ".apng" };
+        private static readonly string[] evaluatorArray = new string[] { ".mp4", ".mov", ".webm", ".mkv", ".avi", ".flv", ".mpeg", ".mpg", ".3gp", ".ogg", ".ogv", ".m4v", ".ts", ".m2ts", ".wmv" };
 
         [GeneratedRegex("(https?://\\S+|www\\.\\S+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreateUrlRegex();
