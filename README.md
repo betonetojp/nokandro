@@ -4,134 +4,114 @@ Package name: `com.nokakoi.nokandro`
 
 ## Overview
 
-`nokandro` is a lightweight Android app that connects to the Nostr protocol and reads received messages using TTS (Text-to-Speech). You can start and stop the background service from the main screen, and control its operation from the notification area.
+`nokandro` is a lightweight Android app that connects to the Nostr protocol and shares your "Now Playing" music status or reads received messages using TTS (Text-to-Speech). You can start and stop the background service from the main screen, and control its operation from the notification area.
 
 ## Main Features
 
-- Connects to a relay (WebSocket) to receive events in real-time. The default connection is `wss://yabu.me` or a configured relay.
+- Connects to a relay (WebSocket) to receive events (optional) and publish status in real-time.
+- **Text-to-Speech (TTS)**: Reads incoming posts from followed users (if enabled).
+- **Now Playing**: Detects music playing on your device (via notification listener) and publishes it as a Nostr status (kind: 30315).
 - Retrieves the follow list based on the specified `npub` (your public key) and prioritizes reading posts from followed users.
-- Posts from non-followed users can be disabled for reading (via the `Allow non-followed posts` toggle).
-- Different TTS voices can be specified for followed users and others (two voice selections).
-- Displays received messages (last received content) in the main UI.
-- The background service that performs TTS uses foreground notifications, and the service can be stopped from the notification.
+- Different TTS voices can be specified for followed users and others.
+- The background service uses foreground notifications, ensuring stability and allowing stop control from the notification area.
 
 ## Installation and First Launch (APK Distribution)
 
 1. Download and install the provided APK.
-2. On first launch, you may be prompted for permissions such as network or notifications. If not granted, some features may be restricted.
+2. On first launch, you may be prompted for permissions such as notifications. If enabling "Broadcast Now Playing", you will be prompted to grant "Notification Listener" permission.
 
 ## Main Screen Description
 
-- `Follow list: not loaded` — Displays the loading status of the follow list.
-- `Public mute: not loaded` — Displays the loading status of the public mute.
-- `Max characters:` — Specifies the maximum number of characters for display (truncation).
-- `Ellipsis` — Input the string used as the truncation ellipsis (appended when displayed text exceeds `Max characters`, e.g. ` ...` or ` [omitted]`).
-- `Relay (wss://...)` — Enter the URL of the relay to connect to.
-- `Your npub` — Enter your npub (bech32) or 64-character hex public key.
-- `Invalid npub` — Error display if the input is invalid (usually hidden).
-- `Get from Amber` — Retrieve npub from Amber (external signer apps supporting the NIP-55 style intent).
-- `Speak petname` — Toggle whether to prepend the petname from the follow list to the reading.
-- `TTS language` — Select the language filter for voices; used to limit voices shown in `Voice for followed users` and `Voice for non-followed users` spinners.
-- `Voice for followed users` — Select the TTS voice for followed users.
-- `Allow non-followed posts` — Toggle whether to read posts from non-followed users.
-- `Voice for non-followed users` — Select the TTS voice for non-followed users.
-- `Refresh Voices` — Re-fetch available TTS voices.
-- `Speech rate` — Adjust the TTS speech rate with a slider (reflected immediately in the service).
-- `Start` — Start the background service.
-- `Stop` — Stop the background service.
-- `(no note yet)` — The last received message is displayed here.
+- **App Title & Version**: Tap the version number (top right) to open the latest GitHub release page.
+- **Relay**: The URL of the relay to connect to (e.g., `wss://yabu.me`).
+- **Your npub**: Your Nostr public key (bech32 `npub...` or hex).
+- **Your nsec (optional)**: Your Nostr private key (bech32 `nsec...`). Required for publishing "Now Playing" status.
+- **Allow non-followed posts**: Toggle to read posts from users you don't follow.
+- **Broadcast Now Playing**: Toggle to enable publishing your current music track to Nostr. Requires "Notification Listener" permission.
+- **Status**: Debug/status text showing the current music state or broadcast result.
+- **Enable Text-to-Speech**: Master switch for the TTS feature.
+- **(TTS Settings)**:
+  - **TTS language**: Filter available voices by language.
+  - **Voice for followed users**: Select voice for followed users.
+  - **Voice for non-followed users**: Select voice for others.
+  - **Refresh Voices**: Reload available TTS voices.
+  - **Speech rate**: Adjust reading speed.
+- **Start**: Start the background service.
+- **Stop**: Stop the background service.
+- **Follow list / Public mute**: Displays loading status of these lists.
+- **Max characters**: Truncation length for displayed/spoken text.
+- **(Last Content)**: Displays the most recent message received or status update.
 
 ## Follow List and Public Mute
 
-- Follow list: Retrieves the list of public keys followed by the specified `npub` from the relay. The app displays the loading status of the follow list on the screen, and followed posts are prioritized (with different TTS voices or display prefixes), used for reading judgments.
-
-- Public mute: Public keys included in the public mute list provided by the relay or events are excluded from reading. The app also displays the loading status of the public mute on the screen. Muting only affects reading, and handling of logs or internal records depends on the implementation.
+- **Follow list**: Retrieves your follow list from the relay (kind: 3). Followed users get priority handling (voice selection).
+- **Public mute**: Retrieies your mute list (kind: 10000). Muted users are skipped by TTS.
 
 ## Notifications and Service Operation
 
-- While the service is running, it resides in the notification area, and you can stop the service from actions like "Stop".
-- On Android 13 and above, runtime permission for notifications (`POST_NOTIFICATIONS`) may be required.
+- While the service is running, it resides in the notification area.
+- You can stop the service from the "Stop" action in the notification.
 
-## Common Issues and Troubleshooting
+## Common Issues
 
-- Not receiving/reading:
-  - `npub` may not be set, or `Allow others` is off and the user is not followed.
-  - Check network connection or the specified relay URL.
-- TTS not playing:
-  - Check the device's volume/media volume.
-  - If the selected TTS voice is not available on the device, it falls back to the default voice.
-- Cannot stop from notification/service crashes:
-  - Check the device's battery optimization settings or app permissions.
-
-## Signing and Security
-
-- The distributed APK is signed by the distributor. Attempting to overwrite with an APK signed differently will fail installation.
+- **Now Playing not updating**:
+  - Ensure "Notification Listener" permission is granted to nokandro.
+  - Verify your music player posts standard Android media notifications.
+- **TTS not playing**:
+  - Check device volume.
+  - Ensure "Enable Text-to-Speech" is ON.
+- **Service stops unexpectedly**:
+  - Check device battery optimization settings.
 
 ---
 
 ## 概要
 
-`nokandro` は Nostr プロトコルに接続して受信したメッセージを TTS（音声合成）で読み上げる軽量な Android アプリです。メイン画面からバックグラウンドのサービスを起動・停止でき、通知領域で動作を制御します。
+`nokandro` は Nostr プロトコルに接続し、再生中の音楽情報（Now Playing）を共有したり、受信したメッセージを TTS（音声合成）で読み上げる Android アプリです。
 
 ## 主な機能
 
-- リレー（WebSocket）へ接続してリアルタイムでイベントを受信する。デフォルト接続先は `wss://yabu.me` または設定されたリレー。
-- 指定した `npub`（自分の公開鍵）に基づくフォローリストを取得して、フォローしているユーザーの投稿を優先して読み上げる。
-- フォローしていないユーザーの投稿は設定により読み上げを無効化可能（`Allow non-followed posts`切り替え）。
-- フォロー済みユーザーとそれ以外で TTS の声を分けて指定可能（2つのボイス選択）。
-- 受信したメッセージの表示（最後に受信した内容）をメイン画面で確認できます。
-- バックグラウンドで常駐して TTS を行うサービスはフォアグラウンド通知を使用し、通知から停止操作が可能。
+- リレー（WebSocket）へ接続してリアルタイムでイベント送受信を行います。
+- **読み上げ (TTS)**: フォロー中のユーザー等の投稿を読み上げます（有効時）。
+- **Now Playing**: 端末で再生中の音楽（通知リスナー経由）を検知し、Nostrステータス (kind: 30315) として投稿します。
+- 指定した `npub` に基づくフォローリストを取得し、読み上げの判定やボイスの使い分けを行います。
+- バックグラウンドサービスはフォアグラウンド通知を使用し、通知領域から停止操作が可能です。
 
-## インストールと初回起動（APK 配布）
+## インストールと初回起動
 
-1. 提供された APK をダウンロードしてインストールしてください。
-2. 初回起動時にネットワークや通知などの権限を求められることがあります。許可しないと一部機能が制限されます。
+1. APK をインストールしてください。
+2. 初回起動時、通知権限などが求められます。「Broadcast Now Playing」を有効にする際は、別途「通知へのアクセス（Notification Listener）」権限の許可を促されます。
 
 ## メイン画面の説明
 
-- `Follow list: not loaded` — フォローリストの読み込み状態を表示します。
-- `Public mute: not loaded` — 公開ミュートの読み込み状態を表示します。
-- `Max characters:` — 表示用の最大文字数（切り詰め）を指定します。
-- `Ellipsis` — 表示が `Max characters` を超えたときに末尾に付与する省略記号文字列を入力します（例: ` ...`、` [以下略]`）。
-- `Relay (wss://...)` — 接続先リレーの URL を入力します。
-- `Your npub` — 自分の npub（bech32）または 64 文字の hex 公開鍵を入力します。
-- `Invalid npub` — 入力が不正な場合のエラー表示（通常は非表示）。
-- `Get from Amber` — Amber から npub を取得します。
-- `Speak petname` — フォローリスト内の petnameを読み上げの先頭に付けるかどうかの切り替えます。
-- `TTS language` — ボイス選択の言語フィルタ。`Voice for followed users` と `Voice for non-followed users` のスピナーに表示する音声を絞り込みます。
-- `Voice for followed users` — フォロー済みユーザー用の TTS 音声を選択します。
-- `Allow non-followed posts` — フォローしていない投稿を読み上げるかを切り替えます。
-- `Voice for non-followed users` — フォロー外ユーザー用の TTS 音声を選択します。
-- `Refresh Voices` — 利用可能な TTS 音声を再取得します。
-- `Speech rate` — TTS の発話速度をスライダーで調整します（サービスに即時反映されます）。
-- `Start` — バックグラウンドサービスを開始します。
-- `Stop` — バックグラウンドサービスを停止します。
+- **タイトル・バージョン**: 右上のバージョン番号をタップすると、GitHub の最新リリース配布ページを開きます。更新がある場合は赤字で表示されます。
+- **Relay**: 接続先リレーの URL。
+- **Your npub**: 自分の公開鍵 (`npub...` または hex)。
+- **Your nsec (任意)**: 自分の秘密鍵 (`nsec...`)。「Now Playing」の投稿（署名）に必要です。
+- **Allow non-followed posts**: フォローしていないユーザーの投稿も読み上げるかどうかの設定。
+- **Broadcast Now Playing**: 再生中の音楽情報を Nostr に投稿する機能の ON/OFF。ON にするには通知リスナー権限が必要です。
+- **Status**: 現在の音楽情報や投稿ステータスを表示するデバッグ領域。
+- **Enable Text-to-Speech**: TTS 読み上げ機能のメインスイッチ。
+- **(TTS 設定)**:
+  - **TTS language**: ボイス選択リストの言語フィルタ。
+  - **Voice for followed users**: フォロー済みユーザー用の声。
+  - **Voice for non-followed users**: その他のユーザー用の声。
+  - **Refresh Voices**: ボイスリストの再取得。
+  - **Speech rate**: 読み上げ速度の調整。
+- **Start / Stop**: サービスの開始・停止ボタン。
+- **Follow list / Public mute**: リストの読み込み状況表示。
+- **Max characters**: テキスト表示・読み上げの最大文字数制限。
+- **(Last Content)**: 最後に受信したメッセージやステータスログが表示されます。
 
+## 注意点
 
-- `(no note yet)` — ここに最後に受信したメッセージが表示されます。
-
-## フォローリストと公開ミュート（Follow list / Public mute）
-
-- フォローリスト: 指定した `npub` に紐づくフォローしている公開鍵の一覧をリレーから取得します。アプリはフォローリストの読み込み状態を画面上に表示し、フォロー済みの投稿は優先的に扱われ（別の TTS 音声や表示プレフィックスなど）、読み上げの判定に用いられます。
-
-- 公開ミュート: リレーやイベントで提供される公開ミュートリストに含まれる公開鍵は、読み上げ対象から除外されます。
-
-## 通知とサービス動作
-
-- サービス起動中は通知領域に常駐し、「Stop」などのアクションからサービスを停止できます。
-- Android 13 以上では通知の実行時許可（`POST_NOTIFICATIONS`）が必要になる場合があります。
-
-## よくあるトラブルと対処法
-
-- 受信できない／読み上げない:
-  - `npub` が未設定、または `Allow others` がオフで該当ユーザーがフォローされていない可能性があります。
-  - ネットワーク接続や指定したリレー URL を確認してください。
-- TTS が再生されない:
-  - 端末の音量・メディア音量を確認してください。
-  - 選択した TTS の声が端末で利用できない場合はデフォルトの声にフォールバックされます。
-- 通知から停止できない・サービスが落ちる:
-  - 端末の電池最適化設定やアプリ権限を確認してください。
+- **Now Playing が投稿されない**:
+  - Android 設定で `nokandro` に「通知へのアクセス」権限が許可されているか確認してください。
+  - 音楽プレイヤーアプリが標準的なメディア通知を出している必要があります。
+- **TTS が聞こえない**:
+  - 音量設定や `Enable Text-to-Speech` スイッチを確認してください。
 
 ## 署名と安全性
 
-- 配布される APK は配布元が署名しています。署名が異なる APK を上書きしようとするとインストールに失敗します。
+- 本アプリは nsec（秘密鍵）を取り扱います。外部流出しないよう端末内に保存されますが、利用は自己責任でお願いします。
+

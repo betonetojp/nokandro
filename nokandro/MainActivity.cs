@@ -66,6 +66,22 @@ namespace nokandro
                 }
                 catch { }
                 verTv?.Text = versionName;
+                if (verTv != null)
+                {
+                    verTv.Clickable = true;
+                    // Add underline to indicate link
+                    verTv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                    verTv.Click += (s, e) =>
+                    {
+                        try
+                        {
+                            var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse("https://github.com/betonetojp/nokandro/releases/latest"));
+                            StartActivity(intent);
+                        }
+                        catch { }
+                    };
+                    _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0");
+                }
 
                 try
                 {
@@ -287,6 +303,19 @@ namespace nokandro
                 return false;
             }
 
+            bool IsNsecValid()
+            {
+                if (nsec == null) return false;
+                var t = nsec.Text?.Trim() ?? "";
+                if (!t.StartsWith("nsec1")) return false;
+                try
+                {
+                    var (hrp, data) = Bech32Decode(t);
+                    return hrp == "nsec" && data != null;
+                }
+                catch { return false; }
+            }
+
             // restore saved relay + npub + nsec
             string savedEllipsis = " ...";
             try
@@ -383,6 +412,9 @@ namespace nokandro
                  {
                      try
                      {
+                         // Update musicSwitch enabled state
+                         SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid());
+
                          var t = nsec.Text?.Trim() ?? "";
                          if (t.StartsWith("nsec1"))
                          {
@@ -664,7 +696,7 @@ namespace nokandro
                 SetControlEnabled(voiceOther, !NostrService.IsRunning);
                 SetControlEnabled(refreshVoices, !NostrService.IsRunning);
                 SetControlEnabled(voiceLang, !NostrService.IsRunning);
-                try { SetControlEnabled(musicSwitch, !NostrService.IsRunning); } catch { }
+                try { SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
             }
             catch { }
@@ -679,6 +711,39 @@ namespace nokandro
                         try { Toast.MakeText(this, "Invalid npub format", ToastLength.Short).Show(); } catch { }
                         if (npubError != null) { npubError.Text = "Invalid npub format"; npubError.Visibility = ViewStates.Visible; }
                         return;
+                    }
+                }
+                catch { }
+
+                // Check for notification listener permission if Now Playing is enabled
+                try
+                {
+                    if (musicSwitch != null && musicSwitch.Checked)
+                    {
+                        var enabledListeners = Android.Provider.Settings.Secure.GetString(ContentResolver, "enabled_notification_listeners");
+                        var hasPerm = !string.IsNullOrEmpty(enabledListeners) && (enabledListeners?.Contains(PackageName) ?? false);
+                        if (!hasPerm)
+                        {
+                            try
+                            {
+                                new Android.App.AlertDialog.Builder(this)
+                                    .SetTitle("Permission Required")
+                                    .SetMessage("To use Now Playing, you must grant the Notification Listener permission.")
+                                    .SetPositiveButton("Grant", (sender, args) =>
+                                    {
+                                        try
+                                        {
+                                            var intent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
+                                            StartActivity(intent);
+                                        }
+                                        catch { try { Toast.MakeText(this, "Could not open settings", ToastLength.Short).Show(); } catch { } }
+                                    })
+                                    .SetNegativeButton("Cancel", (sender, args) => { })
+                                    .Show();
+                            }
+                            catch { }
+                            return;
+                        }
                     }
                 }
                 catch { }
@@ -776,7 +841,7 @@ namespace nokandro
                 SetControlEnabled(voiceOther, true);
                 SetControlEnabled(refreshVoices, true);
                 try { SetControlEnabled(voiceLang, true); } catch { }
-                try { SetControlEnabled(musicSwitch, true); } catch { }
+                try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, true); } catch { }
                 // speechSeek remains enabled
             };
@@ -822,7 +887,7 @@ namespace nokandro
                             try { SetControlEnabled(voiceFollowed, true); } catch { }
                             try { SetControlEnabled(voiceOther, true); } catch { }
                             try { SetControlEnabled(refreshVoices, true); } catch { }
-                            try { SetControlEnabled(musicSwitch, true); } catch { }
+                            try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
                             // speechSeek remains enabled
                         });
@@ -1461,6 +1526,48 @@ namespace nokandro
             }
             catch { }
             _langPopulating = false;
+        }
+
+        private async Task CheckForUpdateAsync(TextView verTv, string currentVer)
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient();
+                client.DefaultRequestHeaders.UserAgent.TryParseAdd("nokandro");
+                client.Timeout = TimeSpan.FromSeconds(10);
+                var json = await client.GetStringAsync("https://api.github.com/repos/betonetojp/nokandro/releases/latest");
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("tag_name", out var tagEl))
+                {
+                    var latestTag = tagEl.GetString(); 
+                    if (!string.IsNullOrEmpty(latestTag) && IsNewer(currentVer, latestTag))
+                    {
+                         RunOnUiThread(() => 
+                         {
+                             try 
+                             { 
+                                 verTv.Text = $"{currentVer} -> {latestTag}";
+                                 verTv.SetTextColor(Android.Graphics.Color.Red);
+                             } catch {}
+                         });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static bool IsNewer(string current, string latest)
+        {
+             var v1 = ParseVersion(current);
+             var v2 = ParseVersion(latest);
+             return v2 > v1;
+        }
+
+        private static Version ParseVersion(string v)
+        {
+            var s = v.TrimStart('v', 'V');
+            if (Version.TryParse(s, out var ver)) return ver;
+            return new Version(0,0,0);
         }
 
         // local broadcast receiver wrapper
