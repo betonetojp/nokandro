@@ -25,55 +25,6 @@
             android:text="Public mute: not loaded"
             android:layout_marginBottom="2dp" />
 
-        <TextView
-            android:id="@+id/musicStatusDebugText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Music: (waiting)"
-            android:textColor="#008800"
-            android:layout_marginBottom="4dp" />
-
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="2dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Max characters:" />
-
-            <EditText
-                android:id="@+id/truncateEdit"
-                android:layout_width="80dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:hint="20"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="2dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Ellipsis:" />
-
-            <EditText
-                android:id="@+id/truncateEllipsisEdit"
-                android:layout_width="120dp"
-                android:layout_height="wrap_content"
-                android:hint=" ..."
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
-
         <!-- Relay / npub inputs -->
         <EditText
             android:id="@+id/relayEdit"
@@ -105,13 +56,62 @@
             android:visibility="gone"
             android:text="Invalid npub" />
         
-        <!-- Get from Amber -->
-        <Button
-            android:id="@+id/amberGetBtn"
+        <Switch
+            android:id="@+id/ttsSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enable Text-to-Speech"
+            android:checked="true"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp" />
+
+        <LinearLayout
+            android:id="@+id/ttsSettingsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Get from Amber" />
-		
+            android:orientation="vertical">
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Max characters:" />
+
+            <EditText
+                android:id="@+id/truncateEdit"
+                android:layout_width="80dp"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:hint="50"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ellipsis:" />
+
+            <EditText
+                android:id="@+id/truncateEllipsisEdit"
+                android:layout_width="120dp"
+                android:layout_height="wrap_content"
+                android:hint=" ..."
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
 		<!-- Option: speak petname switch -->
 		<Switch
             android:id="@+id/speakPetnameSwitch"
@@ -194,6 +194,7 @@
             android:max="200"
             android:progress="100"
 			android:layout_marginBottom="4dp" />
+        </LinearLayout>
 
 		<Switch
             android:id="@+id/musicStatusSwitch"
@@ -203,12 +204,12 @@
             android:layout_marginTop="4dp"
             android:layout_marginBottom="4dp" />
 
-        <Button
-            android:id="@+id/authAmberBtn"
+        <TextView
+            android:id="@+id/musicStatusDebugText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Authorize Amber for Updates"
-            android:visibility="gone"
+            android:text="Music: (waiting)"
+            android:textColor="#008800"
             android:layout_marginBottom="4dp" />
 
         <Button

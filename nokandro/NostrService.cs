@@ -51,6 +51,9 @@ namespace nokandro
         private string? _voiceFollowedName;
         private string? _voiceOtherName;
 
+        // TTS Status
+        private bool _enableTts = true;
+
         // Music Status
         private bool _enableMusicStatus = false;
         private string? _lastMusicLog;
@@ -155,6 +158,7 @@ namespace nokandro
                 try { _speakPetname = intent.GetBooleanExtra("speakPetname", _speakPetname); } catch { }
                 try { _truncateEllipsis = intent.GetStringExtra("truncateEllipsis") ?? _truncateEllipsis; } catch { }
                 try { _enableMusicStatus = intent.GetBooleanExtra("enableMusicStatus", false); } catch { }
+                try { _enableTts = intent.GetBooleanExtra("enableTts", true); } catch { }
 
                 // register for runtime updates to truncate ellipsis from Activity while running
                 // (Already registered in OnCreate with updated filter, so this block might be redundant or could be removed/simplified if we trust OnCreate logic.
@@ -346,8 +350,11 @@ namespace nokandro
                 await SendTextAsync(reqFollowJson, ct);
                 AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
                 await SendTextAsync(reqMuteJson, ct);
-                AppLog.D(TAG, "Sending events request: " + reqEventsJson);
-                await SendTextAsync(reqEventsJson, ct);
+                if (_enableTts)
+                {
+                    AppLog.D(TAG, "Sending events request: " + reqEventsJson);
+                    await SendTextAsync(reqEventsJson, ct);
+                }
 
                 // If we have current music info (recieved via broadcast while connecting), send it now
                 if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
@@ -785,7 +792,14 @@ namespace nokandro
             }
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
 
-            SpeakText(content, pitch, speechRate, isFollowed, petname);
+            if (_enableTts)
+            {
+                SpeakText(content, pitch, speechRate, isFollowed, petname);
+            }
+            else
+            {
+                AppLog.D(TAG, "Speech skipped (TTS disabled)");
+            }
         }
 
         private void SpeakText(string text, float pitch, float rate, bool isFollowed, string? petname)
@@ -1237,7 +1251,7 @@ namespace nokandro
             _isMusicPlaying = playing;
 
             // Debug logging for UI
-            BroadcastMusicPostStatus($"Media: {(playing ? "Play" : "Pause")} {title ?? "?"} (en={_enableMusicStatus})");
+            BroadcastMusicPostStatus($"Media: {(playing ? "Play" : "Pause")} {title ?? "?"}");
 
             if (!_enableMusicStatus) 
             {
@@ -1258,7 +1272,7 @@ namespace nokandro
             if (!isTrackChanged && (now - _lastMusicTime).TotalSeconds < 5.0) 
             {
                  // throttled
-                 BroadcastMusicPostStatus("Skipped (Throttled)");
+                 // BroadcastMusicPostStatus("Skipped (Throttled)");
                  return; 
             }
             
