@@ -16,11 +16,13 @@ namespace nokandro
         const string PREF_VOICE_LANG = "pref_voice_lang";
         const string PREF_RELAY = "pref_relay";
         const string PREF_NPUB = "pref_npub";
+        const string PREF_NSEC = "pref_nsec";
         const string PREF_SIGNER_PACKAGE = "pref_signer_package";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
         const string PREF_TRUNCATE_ELLIPSIS = "pref_truncate_ellipsis";
         const string PREF_ALLOW_OTHERS = "pref_allow_others";
         const string PREF_SPEAK_PETNAME = "pref_speak_petname";
+        const string PREF_MUSIC_STATUS = "pref_music_status";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 20;
 
@@ -28,6 +30,7 @@ namespace nokandro
         private const int RC_GET_PUBKEY = 1002;
 
         private TextView? _lastContentView;
+        private TextView? _musicDebugText;
         private BroadcastReceiver? _receiver;
         private BroadcastReceiver? _serviceStateReceiver;
         // keep references to EditText fields used elsewhere
@@ -38,6 +41,7 @@ namespace nokandro
         private bool _langPopulating = false;
         private List<string> _availableLangCodes = [];
         private string? _lastSelectedLangCode = null;
+        private string _lastMusicInfo = "Music: (waiting)"; // State holder for music info
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -112,6 +116,7 @@ namespace nokandro
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
             var npubEdit = FindViewById<EditText>(Resource.Id.npubEdit);
+            var nsecEdit = FindViewById<EditText>(Resource.Id.nsecEdit);
             var amberBtn = FindViewById<Button>(Resource.Id.amberGetBtn);
             var allowOthersSwitch = FindViewById<Switch>(Resource.Id.allowOthersSwitch);
             var voiceFollowedSpinner = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
@@ -139,7 +144,15 @@ namespace nokandro
             var speechRateValue = speechRateValueId != 0 ? FindViewById<TextView>(speechRateValueId) : null;
             var startBtn = FindViewById<Button>(Resource.Id.startBtn);
             var stopBtn = FindViewById<Button>(Resource.Id.stopBtn);
+            
+            // New views
+            var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
+            var authAmberBtn = FindViewById<Button>(Resource.Id.authAmberBtn);
+            var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
+            var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
+            
             _lastContentView = FindViewById<TextView>(Resource.Id.lastContentText);
+            _musicDebugText = FindViewById<TextView>(Resource.Id.musicStatusDebugText);
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
@@ -168,6 +181,7 @@ namespace nokandro
             // From this point locals are known to be non-null — create non-nullable aliases to inform the compiler
             var relay = (EditText)relayEdit!;
             var npub = (EditText)npubEdit!;
+            var nsec = (EditText?)nsecEdit;
             // keep reference for updating from incoming intents
             _npubEdit_field = npub;
             var allowOthers = (Switch)allowOthersSwitch!;
@@ -274,13 +288,14 @@ namespace nokandro
                 return false;
             }
 
-            // restore saved relay + npub and truncate length and ellipsis if present
+            // restore saved relay + npub + nsec
             string savedEllipsis = " ...";
             try
             {
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                 relay.Text = prefs.GetString(PREF_RELAY, "wss://yabu.me");
                 npub.Text = prefs.GetString(PREF_NPUB, string.Empty);
+                if (nsec != null) nsec.Text = prefs.GetString(PREF_NSEC, string.Empty);
                 var savedLen = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
                 truncate.Text = savedLen.ToString();
                 // read saved ellipsis string (default " ...")
@@ -289,6 +304,9 @@ namespace nokandro
                 allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
                 // restore speak petname switch
                 try { speakPetSwitch?.Checked = prefs.GetBoolean(PREF_SPEAK_PETNAME, true); } catch { }
+                // restore music status
+                try { if (musicSwitch != null) musicSwitch.Checked = prefs.GetBoolean(PREF_MUSIC_STATUS, false); } catch { }
+
                 // restore saved speech rate (mapped range 0.50..1.50)
                 try
                 {
@@ -360,6 +378,42 @@ namespace nokandro
                 }
                 catch { }
             };
+            
+            // Handle nsec changes
+            if (nsec != null)
+            {
+                 nsec.TextChanged += (s, e) => 
+                 {
+                     try
+                     {
+                         var t = nsec.Text?.Trim() ?? "";
+                         if (t.StartsWith("nsec1"))
+                         {
+                             var (hrp, data) = Bech32Decode(t);
+                             if (hrp == "nsec" && data != null)
+                             {
+                                 var priv = ConvertBits(data, 5, 8, false);
+                                 if (priv != null && priv.Length == 32)
+                                 {
+                                     var pub = NostrCrypto.GetPublicKey(priv);
+                                     var pub5 = ConvertBits(pub, 8, 5, true);
+                                     var npubStr = Bech32Encode("npub", pub5);
+                                     RunOnUiThread(() => npub.Text = npubStr);
+                                     
+                                     // Save nsec
+                                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                                     var edit = prefs?.Edit();
+                                     if(edit != null) {
+                                         edit.PutString(PREF_NSEC, t);
+                                         edit.Apply();
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                     catch {}
+                 };
+            }
 
             // save allowOthers when toggled
             allowOthers.CheckedChange += (s, e) =>
@@ -376,6 +430,92 @@ namespace nokandro
                 }
                 catch { }
             };
+
+            // music switch logic
+            if (musicSwitch != null)
+            {
+                void CheckListenerPerm()
+                {
+                    try
+                    {
+                        if (musicSwitch.Checked)
+                        {
+                            var enabledListeners = Android.Provider.Settings.Secure.GetString(ContentResolver, "enabled_notification_listeners");
+                            var hasPerm = !string.IsNullOrEmpty(enabledListeners) && enabledListeners.Contains(PackageName);
+                            if (grantBtn != null) grantBtn.Visibility = hasPerm ? ViewStates.Gone : ViewStates.Visible;
+                            // Show auth button if enabled
+                            if (authAmberBtn != null) authAmberBtn.Visibility = ViewStates.Visible;
+                            if (testPostBtn != null) testPostBtn.Visibility = ViewStates.Visible;
+                        }
+                        else
+                        {
+                            if (grantBtn != null) grantBtn.Visibility = ViewStates.Gone;
+                            if (authAmberBtn != null) authAmberBtn.Visibility = ViewStates.Gone;
+                            if (testPostBtn != null) testPostBtn.Visibility = ViewStates.Gone;
+                        }
+                    }
+                    catch { }
+                }
+
+                musicSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutBoolean(PREF_MUSIC_STATUS, musicSwitch.Checked);
+                            edit.Apply();
+                        }
+                        CheckListenerPerm();
+
+                        // Notify running service
+                        var intent = new Intent("nokandro.ACTION_SET_MUSIC_STATUS");
+                        intent.PutExtra("enabled", musicSwitch.Checked);
+                        LocalBroadcast.SendBroadcast(this, intent);
+                    }
+                    catch { }
+                };
+                
+                // Initial check
+                CheckListenerPerm();
+            }
+
+            // Implement Auth Amber button logic: Disable/Hide
+            if (authAmberBtn != null)
+            {
+                authAmberBtn.Visibility = ViewStates.Gone;
+                // authAmberBtn.Click += (s, e) => ...
+            }
+
+            // Test Post Button logic
+            if (testPostBtn != null)
+            {
+                testPostBtn.Click += (s, e) =>
+                {
+                   if (!NostrService.IsRunning)
+                   {
+                        Toast.MakeText(this, "Start service first", ToastLength.Short).Show();
+                        return;
+                   }
+                   var intent = new Intent("nokandro.ACTION_TEST_POST");
+                   LocalBroadcast.SendBroadcast(this, intent);
+                };
+            }
+
+            if (grantBtn != null)
+            {
+                grantBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        var intent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
+                        StartActivity(intent);
+                    }
+                    catch { try { Toast.MakeText(this, "Could not open settings", ToastLength.Short).Show(); } catch { } }
+                };
+            }
 
             // save truncate length when edit loses focus
             if (truncate != null)
@@ -490,7 +630,7 @@ namespace nokandro
                         // Provide optional default permissions for user to approve permanently
                         try
                         {
-                            var permissionsJson = "[{\"type\":\"sign_event\",\"kind\":22242},{\"type\":\"nip44_decrypt\"}]";
+                            var permissionsJson = "[{\"type\":\"sign_event\",\"kind\":22242},{\"type\":\"sign_event\",\"kind\":30315},{\"type\":\"nip44_decrypt\"}]";
                             intent.PutExtra("permissions", permissionsJson);
                         }
                         catch { }
@@ -544,14 +684,17 @@ namespace nokandro
                         }
                         catch { }
 
-                        // Use StartActivityForResult to receive pubkey/package back
-                        StartActivityForResult(intent, RC_GET_PUBKEY);
+                        // DISABLING Amber Logic
+                        // Just use StartActivityForResult to receive pubkey/package back
+                        // StartActivityForResult(intent, RC_GET_PUBKEY);
                     }
                     catch
                     {
                         try { Toast.MakeText(this, "Failed to invoke Amber (no handler)", ToastLength.Short).Show(); } catch { }
                     }
                 };
+                // Hide amberBtn too
+                amberBtn.Visibility = ViewStates.Gone;
             }
 
             // set initial start/stop button state from service flag and npub validity
@@ -562,6 +705,7 @@ namespace nokandro
                 // disable all settings if service already running
                 SetControlEnabled(relay, !NostrService.IsRunning);
                 SetControlEnabled(npub, !NostrService.IsRunning);
+                if (nsec != null) SetControlEnabled(nsec, !NostrService.IsRunning);
                 SetControlEnabled(truncate, !NostrService.IsRunning);
                 try { SetControlEnabled(truncateEllipsis, !NostrService.IsRunning); } catch { }
                 SetControlEnabled(amberBtn, !NostrService.IsRunning);
@@ -571,6 +715,7 @@ namespace nokandro
                 SetControlEnabled(voiceOther, !NostrService.IsRunning);
                 SetControlEnabled(refreshVoices, !NostrService.IsRunning);
                 SetControlEnabled(voiceLang, !NostrService.IsRunning);
+                try { SetControlEnabled(musicSwitch, !NostrService.IsRunning); } catch { }
             }
             catch { }
 
@@ -594,6 +739,8 @@ namespace nokandro
 
                 intent.PutExtra("relay", relay.Text ?? "wss://yabu.me");
                 intent.PutExtra("npub", npub.Text ?? string.Empty);
+                if (nsec != null) intent.PutExtra("nsec", nsec.Text ?? string.Empty);
+
                 intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("truncateLen", truncateLen);
                 // include user-configured ellipsis for truncation
@@ -614,6 +761,8 @@ namespace nokandro
                 intent.PutExtra("speechRate", speechRate);
                 // pass speakPetname preference to service so it consistently uses the UI setting
                 try { intent.PutExtra("speakPetname", speakPetSwitch == null || speakPetSwitch.Checked); } catch { }
+                // pass music status preference
+                try { intent.PutExtra("enableMusicStatus", musicSwitch != null && musicSwitch.Checked); } catch { }
 
                 // Reset UI status to not loaded; service will broadcast updates when lists are loaded
                 try { followStatus.Text = "Follow list: not loaded"; } catch { }
@@ -628,6 +777,7 @@ namespace nokandro
                     edit.PutString(PREF_VOICE_OTHER, otherVoice);
                     edit.PutString(PREF_RELAY, relay.Text ?? "wss://yabu.me");
                     edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
+                    edit.PutString(PREF_NSEC, nsec != null ? nsec.Text ?? string.Empty : string.Empty);
                     edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
                     // persist speech rate as mapped value (0.50..1.50)
@@ -644,6 +794,7 @@ namespace nokandro
                 // disable all settings while running
                 SetControlEnabled(relay, false);
                 SetControlEnabled(npub, false);
+                if (nsec != null) SetControlEnabled(nsec, false);
                 SetControlEnabled(truncate, false);
                 try { SetControlEnabled(truncateEllipsis, false); } catch { }
                 SetControlEnabled(amberBtn, false);
@@ -653,6 +804,7 @@ namespace nokandro
                 SetControlEnabled(voiceOther, false);
                 SetControlEnabled(refreshVoices, false);
                 SetControlEnabled(voiceLang, false);
+                try { SetControlEnabled(musicSwitch, false); } catch { }
             };
 
             stop.Click += (s, e) =>
@@ -663,6 +815,7 @@ namespace nokandro
                 // re-enable all settings
                 SetControlEnabled(relay, true);
                 SetControlEnabled(npub, true);
+                if (nsec != null) SetControlEnabled(nsec, true);
                 SetControlEnabled(truncate, true);
                 try { SetControlEnabled(truncateEllipsis, true); } catch { }
                 SetControlEnabled(amberBtn, true);
@@ -672,6 +825,7 @@ namespace nokandro
                 SetControlEnabled(voiceOther, true);
                 SetControlEnabled(refreshVoices, true);
                 try { SetControlEnabled(voiceLang, true); } catch { }
+                try { SetControlEnabled(musicSwitch, true); } catch { }
                 // speechSeek remains enabled
 
                 // Immediately reset follow/mute UI to not loaded when stopping
@@ -693,6 +847,7 @@ namespace nokandro
                             try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
                             try { SetControlEnabled(relay, false); } catch { }
                             try { SetControlEnabled(npub, false); } catch { }
+                            if (nsec != null) try { SetControlEnabled(nsec, false); } catch { }
                             try { SetControlEnabled(truncate, false); } catch { }
                             try { SetControlEnabled(truncateEllipsis, false); } catch { }
                             try { SetControlEnabled(amberBtn, false); } catch { }
@@ -711,6 +866,7 @@ namespace nokandro
                             try { SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text)); SetControlEnabled(stop, false); } catch { }
                             try { SetControlEnabled(relay, true); } catch { }
                             try { SetControlEnabled(npub, true); } catch { }
+                            if (nsec != null) try { SetControlEnabled(nsec, true); } catch { }
                             try { SetControlEnabled(truncate, true); } catch { }
                             try { SetControlEnabled(truncateEllipsis, true); } catch { }
                             try { SetControlEnabled(amberBtn, true); } catch { }
@@ -719,6 +875,7 @@ namespace nokandro
                             try { SetControlEnabled(voiceFollowed, true); } catch { }
                             try { SetControlEnabled(voiceOther, true); } catch { }
                             try { SetControlEnabled(refreshVoices, true); } catch { }
+                            try { SetControlEnabled(musicSwitch, true); } catch { }
                             // speechSeek remains enabled
 
                             // Ensure follow/mute UI reflect unloaded state when service has stopped
@@ -775,6 +932,35 @@ namespace nokandro
             _receiver = new BroadcastReceiver();
             _receiver.Receive += (ctx, intent) =>
             {
+                if (intent.Action == "nokandro.ACTION_MEDIA_STATUS")
+                {
+                    var artist = intent.GetStringExtra("artist") ?? "";
+                    var title = intent.GetStringExtra("title") ?? "";
+                    var playing = intent.GetBooleanExtra("playing", false);
+                    _lastMusicInfo = playing ? $"Music: {title} - {artist}" : "Music: (paused)";
+                    RunOnUiThread(() => { if (_musicDebugText != null) _musicDebugText.Text = _lastMusicInfo; });
+                    return;
+                }
+
+                if (intent.Action == "nokandro.ACTION_MUSIC_POST_STATUS")
+                {
+                    var status = intent.GetStringExtra("status") ?? "";
+                    RunOnUiThread(() => 
+                    { 
+                        if (_musicDebugText != null) 
+                        {
+                            var current = _musicDebugText.Text ?? "";
+                            if (!current.Contains("Status:")) current = _lastMusicInfo;
+                            // If current already has Status line, replace it
+                            var idx = current.IndexOf("\nStatus:");
+                            if (idx >= 0) current = current.Substring(0, idx);
+                            
+                            _musicDebugText.Text = current + "\nStatus: " + status;
+                        }
+                    });
+                    return;
+                }
+
                 if (intent.Action == "nokandro.ACTION_FOLLOW_UPDATE")
                 {
                     var loaded = intent.GetBooleanExtra("followLoaded", false);
@@ -812,6 +998,8 @@ namespace nokandro
             filter.AddAction(ACTION_LAST_CONTENT);
             filter.AddAction("nokandro.ACTION_FOLLOW_UPDATE");
             filter.AddAction("nokandro.ACTION_MUTE_UPDATE");
+            filter.AddAction("nokandro.ACTION_MEDIA_STATUS");
+            filter.AddAction("nokandro.ACTION_MUSIC_POST_STATUS");
             LocalBroadcast.RegisterReceiver(_receiver, filter);
 #pragma warning restore CS8600,CS8601,CS8602
         }
@@ -994,6 +1182,34 @@ namespace nokandro
                 });
             }
             catch { }
+        }
+
+        private static (string? hrp, byte[]? data) Bech32Decode(string bech)
+        {
+            if (string.IsNullOrEmpty(bech)) return (null, null);
+            bech = bech.ToLowerInvariant();
+            var pos = bech.LastIndexOf('1');
+            if (pos < 1 || pos + 7 > bech.Length) return (null, null); 
+            var hrp = bech[..pos];
+            var dataPart = bech[(pos + 1)..];
+            var data = new byte[dataPart.Length];
+            for (int i = 0; i < dataPart.Length; i++)
+            {
+                var idx = Bech32Chars.IndexOf(dataPart[i]);
+                if (idx == -1) return (null, null);
+                data[i] = (byte)idx;
+            }
+
+            // verify checksum
+            var hrpExpanded = HrpExpand(hrp);
+            var values = new List<byte>();
+            values.AddRange(hrpExpanded);
+            values.AddRange(data);
+            if (Polymod([.. values]) != 1) return (null, null);
+
+            var payload = new byte[data.Length - 6];
+            Array.Copy(data, 0, payload, 0, payload.Length);
+            return (hrp, payload);
         }
 
         private static byte[] HexToBytes(string hex)

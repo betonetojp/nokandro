@@ -25,6 +25,14 @@
             android:text="Public mute: not loaded"
             android:layout_marginBottom="2dp" />
 
+        <TextView
+            android:id="@+id/musicStatusDebugText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Music: (waiting)"
+            android:textColor="#008800"
+            android:layout_marginBottom="4dp" />
+
         <LinearLayout
             android:orientation="horizontal"
             android:layout_width="match_parent"
@@ -74,10 +82,18 @@
             android:hint="Relay (wss://...)" />
 
         <EditText
+            android:id="@+id/nsecEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Your nsec (Archive for posting)"
+            android:inputType="textPassword"
+            android:fontFamily="sans-serif" />
+
+        <EditText
             android:id="@+id/npubEdit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Your npub" />
+            android:hint="Your npub (derived from nsec or manual)" />
 
         <!-- Validation error for npub -->
         <TextView
@@ -178,6 +194,38 @@
             android:max="200"
             android:progress="100"
 			android:layout_marginBottom="4dp" />
+
+		<Switch
+            android:id="@+id/musicStatusSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Broadcast Now Playing"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/authAmberBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Authorize Amber for Updates"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/testPostBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Test Post (Kind 1)"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/grantListenerBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Grant Notification Access"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp" />
 
         <Button
             android:id="@+id/startBtn"

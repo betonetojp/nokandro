@@ -7,6 +7,7 @@
       <category android:name="android.intent.category.BROWSABLE" />
       <data android:scheme="nostrsigner" />
     </intent>
+    <package android:name="com.greenart7c3.nostrsigner" />
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />

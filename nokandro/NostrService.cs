@@ -5,6 +5,7 @@ using Android.Speech.Tts;
 using Android.Util;
 using System.Diagnostics;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SysText = System.Text;
@@ -33,6 +34,7 @@ namespace nokandro
         private string _npub = string.Empty;
         private bool _allowOthers = false;
         private readonly CancellationTokenSource _cts = new();
+        private readonly SemaphoreSlim _wsLock = new(1, 1); // WebSocket send lock
         private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
         private Dictionary<string, string> _petnames = [];
         private HashSet<string> _muted = []; // store muted hex pubkeys (public mute lists)
@@ -43,14 +45,30 @@ namespace nokandro
         private float _speechRate = 1.0f;
         private bool _speakPetname = false;
         private BroadcastReceiver? _localReceiver;
+        private byte[]? _privKey; // hex privKey bytes
 
         // Voice selection names received from UI
         private string? _voiceFollowedName;
         private string? _voiceOtherName;
 
+        // Music Status
+        private bool _enableMusicStatus = false;
+        private string? _lastMusicLog;
+        private string? _lastSentMusicIdentifier; // To track actual content changes for throttling
+        private DateTime _lastMusicTime = DateTime.MinValue;
+        
+        // Tracks current media state for Test Post
+        private string? _currentArtist;
+        private string? _currentTitle;
+        private bool _isMusicPlaying = false;
+
         private const string BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
         private static readonly uint[] BECH32_GENERATOR = [0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u];
         private const string ACTION_MUTE_UPDATE = "nokandro.ACTION_MUTE_UPDATE";
+        
+        // Actions
+        private const string ACTION_SET_MUSIC_STATUS = "nokandro.ACTION_SET_MUSIC_STATUS";
+        private const string ACTION_TEST_POST = "nokandro.ACTION_TEST_POST";
 
         public override void OnCreate()
         {
@@ -76,6 +94,10 @@ namespace nokandro
                 _localReceiver = new LocalReceiver(this);
                 var filter = new IntentFilter();
                 filter.AddAction("nokandro.ACTION_SET_SPEECH_RATE");
+                filter.AddAction("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS");
+                filter.AddAction("nokandro.ACTION_MEDIA_STATUS");
+                filter.AddAction(ACTION_SET_MUSIC_STATUS);
+                filter.AddAction(ACTION_TEST_POST);
                 LocalBroadcast.RegisterReceiver(_localReceiver, filter);
             }
             catch { }
@@ -107,6 +129,21 @@ namespace nokandro
             {
                 _relay = intent.GetStringExtra("relay") ?? _relay;
                 _npub = intent.GetStringExtra("npub") ?? _npub;
+                // nsec process
+                var nsec = intent.GetStringExtra("nsec");
+                if (!string.IsNullOrEmpty(nsec))
+                {
+                    try
+                    {
+                        var (hrp, data) = Bech32Decode(nsec);
+                        if (hrp == "nsec" && data != null)
+                        {
+                            _privKey = ConvertBits(data, 5, 8, false);
+                        }
+                    }
+                    catch { }
+                }
+
                 _allowOthers = intent.GetBooleanExtra("allowOthers", false);
                 _truncateLen = intent.GetIntExtra("truncateLen", _truncateLen);
 
@@ -117,19 +154,12 @@ namespace nokandro
                 try { _speechRate = intent.GetFloatExtra("speechRate", _speechRate); } catch { }
                 try { _speakPetname = intent.GetBooleanExtra("speakPetname", _speakPetname); } catch { }
                 try { _truncateEllipsis = intent.GetStringExtra("truncateEllipsis") ?? _truncateEllipsis; } catch { }
+                try { _enableMusicStatus = intent.GetBooleanExtra("enableMusicStatus", false); } catch { }
 
                 // register for runtime updates to truncate ellipsis from Activity while running
-                try
-                {
-                    if (_localReceiver == null)
-                    {
-                        _localReceiver = new LocalReceiver(this);
-                        var f2 = new IntentFilter();
-                        f2.AddAction("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS");
-                        LocalBroadcast.RegisterReceiver(_localReceiver, f2);
-                    }
-                }
-                catch { }
+                // (Already registered in OnCreate with updated filter, so this block might be redundant or could be removed/simplified if we trust OnCreate logic.
+                // But OnStartCommand logic ensures parameters are read from intent.)
+                // To be safe, we just leave the OnCreate registration as the source of truth for dynamic updates.
             }
 
             // Compute PendingIntent flags once and reuse
@@ -319,6 +349,13 @@ namespace nokandro
                 AppLog.D(TAG, "Sending events request: " + reqEventsJson);
                 await SendTextAsync(reqEventsJson, ct);
 
+                // If we have current music info (recieved via broadcast while connecting), send it now
+                if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
+                {
+                    AppLog.D(TAG, "Sending initial music status after connection");
+                    _ = HandleMusicUpdateAsync(_currentArtist, _currentTitle, true);
+                }
+
                 var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
                 var sb = new System.Text.StringBuilder();
 
@@ -361,7 +398,18 @@ namespace nokandro
             var seg = new ArraySegment<byte>(bytes);
             try
             {
-                await _ws.SendAsync(seg, WebSocketMessageType.Text, true, ct);
+                await _wsLock.WaitAsync(ct);
+                try
+                {
+                    if (_ws.State == WebSocketState.Open)
+                    {
+                        await _ws.SendAsync(seg, WebSocketMessageType.Text, true, ct);
+                    }
+                }
+                finally
+                {
+                    _wsLock.Release();
+                }
             }
             catch (Exception ex)
             {
@@ -1088,9 +1136,321 @@ namespace nokandro
                         AppLog.D(TAG, "Truncate ellipsis updated: " + ell);
                         return;
                     }
+                    if (ACTION_SET_MUSIC_STATUS.Equals(intent.Action))
+                    {
+                        var enabled = intent.GetBooleanExtra("enabled", false);
+                        _service._enableMusicStatus = enabled;
+                        AppLog.D(TAG, "Music status enabled updated: " + enabled);
+                        // Also reset last log to force update?
+                        _service._lastMusicLog = null; 
+                        return;
+                    }
+                    if (ACTION_TEST_POST.Equals(intent.Action))
+                    {
+                        _ = _service.HandleTestPostAsync();
+                        return;
+                    }
+                    if ("nokandro.ACTION_MEDIA_STATUS".Equals(intent.Action))
+                    {
+                        var artist = intent.GetStringExtra("artist");
+                        var title = intent.GetStringExtra("title");
+                        var playing = intent.GetBooleanExtra("playing", false);
+                        _ = _service.HandleMusicUpdateAsync(artist, title, playing);
+                        return;
+                    }
                 }
                 catch (Exception ex) { AppLog.W(TAG, "LocalReceiver.OnReceive error: " + ex.Message); }
             }
+        }
+
+        private async Task HandleTestPostAsync()
+        {
+            try
+            {
+                BroadcastMusicPostStatus("Test post initiated...");
+                if (string.IsNullOrEmpty(_npub))
+                {
+                    BroadcastMusicPostStatus("Test failed: No npub");
+                    return;
+                }
+                var pubkey = _npub.StartsWith("npub") ? DecodeBech32Npub(_npub) : NormalizeHexPubkey(_npub);
+                if (string.IsNullOrEmpty(pubkey))
+                {
+                    BroadcastMusicPostStatus("Test failed: Invalid val");
+                    return;
+                }
+
+                if (_privKey == null)
+                {
+                    BroadcastMusicPostStatus("Test failed: No nsec");
+                    return;
+                }
+
+                long createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                
+                // Construct content based on current playing state
+                string content;
+                if (_isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
+                {
+                    content = $"Now playing {_currentTitle} - {_currentArtist}";
+                }
+                else
+                {
+                    content = $"Test post from Nokandro {DateTime.Now}";
+                }
+
+                string tagsJson = "[]";
+                
+                // Sign locally
+                BroadcastMusicPostStatus("Signing Test Post...");
+                var eventId = ComputeEventId(pubkey, createdAt, 1, tagsJson, content);
+                var sig = NostrCrypto.Sign(eventId, _privKey);
+                var idHex = BytesToHex(eventId);
+                var sigHex = BytesToHex(sig);
+                var contentJson = EscapeJsonString(content);
+                
+                var signedJson = $"{{\"kind\":1,\"created_at\":{createdAt},\"tags\":[],\"content\":{contentJson},\"pubkey\":\"{pubkey}\",\"id\":\"{idHex}\",\"sig\":\"{sigHex}\"}}";
+                
+                if (!string.IsNullOrEmpty(signedJson))
+                {
+                    BroadcastMusicPostStatus("Signed. Sending...");
+                    await SendTextAsync($"[\"EVENT\",{signedJson}]", CancellationToken.None);
+                    BroadcastMusicPostStatus("Test Post Sent!");
+                }
+                else
+                {
+                    BroadcastMusicPostStatus("Test Sign Failed (null)");
+                }
+            }
+            catch (Exception ex)
+            {
+                 BroadcastMusicPostStatus("Test Error: " + ex.Message);
+                AppLog.E(TAG, "Test Error: " + ex);
+            }
+        }
+
+        private async Task HandleMusicUpdateAsync(string? artist, string? title, bool playing)
+        {
+            // Update internal state for Test Post
+            _currentArtist = artist;
+            _currentTitle = title;
+            _isMusicPlaying = playing;
+
+            // Debug logging for UI
+            BroadcastMusicPostStatus($"Media: {(playing ? "Play" : "Pause")} {title ?? "?"} (en={_enableMusicStatus})");
+
+            if (!_enableMusicStatus) 
+            {
+                // Optionally broadcast "Disabled" if playing to help debug?
+                if (playing) BroadcastMusicPostStatus("Service: Music status disabled");
+                return;
+            }
+            if (string.IsNullOrEmpty(title) && playing) return;
+            
+            // Build identifier for change detection
+            var currentIdentifier = playing ? $"{artist} - {title}" : "PAUSED";
+            
+            // Check if track actually changed compared to what we successfully sent last time
+            bool isTrackChanged = currentIdentifier != _lastSentMusicIdentifier;
+
+            var now = DateTime.UtcNow;
+            // Throttle only if track hasn't changed (e.g. repeated play/pause or duplicate events)
+            if (!isTrackChanged && (now - _lastMusicTime).TotalSeconds < 5.0) 
+            {
+                 // throttled
+                 BroadcastMusicPostStatus("Skipped (Throttled)");
+                 return; 
+            }
+            
+            // NOTE: We update _lastMusicTime and _lastMusicLog regardless of success to prevent spamming logs
+            _lastMusicTime = now;
+            _lastMusicLog = currentIdentifier;
+
+            try
+            {
+                if (string.IsNullOrEmpty(_npub))
+                {
+                    BroadcastMusicPostStatus("No npub");
+                    return;
+                }
+                var pubkey = _npub.StartsWith("npub") ? DecodeBech32Npub(_npub) : NormalizeHexPubkey(_npub);
+                if (string.IsNullOrEmpty(pubkey))
+                {
+                    BroadcastMusicPostStatus("Invalid pubkey");
+                    return;
+                }
+                
+                if (_privKey == null)
+                {
+                    BroadcastMusicPostStatus("No nsec provided");
+                    return;
+                }
+
+                BroadcastMusicPostStatus("Signing Update...");
+
+                long createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                string content = playing ? $"{title} - {artist}" : "";
+                
+                long exp = createdAt + (playing ? 600 : 0); // 10 mins expiration if playing
+                
+                // kind=30315
+                // If paused/clearing, we don't necessarily need expiration, but if 0 is passed it might be weird.
+                // If exp is same as createdAt, it expires immediately.
+                string tagsJson;
+                if (playing)
+                {
+                    tagsJson = $"[[\"d\",\"music\"],[\"expiration\",\"{exp}\"]]";
+                }
+                else
+                {
+                    // clearing status
+                    tagsJson = $"[[\"d\",\"music\"]]";
+                }
+                
+                var eventId = ComputeEventId(pubkey, createdAt, 30315, tagsJson, content);
+                var sig = NostrCrypto.Sign(eventId, _privKey);
+                
+                var idHex = BytesToHex(eventId);
+                var sigHex = BytesToHex(sig);
+                var contentJson = EscapeJsonString(content);
+
+                var signedJson = $"{{\"kind\":30315,\"created_at\":{createdAt},\"tags\":{tagsJson},\"content\":{contentJson},\"pubkey\":\"{pubkey}\",\"id\":\"{idHex}\",\"sig\":\"{sigHex}\"}}";
+                
+                if (!string.IsNullOrEmpty(signedJson))
+                {
+                    BroadcastMusicPostStatus("Sending Update...");
+                    AppLog.D(TAG, "Publishing music status: " + content);
+                    await SendTextAsync($"[\"EVENT\",{signedJson}]", CancellationToken.None);
+                    
+                    // Update the last sent identifier on success
+                    _lastSentMusicIdentifier = currentIdentifier;
+                    
+                    BroadcastMusicPostStatus("Status Sent: " + (playing ? "Playing" : "Cleared"));
+                }
+            }
+            catch (Exception ex)
+            {
+                BroadcastMusicPostStatus("Error: " + ex.Message);
+                AppLog.W(TAG, "Music update failed: " + ex.Message);
+            }
+        }
+
+        private byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
+        {
+             var sb = new System.Text.StringBuilder();
+             sb.Append("[0,\"");
+             sb.Append(pubkey);
+             sb.Append("\",");
+             sb.Append(createdAt);
+             sb.Append(",");
+             sb.Append(kind);
+             sb.Append(",");
+             sb.Append(tagsJson);
+             sb.Append(",");
+             sb.Append(EscapeJsonString(content));
+             sb.Append("]");
+             
+             var raw = sb.ToString();
+             using var sha = SHA256.Create();
+             return sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
+        }
+
+        private static string EscapeJsonString(string text)
+        {
+            if (text == null) return "null";
+            var sb = new System.Text.StringBuilder();
+            sb.Append('"');
+            foreach (var c in text)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ')
+                        {
+                            sb.Append($"\\u{(int)c:x4}");
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                        break;
+                }
+            }
+            sb.Append('"');
+            return sb.ToString();
+        }
+
+        private void BroadcastMusicPostStatus(string status)
+        {
+            try
+            {
+                var intent = new Intent("nokandro.ACTION_MUSIC_POST_STATUS");
+                intent.PutExtra("status", status);
+                LocalBroadcast.SendBroadcast(this, intent);
+            }
+            catch { }
+        }
+
+        private string? SignWithAmberContentProvider(string unsignedJson)
+        {
+            try
+            {
+                // URI for Amber's sign_event
+                var uri = Android.Net.Uri.Parse("content://com.greenart7c3.nostrsigner.SIGN_EVENT");
+                // Pass the JSON event as the first item in selectionArgs
+                string[] args = [unsignedJson];
+
+                // Ensure strict selection using the user's npub if available
+                var selectionArg = "1";
+                try
+                {
+                    if (!string.IsNullOrEmpty(_npub))
+                    {
+                        if (_npub.StartsWith("npub")) selectionArg = _npub;
+                        else
+                        {
+                            var np = EncodeHexToNpub(_npub);
+                            if (!string.IsNullOrEmpty(np)) selectionArg = np;
+                        }
+                    }
+                }
+                catch { }
+                
+                // Query(Uri uri, string? projection, string? selection, string[]? selectionArgs, string? sortOrder)
+                using var cursor = ContentResolver?.Query(uri, null, selectionArg, args, null);
+                if (cursor == null)
+                {
+                    BroadcastMusicPostStatus("Sign failed: Cursor null (Amber missing?)");
+                    return null;
+                }
+                if (cursor.MoveToFirst())
+                {
+                    // Amber returns the result in column index 0 (or "event" column?)
+                    // Usually it returns the *signature* or the *signed event*?
+                    // According to NIP-55 "Content Provider", it returns the signature or signed event.
+                    // Amber source code returns a Cursor with column "signature" and "event" (field 'event' contains the full JSON).
+                    var idx = cursor.GetColumnIndex("event");
+                    if (idx < 0) idx = 0; // fallback
+                    return cursor.GetString(idx);
+                }
+                else
+                {
+                     BroadcastMusicPostStatus("Sign failed: Cursor empty (Check Amber auth)");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.W(TAG, "SignWithAmberContentProvider error: " + ex.Message);
+                BroadcastMusicPostStatus("Sign Error: " + ex.Message);
+            }
+            return null;
         }
 
 
