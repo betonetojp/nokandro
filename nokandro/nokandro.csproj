@@ -5,9 +5,9 @@
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationId>com.companyname.nokandro</ApplicationId>
-    <ApplicationVersion>5</ApplicationVersion>
-    <ApplicationDisplayVersion>0.5.0</ApplicationDisplayVersion>
+    <ApplicationId>com.nokakoi.nokandro</ApplicationId>
+    <ApplicationVersion>6</ApplicationVersion>
+    <ApplicationDisplayVersion>0.5.1</ApplicationDisplayVersion>
     <!--
       Use conservative trimming to avoid runtime removal of APIs needed by JSON parsing and TTS.
       'link' is a valid TrimMode for publishing; setting 'none' caused ILLink errors.

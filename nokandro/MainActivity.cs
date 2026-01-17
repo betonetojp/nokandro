@@ -827,23 +827,9 @@ namespace nokandro
             stop.Click += (s, e) =>
             {
                 var intent = new Intent(this, typeof(NostrService));
-                StopService(intent);
-                try { SetControlEnabled(start, true); SetControlEnabled(stop, false); } catch { }
-                // re-enable all settings
-                SetControlEnabled(relay, true);
-                SetControlEnabled(npub, true);
-                if (nsec != null) SetControlEnabled(nsec, true);
-                SetControlEnabled(truncate, true);
-                try { SetControlEnabled(truncateEllipsis, true); } catch { }
-                SetControlEnabled(allowOthers, true);
-                SetControlEnabled(speakPetSwitch, true);
-                SetControlEnabled(voiceFollowed, true);
-                SetControlEnabled(voiceOther, true);
-                SetControlEnabled(refreshVoices, true);
-                try { SetControlEnabled(voiceLang, true); } catch { }
-                try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
-                try { SetControlEnabled(ttsSwitch, true); } catch { }
-                // speechSeek remains enabled
+                intent.SetAction("STOP");
+                StartService(intent);
+                try { SetControlEnabled(stop, false); } catch { }
             };
 
             // register for service start/stop broadcasts to update button state
@@ -1011,6 +997,30 @@ namespace nokandro
             filter.AddAction("nokandro.ACTION_MUSIC_POST_STATUS");
             LocalBroadcast.RegisterReceiver(_receiver, filter);
 #pragma warning restore CS8600,CS8601,CS8602
+        }
+
+        protected override void OnPause()
+        {
+            base.OnPause();
+            try
+            {
+                // Save current state to preferences to prevent data loss when Activity is recreated
+                // (e.g. going to Settings to allow restricted notification listener permissions)
+                var relay = FindViewById<EditText>(Resource.Id.relayEdit);
+                var npub = FindViewById<EditText>(Resource.Id.npubEdit);
+                var nsec = FindViewById<EditText>(Resource.Id.nsecEdit);
+
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var edit = prefs?.Edit();
+                if (edit != null)
+                {
+                    if (relay != null) edit.PutString(PREF_RELAY, relay.Text ?? string.Empty);
+                    if (npub != null) edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
+                    if (nsec != null) edit.PutString(PREF_NSEC, nsec.Text ?? string.Empty);
+                    edit.Apply();
+                }
+            }
+            catch { }
         }
 
         protected override void OnResume()

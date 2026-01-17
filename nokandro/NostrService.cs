@@ -123,8 +123,32 @@ namespace nokandro
             AppLog.D(TAG, "OnStartCommand: action=" + (intent?.Action ?? "(null)"));
             if (intent != null && intent.Action == "STOP")
             {
-                // Stop requested from notification action
-                StopSelf();
+                // Stop requested from notification action or UI
+                // If music status is enabled, try to clear it before stopping
+                if (_enableMusicStatus && _ws != null && _ws.State == WebSocketState.Open)
+                {
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await HandleMusicUpdateAsync(null, null, false);
+                            // Short delay to ensure message goes out if needed, though await should suffice
+                            await Task.Delay(200);
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.W(TAG, "Failed to clear music status: " + ex.Message);
+                        }
+                        finally
+                        {
+                            StopSelf();
+                        }
+                    });
+                }
+                else
+                {
+                    StopSelf();
+                }
                 return StartCommandResult.NotSticky;
             }
 
@@ -249,6 +273,13 @@ namespace nokandro
             {
                 var b = new Intent("nokandro.ACTION_SERVICE_STARTED");
                 LocalBroadcast.SendBroadcast(this, b);
+
+                // Request immediate media status update if available
+                if (_enableMusicStatus)
+                {
+                    var req = new Intent("nokandro.ACTION_REQUEST_MEDIA_STATUS");
+                    LocalBroadcast.SendBroadcast(this, req);
+                }
             }
             catch { }
 
@@ -398,9 +429,9 @@ namespace nokandro
             catch (Exception ex) { AppLog.E(TAG, "RunAsync failed: " + ex); }
         }
 
-        private async Task SendTextAsync(string text, CancellationToken ct)
+        private async Task<bool> SendTextAsync(string text, CancellationToken ct)
         {
-            if (_ws == null) { AppLog.W(TAG, "SendTextAsync called but _ws is null"); return; }
+            if (_ws == null) { AppLog.W(TAG, "SendTextAsync called but _ws is null"); return false; }
             var bytes = SysText.Encoding.UTF8.GetBytes(text);
             var seg = new ArraySegment<byte>(bytes);
             try
@@ -411,6 +442,7 @@ namespace nokandro
                     if (_ws.State == WebSocketState.Open)
                     {
                         await _ws.SendAsync(seg, WebSocketMessageType.Text, true, ct);
+                        return true;
                     }
                 }
                 finally
@@ -422,6 +454,7 @@ namespace nokandro
             {
                 AppLog.W(TAG, "SendTextAsync failed: " + ex.Message);
             }
+            return false;
         }
 
         private void HandleRawMessage(string data)
@@ -1334,12 +1367,19 @@ namespace nokandro
                 {
                     BroadcastMusicPostStatus("Sending Update...");
                     AppLog.D(TAG, "Publishing music status: " + content);
-                    await SendTextAsync($"[\"EVENT\",{signedJson}]", CancellationToken.None);
+                    var success = await SendTextAsync($"[\"EVENT\",{signedJson}]", CancellationToken.None);
                     
-                    // Update the last sent identifier on success
-                    _lastSentMusicIdentifier = currentIdentifier;
+                    if (success)
+                    {
+                        // Update the last sent identifier on success
+                        _lastSentMusicIdentifier = currentIdentifier;
                     
-                    BroadcastMusicPostStatus("Status Sent: " + (playing ? "Playing" : "Cleared"));
+                        BroadcastMusicPostStatus("Status Sent: " + (playing ? "Playing" : "Cleared"));
+                    }
+                    else
+                    {
+                         BroadcastMusicPostStatus("Status Send Failed (Connection)");
+                    }
                 }
             }
             catch (Exception ex)

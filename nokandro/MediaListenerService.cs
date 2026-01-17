@@ -19,6 +19,7 @@ namespace nokandro
         private MediaSessionManager? _sessionManager;
         private SessionCallback? _sessionCallback;
         private ComponentName? _componentName;
+        private BroadcastReceiver? _requestReceiver;
         private readonly Dictionary<MediaController, MediaControllerCallback> _controllerCallbacks = [];
 
         public override void OnListenerConnected()
@@ -37,6 +38,10 @@ namespace nokandro
                     var controllers = _sessionManager.GetActiveSessions(_componentName);
                     UpdateControllers(controllers);
                 }
+
+                _requestReceiver = new RequestReceiver(this);
+                var filter = new IntentFilter("nokandro.ACTION_REQUEST_MEDIA_STATUS");
+                LocalBroadcast.RegisterReceiver(_requestReceiver, filter);
             }
             catch (Exception ex)
             {
@@ -50,8 +55,37 @@ namespace nokandro
             {
                 try { _sessionManager.RemoveOnActiveSessionsChangedListener(_sessionCallback); } catch { }
             }
+            if (_requestReceiver != null)
+            {
+                try { LocalBroadcast.UnregisterReceiver(_requestReceiver); } catch { }
+                _requestReceiver = null;
+            }
             CleanupCallbacks();
             base.OnListenerDisconnected();
+        }
+
+        private void BroadcastCurrentState()
+        {
+            lock (_controllerCallbacks)
+            {
+                foreach (var cb in _controllerCallbacks.Values)
+                {
+                    try { cb.CheckAndBroadcast(); } catch { }
+                }
+            }
+        }
+
+        private class RequestReceiver : BroadcastReceiver
+        {
+            private readonly MediaListenerService _svc;
+            public RequestReceiver(MediaListenerService svc) => _svc = svc;
+            public override void OnReceive(Context? context, Intent? intent)
+            {
+                if (intent?.Action == "nokandro.ACTION_REQUEST_MEDIA_STATUS")
+                {
+                    _svc.BroadcastCurrentState();
+                }
+            }
         }
 
         private void CleanupCallbacks()
