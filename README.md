@@ -63,6 +63,16 @@ Package name: `com.nokakoi.nokandro`
 - **Service stops unexpectedly**:
   - Check device battery optimization settings.
 
+## ⚠️ For Android 13+ Users
+
+Due to added features, "Notification Access" permission is now required.
+When installing the APK downloaded from GitHub, you might see a "Restricted Settings" message when trying to enable this permission, and the switch may be greyed out.
+
+In that case, please follow these steps to allow restricted settings:
+1. Go to Android Settings -> "Apps" -> "nokandro".
+2. Tap the menu in the top right corner (three dots) and select "Allow restricted settings".
+3. Return to the app and try enabling the permission switch again.
+
 ---
 
 ## 概要
@@ -114,4 +124,14 @@ Package name: `com.nokakoi.nokandro`
 ## 署名と安全性
 
 - 本アプリは nsec（秘密鍵）を取り扱います。外部流出しないよう端末内に保存されますが、利用は自己責任でお願いします。
+
+## ⚠️ Android 13以降をお使いの方へ
+
+機能追加に伴い、「通知へのアクセス」権限が必要になりました。
+GithubからAPKをダウンロードしてインストールした場合、権限を有効にする際に「制限付き設定」というメッセージが表示され、スイッチが押せないことがあります。
+
+その場合は、以下の手順で制限を解除してください：
+1. Androidの本体設定から「アプリ」→「nokandro」を開く
+2. 右上のメニュー（︙）から「制限付き設定を許可」を選択
+3. 再度アプリ内のスイッチから権限を有効にしてください
 
