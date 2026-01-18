@@ -26,11 +26,24 @@
             android:layout_marginBottom="2dp" />
 
         <!-- Relay / npub inputs -->
-        <EditText
-            android:id="@+id/relayEdit"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Relay (wss://...)" />
+            android:orientation="horizontal">
+            <EditText
+                android:id="@+id/relayEdit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Relay (wss://...)"
+                android:inputType="textUri" />
+            <Button
+                android:id="@+id/fetchRelaysBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▼"
+                android:minWidth="48dp" />
+        </LinearLayout>
 
         <EditText
             android:id="@+id/nsecEdit"

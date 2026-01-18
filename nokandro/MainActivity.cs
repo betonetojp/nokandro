@@ -4,6 +4,10 @@ using Android.Speech.Tts;
 using Android.Views;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace nokandro
 {
@@ -158,6 +162,7 @@ namespace nokandro
             var speechRateValue = speechRateValueId != 0 ? FindViewById<TextView>(speechRateValueId) : null;
             var startBtn = FindViewById<Button>(Resource.Id.startBtn);
             var stopBtn = FindViewById<Button>(Resource.Id.stopBtn);
+            var fetchRelaysBtn = FindViewById<Button>(Resource.Id.fetchRelaysBtn);
             
             // New views
             var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
@@ -679,6 +684,11 @@ namespace nokandro
                 }
             };
 
+            if (fetchRelaysBtn != null)
+            {
+                fetchRelaysBtn.Click += async (s, e) => await FetchRelayListAsync(relay, npub);
+            }
+
             // set initial start/stop button state from service flag and npub validity
             try
             {
@@ -686,6 +696,7 @@ namespace nokandro
                 SetControlEnabled(stop, NostrService.IsRunning);
                 // disable all settings if service already running
                 SetControlEnabled(relay, !NostrService.IsRunning);
+                try { SetControlEnabled(fetchRelaysBtn, !NostrService.IsRunning); } catch { }
                 SetControlEnabled(npub, !NostrService.IsRunning);
                 if (nsec != null) SetControlEnabled(nsec, !NostrService.IsRunning);
                 SetControlEnabled(truncate, !NostrService.IsRunning);
@@ -810,6 +821,7 @@ namespace nokandro
                 try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
                 // disable inputs during run
                 SetControlEnabled(relay, false);
+                try { SetControlEnabled(fetchRelaysBtn, false); } catch { }
                 SetControlEnabled(npub, false);
                 if (nsec != null) SetControlEnabled(nsec, false);
                 SetControlEnabled(truncate, false);
@@ -845,6 +857,7 @@ namespace nokandro
                         {
                             try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
                             try { SetControlEnabled(relay, false); } catch { }
+                            try { SetControlEnabled(fetchRelaysBtn, false); } catch { }
                             try { SetControlEnabled(npub, false); } catch { }
                             if (nsec != null) try { SetControlEnabled(nsec, false); } catch { }
                             try { SetControlEnabled(truncate, false); } catch { }
@@ -864,6 +877,7 @@ namespace nokandro
                         {
                             try { SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text)); SetControlEnabled(stop, false); } catch { }
                             try { SetControlEnabled(relay, true); } catch { }
+                            try { SetControlEnabled(fetchRelaysBtn, true); } catch { }
                             try { SetControlEnabled(npub, true); } catch { }
                             if (nsec != null) try { SetControlEnabled(nsec, true); } catch { }
                             try { SetControlEnabled(truncate, true); } catch { }
@@ -1536,6 +1550,145 @@ namespace nokandro
             }
             catch { }
             _langPopulating = false;
+        }
+
+        private async Task FetchRelayListAsync(EditText relayEdit, EditText npubEdit)
+        {
+            var npub = npubEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(npub))
+            {
+                Toast.MakeText(this, "Enter npub first", ToastLength.Short).Show();
+                return;
+            }
+            
+            string? pubkeyHex = null;
+            if (CreateHex64Regex().IsMatch(npub)) pubkeyHex = npub.ToLowerInvariant();
+            else 
+            {
+                try
+                {
+                   var (hrp, data) = Bech32Decode(npub);
+                   if (hrp == "npub" && data != null)
+                   {
+                       var bytes = ConvertBits(data, 5, 8, false);
+                       if (bytes != null && bytes.Length == 32)
+                       {
+                           pubkeyHex = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+                       }
+                   }
+                }
+                catch {}
+            }
+            
+            if (string.IsNullOrEmpty(pubkeyHex))
+            {
+                Toast.MakeText(this, "Invalid npub", ToastLength.Short).Show();
+                return;
+            }
+
+            var dialog = new Android.App.ProgressDialog(this);
+            dialog.SetMessage("Fetching relay list...");
+            dialog.SetCancelable(false);
+            dialog.Show();
+
+            var currentRelay = relayEdit.Text?.Trim();
+            var relaysToTry = new List<string>();
+            if (!string.IsNullOrEmpty(currentRelay)) relaysToTry.Add(currentRelay);
+            relaysToTry.Add("wss://relay.damus.io");
+            relaysToTry.Add("wss://nos.lol");
+            relaysToTry.Add("wss://yabu.me");
+            var uniqueRelays = relaysToTry.Distinct().ToList();
+
+            HashSet<string> foundRelays = new HashSet<string>();
+
+            await Task.Run(async () =>
+            {
+                foreach (var relayUrl in uniqueRelays)
+                {
+                    if (string.IsNullOrEmpty(relayUrl) || (!relayUrl.StartsWith("wss://") && !relayUrl.StartsWith("ws://"))) continue;
+
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        using var ws = new ClientWebSocket();
+                        await ws.ConnectAsync(new Uri(relayUrl), cts.Token);
+                        
+                        var subId = "relaylist" + new Random().Next(1000);
+                        var req = $"[\"REQ\",\"{subId}\",{{\"kinds\":[10002],\"authors\":[\"{pubkeyHex}\"],\"limit\":1}}]";
+                        var bytes = Encoding.UTF8.GetBytes(req);
+                        await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cts.Token);
+
+                        var buffer = new byte[8192];
+                        while (ws.State == WebSocketState.Open && !cts.IsCancellationRequested)
+                        {
+                             var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                             var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                             
+                             if (msg.Contains("EOSE")) break; 
+                             if (msg.Contains("EVENT"))
+                             {
+                                 try 
+                                 {
+                                     using var doc = JsonDocument.Parse(msg);
+                                     var root = doc.RootElement;
+                                     if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() >= 3 && root[0].GetString() == "EVENT")
+                                     {
+                                         var ev = root[2];
+                                         if (ev.TryGetProperty("kind", out var k) && k.GetInt32() == 10002)
+                                         {
+                                             if (ev.TryGetProperty("tags", out var tags))
+                                             {
+                                                 foreach (var tag in tags.EnumerateArray())
+                                                 {
+                                                     if (tag.GetArrayLength() >= 2 && tag[0].GetString() == "r")
+                                                     {
+                                                         var r = tag[1].GetString();
+                                                         if (!string.IsNullOrEmpty(r)) foundRelays.Add(r);
+                                                     }
+                                                 }
+                                             }
+                                             break; 
+                                         }
+                                     }
+                                 }
+                                 catch {}
+                             }
+                        }
+                        if (foundRelays.Count > 0) break;
+                    }
+                    catch (Exception ex) 
+                    { 
+                         Android.Util.Log.Warn("nokandro", $"Fetch relay list failed on {relayUrl}: {ex.Message}");
+                    }
+                }
+            });
+            
+            
+            try { RunOnUiThread(() => dialog.Dismiss()); } catch {}
+
+            if (foundRelays.Count == 0)
+            {
+                RunOnUiThread(() => Toast.MakeText(this, "No relay list found (kind 10002)", ToastLength.Short).Show());
+                return;
+            }
+
+            var list = foundRelays.OrderBy(x => x).ToArray();
+            RunOnUiThread(() =>
+            {
+                new Android.App.AlertDialog.Builder(this)
+                    .SetTitle("Select Relay")
+                    .SetItems(list, (s, e) =>
+                    {
+                        var selected = list[e.Which];
+                        relayEdit.Text = selected;
+                        try
+                        {
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            prefs?.Edit()?.PutString(PREF_RELAY, selected)?.Apply();
+                        } catch {}
+                    })
+                    .Show();
+            });
         }
 
         private async Task CheckForUpdateAsync(TextView verTv, string currentVer)
