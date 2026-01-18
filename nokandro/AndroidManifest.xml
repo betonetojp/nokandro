@@ -8,6 +8,10 @@
       <data android:scheme="nostrsigner" />
     </intent>
     <package android:name="com.greenart7c3.nostrsigner" />
+    <!-- Allow querying for TTS engines -->
+    <intent>
+      <action android:name="android.intent.action.TTS_SERVICE" />
+    </intent>
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
