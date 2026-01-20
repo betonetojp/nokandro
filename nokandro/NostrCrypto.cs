@@ -43,16 +43,90 @@ namespace nokandro
             
             var P = Multiply(G, d);
             // BIP-340: return x-coordinate of P, 32 bytes
-            // Also if P.y is odd, we store that? NO, standard x-only pubkey is just x.
-            // But Schnorr expects P to be even Y. If P.y is odd, we negate d?
-            // BIP-340 rule for pubkey generation: Let P = d'G. If has_even_y(P), set pk = x(P). Otherwise set pk = x(P).
-            // Actually secret key should be negated if Y is odd?
-            // wait: BIP340 says: "The secret key sk: a 32-byte array... Let d' = int(sk). Fail if d' = 0 or d' >= n. Let P = d'G. If has_even_y(P), let d = d'. Otherwise, let d = n - d'. Let pk = bytes(x(P)). Return (sk, pk)."
-            // Wait, this means we might adjust the private key internaly for signing?
-            // "The auxiliary random data a: a 32-byte array."
-            // Nostr uses standard BIP-340 keys. 
-            // Usually we just compute P and take X. 
             return BigIntToBytes(P.X, 32);
+        }
+
+        // --- NIP-04 Encryption/Decryption ---
+
+        public static string? Decrypt(string content, string pubkeyHex, byte[] privKey)
+        {
+            try
+            {
+                var parts = content.Split("?iv=");
+                if (parts.Length != 2) return null;
+                var ciphertext = parts[0];
+                var ivBase64 = parts[1];
+                
+                var sharedSecret = GetSharedSecret(HexStringToBytes(pubkeyHex), privKey);
+                if (sharedSecret == null) return null;
+
+                using var aes = Aes.Create();
+                aes.Key = sharedSecret;
+                aes.IV = Convert.FromBase64String(ivBase64);
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using var decryptor = aes.CreateDecryptor();
+                var cipherBytes = Convert.FromBase64String(ciphertext);
+                var plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
+                return Encoding.UTF8.GetString(plainBytes);
+            }
+            catch 
+            {
+                return null;
+            }
+        }
+
+        private static byte[]? GetSharedSecret(byte[] pubKeyX, byte[] privKey)
+        {
+            try
+            {
+                var P_B = LiftX(pubKeyX);
+                if (P_B.IsInfinity) return null;
+
+                var d = BytesToBigInt(privKey);
+                var S = Multiply(P_B, d);
+
+                if (S.IsInfinity) return null;
+                return BigIntToBytes(S.X, 32);
+            }
+            catch { return null; }
+        }
+
+        private static Point LiftX(byte[] xBytes)
+        {
+            if (xBytes.Length != 32) return Point.Infinity;
+            var x = BytesToBigInt(xBytes);
+            if (x >= P) return Point.Infinity;
+
+            // y^2 = x^3 + 7
+            var ySq = (BigInteger.ModPow(x, 3, P) + 7) % P;
+            var y = ModSqrt(ySq, P);
+            
+            if (y == -1) return Point.Infinity; // no sqrt
+
+            // Enforce even Y
+            if (y % 2 != 0) y = P - y;
+
+            return new Point(x, y);
+        }
+
+        private static BigInteger ModSqrt(BigInteger a, BigInteger p)
+        {
+            // For P = 3 mod 4, sqrt(a) = a^((p+1)/4) mod p
+            // 2^256 - 2^32 - 977 is 3 mod 4.
+            // Check legendre symbol (a^((p-1)/2)) to ensure root exists? 
+            if (BigInteger.ModPow(a, (p - 1) / 2, p) != 1) return -1;
+            
+            return BigInteger.ModPow(a, (p + 1) / 4, p);
+        }
+
+        private static byte[] HexStringToBytes(string hex)
+        {
+             if (hex.Length % 2 != 0) return new byte[0];
+             var bytes = new byte[hex.Length / 2];
+             for (int i = 0; i < bytes.Length; i++) bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+             return bytes;
         }
 
         // Helper to get normalized public key bytes and verify evenness (optional)

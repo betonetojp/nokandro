@@ -692,7 +692,7 @@ namespace nokandro
         {
             var newSet = new HashSet<string>();
 
-            // Similar parsing to UpdateFollowedFromEvent: prefer tags, fallback to content
+            // 1. Process public mutes in tags
             if (eventObj.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array)
             {
                 foreach (var tag in tagsEl.EnumerateArray())
@@ -718,11 +718,34 @@ namespace nokandro
                     }
                 }
             }
-            else
+
+            // 2. Process private mutes (encrypted content) or fallback plaintext
+            if (eventObj.TryGetProperty("content", out var contentEl))
             {
-                if (eventObj.TryGetProperty("content", out var contentEl))
+                var content = contentEl.GetString() ?? string.Empty;
+                if (!string.IsNullOrEmpty(content))
                 {
-                    var content = contentEl.GetString() ?? string.Empty;
+                    // Check if encrypted
+                    if (content.Contains("?iv=") && _privKey != null && eventObj.TryGetProperty("pubkey", out var pkEl))
+                    {
+                        var pk = pkEl.GetString();
+                        if (!string.IsNullOrEmpty(pk))
+                        {
+                            pk = NormalizeHexPubkey(pk);
+                            if (!string.IsNullOrEmpty(pk))
+                            {
+                                // Decrypt using author's pubkey (self) as it is encrypted to self
+                                var plain = NostrCrypto.Decrypt(content, pk, _privKey);
+                                if (!string.IsNullOrEmpty(plain))
+                                {
+                                    AppLog.D(TAG, "Successfully decrypted private mute list");
+                                    content = plain!; // Use decrypted content for parsing below
+                                }
+                            }
+                        }
+                    }
+
+                    // Parse content (plaintext or decrypted)
                     try
                     {
                         using var doc = JsonDocument.Parse(content);
@@ -732,57 +755,27 @@ namespace nokandro
                             {
                                 if (el.ValueKind == JsonValueKind.Array && el.GetArrayLength() >= 2)
                                 {
-                                    var candidate = el[1].GetString();
-                                    if (string.IsNullOrEmpty(candidate)) continue;
-                                    var hex = candidate;
-                                    if (candidate.StartsWith("npub"))
+                                    var tagType = el[0].GetString();
+                                    if (tagType == "p")
                                     {
-                                        var decoded = DecodeBech32Npub(candidate);
-                                        if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
+                                        var candidate = el[1].GetString();
+                                        if (string.IsNullOrEmpty(candidate)) continue;
+                                        var hex = candidate;
+                                        if (candidate.StartsWith("npub"))
+                                        {
+                                            var decoded = DecodeBech32Npub(candidate);
+                                            if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
+                                        }
+                                        hex = NormalizeHexPubkey(hex);
+                                        if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                     }
-                                    hex = NormalizeHexPubkey(hex);
-                                    if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            var parts = content.Split(' ', ',', '\n', '\r');
-                            foreach (var p in parts)
-                            {
-                                var t = p.Trim();
-                                if (string.IsNullOrEmpty(t)) continue;
-                                if (t.StartsWith("npub"))
-                                {
-                                    var decoded = DecodeBech32Npub(t);
-                                    if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
-                                }
-                                else
-                                {
-                                    var hex = NormalizeHexPubkey(t);
-                                    if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                 }
                             }
                         }
                     }
                     catch
                     {
-                        var parts = content.Split(' ', ',', '\n', '\r');
-                        foreach (var p in parts)
-                        {
-                            var t = p.Trim();
-                            if (string.IsNullOrEmpty(t)) continue;
-                            if (t.StartsWith("npub"))
-                            {
-                                var decoded = DecodeBech32Npub(t);
-                                if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
-                            }
-                            else
-                            {
-                                var hex = NormalizeHexPubkey(t);
-                                if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
-                            }
-                        }
+                         // Parsing failed or not JSON; ignore or try fallback
                     }
                 }
             }
