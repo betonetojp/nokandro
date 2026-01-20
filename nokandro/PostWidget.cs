@@ -48,6 +48,8 @@ namespace nokandro
                         var voiceOther = prefs.GetString("pref_voice_other", null);
                         var speechRate = prefs.GetFloat("pref_speech_rate", 1.0f);
                         var musicStatus = prefs.GetBoolean("pref_music_status", false);
+                        var enableTts = prefs.GetBoolean("pref_enable_tts", true);
+                        var speakPetname = prefs.GetBoolean("pref_speak_petname", false);
                         var truncateLen = prefs.GetInt("pref_truncate_len", 50);
                         var truncateEllipsis = prefs.GetString("pref_truncate_ellipsis", " ...");
 
@@ -59,6 +61,8 @@ namespace nokandro
                         startIntent.PutExtra("voiceOther", voiceOther);
                         startIntent.PutExtra("speechRate", speechRate);
                         startIntent.PutExtra("enableMusicStatus", musicStatus);
+                        startIntent.PutExtra("enableTts", enableTts);
+                        startIntent.PutExtra("speakPetname", speakPetname);
                         startIntent.PutExtra("truncateLen", truncateLen);
                         startIntent.PutExtra("truncateEllipsis", truncateEllipsis);
 
