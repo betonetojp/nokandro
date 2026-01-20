@@ -1600,7 +1600,7 @@ namespace nokandro
             if (!string.IsNullOrEmpty(currentRelay)) relaysToTry.Add(currentRelay);
             relaysToTry.Add("wss://relay.damus.io");
             relaysToTry.Add("wss://nos.lol");
-            relaysToTry.Add("wss://yabu.me");
+            relaysToTry.Add("wss://relay-jp.nostr.wirednet.jp/");
             var uniqueRelays = relaysToTry.Distinct().ToList();
 
             HashSet<string> foundRelays = new HashSet<string>();

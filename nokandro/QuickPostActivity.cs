@@ -33,7 +33,7 @@ namespace nokandro
 
             // Read prefs
             var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
-            _relay = prefs?.GetString("pref_relay", "wss://yabu.me");
+            _relay = prefs?.GetString("pref_relay", "wss://relay-jp.nostr.wirednet.jp/");
             var nsec = prefs?.GetString("pref_nsec", null);
 
             if (string.IsNullOrEmpty(nsec))

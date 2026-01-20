@@ -40,7 +40,7 @@ namespace nokandro
                     var prefs = context.GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
                     if (prefs != null)
                     {
-                        var relay = prefs.GetString("pref_relay", "wss://yabu.me");
+                        var relay = prefs.GetString("pref_relay", "wss://relay-jp.nostr.wirednet.jp/");
                         var npub = prefs.GetString("pref_npub", "");
                         var nsec = prefs.GetString("pref_nsec", "");
                         var allowOthers = prefs.GetBoolean("pref_allow_others", false);
@@ -48,15 +48,19 @@ namespace nokandro
                         var voiceOther = prefs.GetString("pref_voice_other", null);
                         var speechRate = prefs.GetFloat("pref_speech_rate", 1.0f);
                         var musicStatus = prefs.GetBoolean("pref_music_status", false);
+                        var truncateLen = prefs.GetInt("pref_truncate_len", 50);
+                        var truncateEllipsis = prefs.GetString("pref_truncate_ellipsis", " ...");
 
                         startIntent.PutExtra("relay", relay);
                         startIntent.PutExtra("npub", npub);
                         startIntent.PutExtra("nsec", nsec);
-                        startIntent.PutExtra("allowOthers", false);
+                        startIntent.PutExtra("allowOthers", allowOthers);
                         startIntent.PutExtra("voiceFollowed", voiceFollowed);
                         startIntent.PutExtra("voiceOther", voiceOther);
                         startIntent.PutExtra("speechRate", speechRate);
                         startIntent.PutExtra("enableMusicStatus", musicStatus);
+                        startIntent.PutExtra("truncateLen", truncateLen);
+                        startIntent.PutExtra("truncateEllipsis", truncateEllipsis);
 
                         if (!string.IsNullOrEmpty(npub) || !string.IsNullOrEmpty(nsec))
                         {

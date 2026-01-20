@@ -30,7 +30,7 @@ namespace nokandro
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
         private ClientWebSocket? _ws;
-        private string _relay = "wss://yabu.me";
+        private string _relay = "wss://relay-jp.nostr.wirednet.jp/";
         private string _npub = string.Empty;
         private bool _allowOthers = false;
         private readonly CancellationTokenSource _cts = new();
