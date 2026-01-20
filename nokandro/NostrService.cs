@@ -73,6 +73,8 @@ namespace nokandro
         private const string ACTION_SET_MUSIC_STATUS = "nokandro.ACTION_SET_MUSIC_STATUS";
         private const string ACTION_TEST_POST = "nokandro.ACTION_TEST_POST";
 
+        private const string ACTION_REQUEST_LIST_STATUS = "nokandro.ACTION_REQUEST_LIST_STATUS";
+
         public override void OnCreate()
         {
             IsRunning = true;
@@ -101,6 +103,7 @@ namespace nokandro
                 filter.AddAction("nokandro.ACTION_MEDIA_STATUS");
                 filter.AddAction(ACTION_SET_MUSIC_STATUS);
                 filter.AddAction(ACTION_TEST_POST);
+                filter.AddAction(ACTION_REQUEST_LIST_STATUS);
                 LocalBroadcast.RegisterReceiver(_localReceiver, filter);
             }
             catch { }
@@ -320,113 +323,133 @@ namespace nokandro
             if (string.IsNullOrEmpty(_npub))
                 return;
 
-            try
+            // Retry loop
+            while (!ct.IsCancellationRequested)
             {
-                _ws = new ClientWebSocket();
-                AppLog.D(TAG, "Connecting websocket...");
-                await _ws.ConnectAsync(new Uri(_relay), ct);
-                AppLog.D(TAG, "Websocket connected: state=" + _ws.State);
-
-                var subId = "sub1";
-
-                // only request events occurring from now onwards (no past history)
-                var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-                // ensure author filter uses hex pubkey (decode npub if necessary)
-                var authorFilter = (_npub ?? string.Empty).Trim();
                 try
                 {
-                    // If a plain npub is embedded anywhere in the supplied value, extract it
-                    var m = PlainNpubRegex.Match(authorFilter);
-                    if (!m.Success)
+                    // Create new WebSocket instance for each connection attempt
+                    _ws = new ClientWebSocket();
+                    AppLog.D(TAG, "Connecting websocket...");
+                    await _ws.ConnectAsync(new Uri(_relay), ct);
+                    AppLog.D(TAG, "Websocket connected: state=" + _ws.State);
+
+                    var subId = "sub1";
+
+                    // only request events occurring from now onwards (no past history)
+                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                    // ensure author filter uses hex pubkey
+                    var authorFilter = (_npub ?? string.Empty).Trim();
+                    try
                     {
-                        // try to find an npub token anywhere in the string
-                        var m2 = PlainNpubRegex.Match(authorFilter);
-                        if (m2.Success) m = m2;
-                        else
+                        var m = PlainNpubRegex.Match(authorFilter);
+                        if (!m.Success)
                         {
-                            // also try nostr:npub1... or nostr:nprofile1... styles
-                            var m3 = NpubNprofileRegex().Match(authorFilter);
-                            if (m3.Success)
+                            var m2 = PlainNpubRegex.Match(authorFilter);
+                            if (m2.Success) m = m2;
+                            else
                             {
-                                // extract inner npub if present
-                                var inner = PlainNpubRegex.Match(m3.Value);
-                                if (inner.Success) m = inner;
+                                var m3 = NpubNprofileRegex().Match(authorFilter);
+                                if (m3.Success)
+                                {
+                                    var inner = PlainNpubRegex.Match(m3.Value);
+                                    if (inner.Success) m = inner;
+                                }
                             }
                         }
-                    }
-                    if (m.Success) authorFilter = m.Value;
+                        if (m.Success) authorFilter = m.Value;
 
-                    if (authorFilter.StartsWith("npub", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var dec = DecodeBech32Npub(authorFilter);
-                        if (!string.IsNullOrEmpty(dec)) authorFilter = dec;
-                    }
-                    else
-                    {
-                        var norm = NormalizeHexPubkey(authorFilter);
-                        if (!string.IsNullOrEmpty(norm)) authorFilter = norm;
-                    }
-                }
-                catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); }
-
-                // Request kind=3 (contact list) without 'since' to fetch existing follow list from relay
-                // Request kind=1 events only from now onwards (live)
-                // Construct JSON strings without anonymous types to avoid reflection-required serialization
-                var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
-                var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
-                var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
-
-                AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
-                await SendTextAsync(reqFollowJson, ct);
-                AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
-                await SendTextAsync(reqMuteJson, ct);
-                if (_enableTts)
-                {
-                    AppLog.D(TAG, "Sending events request: " + reqEventsJson);
-                    await SendTextAsync(reqEventsJson, ct);
-                }
-
-                // If we have current music info (recieved via broadcast while connecting), send it now
-                if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
-                {
-                    AppLog.D(TAG, "Sending initial music status after connection");
-                    _ = HandleMusicUpdateAsync(_currentArtist, _currentTitle, true);
-                }
-
-                var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
-                var sb = new System.Text.StringBuilder();
-
-                while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
-                {
-                    sb.Clear();
-                    WebSocketReceiveResult? result = null;
-                    do
-                    {
-                        result = await _ws.ReceiveAsync(buffer, ct);
-                        if (result.MessageType == WebSocketMessageType.Close)
+                        if (authorFilter.StartsWith("npub", StringComparison.OrdinalIgnoreCase))
                         {
-                            AppLog.D(TAG, "Websocket closed by server");
-                            await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
-                            break;
+                            var dec = DecodeBech32Npub(authorFilter);
+                            if (!string.IsNullOrEmpty(dec)) authorFilter = dec;
                         }
-
-                        var chunk = SysText.Encoding.UTF8.GetString(buffer.Array!, 0, result.Count);
-                        sb.Append(chunk);
+                        else
+                        {
+                            var norm = NormalizeHexPubkey(authorFilter);
+                            if (!string.IsNullOrEmpty(norm)) authorFilter = norm;
+                        }
                     }
-                    while (!result.EndOfMessage);
+                    catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); }
 
-                    var message = sb.ToString();
-                    var preview = message != null && message.Length > 0 ? message[..Math.Min(200, message.Length)] : "(empty)";
-                    AppLog.D(TAG, "Received message: " + preview);
-                    if (!string.IsNullOrEmpty(message))
+                    // Construct JSON subscriptions
+                    var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
+                    var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
+                    var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
+
+                    AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
+                    await SendTextAsync(reqFollowJson, ct);
+                    AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
+                    await SendTextAsync(reqMuteJson, ct);
+                    if (_enableTts)
                     {
-                        HandleRawMessage(message);
+                        AppLog.D(TAG, "Sending events request: " + reqEventsJson);
+                        await SendTextAsync(reqEventsJson, ct);
+                    }
+
+                    if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
+                    {
+                        AppLog.D(TAG, "Sending initial music status after connection");
+                        _ = HandleMusicUpdateAsync(_currentArtist, _currentTitle, true);
+                    }
+
+                    var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
+                    var sb = new System.Text.StringBuilder();
+
+                    while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
+                    {
+                        sb.Clear();
+                        WebSocketReceiveResult? result = null;
+                        do
+                        {
+                            result = await _ws.ReceiveAsync(buffer, ct);
+                            if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                AppLog.D(TAG, "Websocket closed by server");
+                                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
+                                break;
+                            }
+
+                            var chunk = SysText.Encoding.UTF8.GetString(buffer.Array!, 0, result.Count);
+                            sb.Append(chunk);
+                        }
+                        while (!result.EndOfMessage);
+
+                        if (_ws.State != WebSocketState.Open) break;
+
+                        var message = sb.ToString();
+                        var preview = message != null && message.Length > 0 ? message[..Math.Min(200, message.Length)] : "(empty)";
+                        // AppLog.D(TAG, "Received message: " + preview);
+                        if (!string.IsNullOrEmpty(message))
+                        {
+                            HandleRawMessage(message);
+                        }
                     }
                 }
+                catch (System.OperationCanceledException)
+                {
+                    AppLog.D(TAG, "RunAsync cancelled");
+                    break; 
+                }
+                catch (Exception ex)
+                {
+                    AppLog.E(TAG, "Connection lost or failed: " + ex.Message);
+                }
+                finally
+                {
+                    // Clean up current connection before retrying
+                    try { _ws?.Dispose(); } catch { }
+                    _ws = null;
+                }
+
+                // If cancelled (service stop), exit loop
+                if (ct.IsCancellationRequested) break;
+
+                // Wait before reconnecting
+                AppLog.D(TAG, "Reconnecting in 5 seconds...");
+                try { await Task.Delay(5000, ct); } catch { break; }
             }
-            catch (System.OperationCanceledException) { AppLog.D(TAG, "RunAsync cancelled"); }
-            catch (Exception ex) { AppLog.E(TAG, "RunAsync failed: " + ex); }
         }
 
         private async Task<bool> SendTextAsync(string text, CancellationToken ct)
@@ -1203,6 +1226,24 @@ namespace nokandro
                         var title = intent.GetStringExtra("title");
                         var playing = intent.GetBooleanExtra("playing", false);
                         _ = _service.HandleMusicUpdateAsync(artist, title, playing);
+                        return;
+                    }
+                    if (ACTION_REQUEST_LIST_STATUS.Equals(intent.Action))
+                    {
+                        if (_service._followed.Count > 0)
+                        {
+                            var b = new Intent("nokandro.ACTION_FOLLOW_UPDATE");
+                            b.PutExtra("followLoaded", true);
+                            b.PutExtra("followCount", _service._followed.Count);
+                            LocalBroadcast.SendBroadcast(_service, b);
+                        }
+                        if (_service._muted.Count > 0)
+                        {
+                            var b = new Intent(ACTION_MUTE_UPDATE);
+                            b.PutExtra("muteLoaded", true);
+                            b.PutExtra("muteCount", _service._muted.Count);
+                            LocalBroadcast.SendBroadcast(_service, b);
+                        }
                         return;
                     }
                 }

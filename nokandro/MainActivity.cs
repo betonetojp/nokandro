@@ -1042,6 +1042,10 @@ namespace nokandro
             base.OnResume();
             try
             {
+                // Request current list status from service (to recover from activity restart)
+                var listReq = new Intent("nokandro.ACTION_REQUEST_LIST_STATUS");
+                LocalBroadcast.SendBroadcast(this, listReq);
+
                 // Update UI based on current permissions and settings
                 var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
                 var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
