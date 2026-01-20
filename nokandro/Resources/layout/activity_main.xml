@@ -22,7 +22,7 @@
             android:id="@+id/muteStatusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Public mute: not loaded"
+            android:text="Muted user: not loaded"
             android:layout_marginBottom="2dp" />
 
         <!-- Relay / npub inputs -->

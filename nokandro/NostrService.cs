@@ -283,6 +283,11 @@ namespace nokandro
                     var req = new Intent("nokandro.ACTION_REQUEST_MEDIA_STATUS");
                     LocalBroadcast.SendBroadcast(this, req);
                 }
+
+                // Notify Widget
+                var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
+                w.SetPackage(PackageName);
+                SendBroadcast(w);
             }
             catch { }
 
@@ -297,6 +302,10 @@ namespace nokandro
             {
                 var b = new Intent("nokandro.ACTION_SERVICE_STOPPED");
                 LocalBroadcast.SendBroadcast(this, b);
+                
+                var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
+                w.SetPackage(PackageName);
+                SendBroadcast(w);
             }
             catch { }
             try { if (_localReceiver != null) LocalBroadcast.UnregisterReceiver(_localReceiver); } catch { }
@@ -725,8 +734,8 @@ namespace nokandro
                 var content = contentEl.GetString() ?? string.Empty;
                 if (!string.IsNullOrEmpty(content))
                 {
-                    // Check if encrypted
-                    if (content.Contains("?iv=") && _privKey != null && eventObj.TryGetProperty("pubkey", out var pkEl))
+                    // Attempt decryption (NIP-04/44) if keys available
+                    if (_privKey != null && eventObj.TryGetProperty("pubkey", out var pkEl))
                     {
                         var pk = pkEl.GetString();
                         if (!string.IsNullOrEmpty(pk))
@@ -734,12 +743,11 @@ namespace nokandro
                             pk = NormalizeHexPubkey(pk);
                             if (!string.IsNullOrEmpty(pk))
                             {
-                                // Decrypt using author's pubkey (self) as it is encrypted to self
                                 var plain = NostrCrypto.Decrypt(content, pk, _privKey);
                                 if (!string.IsNullOrEmpty(plain))
                                 {
                                     AppLog.D(TAG, "Successfully decrypted private mute list");
-                                    content = plain!; // Use decrypted content for parsing below
+                                    content = plain!;
                                 }
                             }
                         }

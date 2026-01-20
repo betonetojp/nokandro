@@ -46,9 +46,24 @@ namespace nokandro
             return BigIntToBytes(P.X, 32);
         }
 
-        // --- NIP-04 Encryption/Decryption ---
+        // --- Decryption (NIP-04 & NIP-44) ---
 
         public static string? Decrypt(string content, string pubkeyHex, byte[] privKey)
+        {
+            // Default to NIP-04 if marker present
+            if (content.Contains("?iv="))
+            {
+                return DecryptNip04(content, pubkeyHex, privKey);
+            }
+            // Try NIP-44
+            if (!string.IsNullOrEmpty(content) && content.Length > 1)
+            {
+                return DecryptNip44(content, pubkeyHex, privKey);
+            }
+            return null;
+        }
+
+        private static string? DecryptNip04(string content, string pubkeyHex, byte[] privKey)
         {
             try
             {
@@ -72,6 +87,51 @@ namespace nokandro
                 return Encoding.UTF8.GetString(plainBytes);
             }
             catch 
+            {
+                return null;
+            }
+        }
+
+        private static string? DecryptNip44(string content, string pubkeyHex, byte[] privKey)
+        {
+            try
+            {
+                // NIP-44 v2: base64( version[1] + nonce[32] + ciphertext[..] )
+                // version must be 0x02
+                var payload = Convert.FromBase64String(content);
+                if (payload.Length < 33) return null; 
+                if (payload[0] != 0x02) return null; 
+
+                var nonce = payload.AsSpan(1, 32); 
+                var ciphertext = payload.AsSpan(33);
+
+                if (ciphertext.Length < 16) return null; // poly1305 tag is 16 bytes
+
+                var sharedSecret = GetSharedSecret(HexStringToBytes(pubkeyHex), privKey);
+                if (sharedSecret == null) return null;
+
+                // HKDF Extract
+                var salt = Encoding.UTF8.GetBytes("nip44-v2");
+                var conversationKey = HKDF.Extract(HashAlgorithmName.SHA256, sharedSecret, salt);
+
+                // HKDF Expand
+                var keys = new byte[76];
+                HKDF.Expand(HashAlgorithmName.SHA256, conversationKey, keys, nonce);
+
+                var chachaKey = keys.AsSpan(0, 32);
+                var chachaNonce = keys.AsSpan(32, 12);
+                // var hmacKey = keys.AsSpan(44, 32); // unsused in v2
+
+                using var chacha = new ChaCha20Poly1305(chachaKey);
+                var tag = ciphertext[^16..];
+                var actualCipher = ciphertext[..^16];
+                var plaintext = new byte[actualCipher.Length];
+
+                chacha.Decrypt(chachaNonce, actualCipher, tag, plaintext);
+
+                return Encoding.UTF8.GetString(plaintext);
+            }
+            catch
             {
                 return null;
             }
