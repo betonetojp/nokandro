@@ -27,6 +27,7 @@ namespace nokandro
         const string PREF_SPEAK_PETNAME = "pref_speak_petname";
         const string PREF_MUSIC_STATUS = "pref_music_status";
         const string PREF_ENABLE_TTS = "pref_enable_tts";
+        const string PREF_AUTO_STOP = "pref_auto_stop";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 50;
 
@@ -168,6 +169,7 @@ namespace nokandro
             var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
             var ttsSettingsContainer = FindViewById<LinearLayout>(Resource.Id.ttsSettingsContainer); // Added container
             var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
+            var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
             var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
             var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
             
@@ -335,6 +337,7 @@ namespace nokandro
                 allowOthers.Checked = prefs.GetBoolean(PREF_ALLOW_OTHERS, false);
                 if (speakPetSwitch != null) speakPetSwitch.Checked = prefs.GetBoolean(PREF_SPEAK_PETNAME, false);
                 if (musicSwitch != null) musicSwitch.Checked = prefs.GetBoolean(PREF_MUSIC_STATUS, false);
+                if (autoStopSwitch != null) autoStopSwitch.Checked = prefs.GetBoolean(PREF_AUTO_STOP, true);
                 if (_musicDebugText != null) _musicDebugText.Visibility = (musicSwitch != null && musicSwitch.Checked) ? ViewStates.Visible : ViewStates.Gone;
                 if (ttsSwitch != null) ttsSwitch.Checked = prefs.GetBoolean(PREF_ENABLE_TTS, true);
                 
@@ -349,9 +352,11 @@ namespace nokandro
                 }
 
                 // Initialize container visibility
-                if (ttsSettingsContainer != null && ttsSwitch != null)
+                if (ttsSwitch != null)
                 {
-                    ttsSettingsContainer.Visibility = ttsSwitch.Checked ? ViewStates.Visible : ViewStates.Gone;
+                    var isTtsEnabled = ttsSwitch.Checked;
+                    if (ttsSettingsContainer != null) ttsSettingsContainer.Visibility = isTtsEnabled ? ViewStates.Visible : ViewStates.Gone;
+                    if (autoStopSwitch != null) autoStopSwitch.Visibility = isTtsEnabled ? ViewStates.Visible : ViewStates.Gone;
                 }
             }
             catch
@@ -503,6 +508,10 @@ namespace nokandro
                          {
                              ttsSettingsContainer.Visibility = e.IsChecked ? ViewStates.Visible : ViewStates.Gone;
                          }
+                         if (autoStopSwitch != null)
+                         {
+                             autoStopSwitch.Visibility = e.IsChecked ? ViewStates.Visible : ViewStates.Gone;
+                         }
                      }
                      catch { }
                 };
@@ -559,6 +568,25 @@ namespace nokandro
             }
 
             // Amber logic removed
+
+            // save autoStop preference
+            if (autoStopSwitch != null)
+            {
+                autoStopSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutBoolean(PREF_AUTO_STOP, e.IsChecked);
+                            edit.Apply();
+                        }
+                    }
+                    catch { }
+                };
+            }
 
             // Test Post Button logic
             if (testPostBtn != null)
@@ -709,6 +737,7 @@ namespace nokandro
                 SetControlEnabled(voiceLang, !NostrService.IsRunning);
                 try { SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
+                try { SetControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
             }
             catch { }
 
@@ -769,6 +798,7 @@ namespace nokandro
 
                 intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("enableTts", ttsSwitch?.Checked ?? true);
+                intent.PutExtra("autoStop", autoStopSwitch?.Checked ?? true);
                 intent.PutExtra("truncateLen", truncateLen);
                 // include user-configured ellipsis for truncation
                 try
@@ -834,6 +864,7 @@ namespace nokandro
                 SetControlEnabled(voiceLang, false);
                 try { SetControlEnabled(musicSwitch, false); } catch { }
                 try { SetControlEnabled(ttsSwitch, false); } catch { }
+                try { SetControlEnabled(autoStopSwitch, false); } catch { }
             };
 
             stop.Click += (s, e) =>
@@ -868,6 +899,7 @@ namespace nokandro
                             try { SetControlEnabled(voiceOther, false); } catch { }
                             try { SetControlEnabled(refreshVoices, false); } catch { }
                             try { SetControlEnabled(ttsSwitch, false); } catch { }
+                            try { SetControlEnabled(autoStopSwitch, false); } catch { }
                             // do not disable speechSeek; speech rate applies immediately
                         });
                     }
@@ -889,6 +921,7 @@ namespace nokandro
                             try { SetControlEnabled(refreshVoices, true); } catch { }
                             try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
+                            try { SetControlEnabled(autoStopSwitch, true); } catch { }
                             // speechSeek remains enabled
                         });
                     }
@@ -1042,12 +1075,106 @@ namespace nokandro
             base.OnResume();
             try
             {
+                // Sync UI state
+                var start = FindViewById<Button>(Resource.Id.startBtn);
+                var stop = FindViewById<Button>(Resource.Id.stopBtn);
+                var relay = FindViewById<EditText>(Resource.Id.relayEdit);
+                var fetchRelaysBtn = FindViewById<Button>(Resource.Id.fetchRelaysBtn);
+                var npub = FindViewById<EditText>(Resource.Id.npubEdit);
+                var nsec = FindViewById<EditText>(Resource.Id.nsecEdit);
+                var truncate = FindViewById<EditText>(Resource.Id.truncateEdit);
+                var truncateEllipsis = FindViewById<EditText>(Resource.Id.truncateEllipsisEdit);
+                var allowOthers = FindViewById<Switch>(Resource.Id.allowOthersSwitch);
+                var speakPetSwitch = FindViewById<Switch>(Resources.GetIdentifier("speakPetnameSwitch", "id", PackageName));
+                var voiceFollowed = FindViewById<Spinner>(Resource.Id.voiceFollowedSpinner);
+                var voiceOther = FindViewById<Spinner>(Resource.Id.voiceOtherSpinner);
+                var refreshVoices = FindViewById<Button>(Resource.Id.refreshVoicesBtn);
+                var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
+                var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
+                var voiceLang = FindViewById<Spinner>(Resource.Id.voiceLangSpinner);
+                var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
+
+            // Helper to set Enabled + visual appearance
+            void SetControlEnabled(View? v, bool enabled)
+            {
+                if (v == null) return;
+                try
+                {
+                    v.Enabled = enabled;
+                    v.Alpha = enabled ? 1.0f : 0.45f;
+                    if (v is EditText et)
+                    {
+                        try { et.Focusable = enabled; } catch { }
+                        try { et.FocusableInTouchMode = enabled; } catch { }
+                        et.Clickable = enabled;
+                        try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                    }
+                    if (v is Spinner sp) try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    if (v is Button btn) try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    if (v is Switch sw) try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                }
+                catch { }
+            }
+
+            // Helper to validate npub input
+            bool IsNpubValid(string? input)
+            {
+                if (string.IsNullOrWhiteSpace(input)) return false;
+                var s = input.Trim();
+                try
+                {
+                    var m = CreateNpubPlainRegex().Match(s);
+                    if (m.Success && m.Index == 0 && m.Length == s.Length)
+                    {
+                        if (s.Length == 63) return true;
+                        return false;
+                    }
+                }
+                catch { }
+                try { if (CreateHex64Regex().IsMatch(s)) return true; } catch { }
+                return false;
+            }
+
+            bool IsNsecValid()
+            {
+                if (nsec == null) return false;
+                var t = nsec.Text?.Trim() ?? "";
+                if (!t.StartsWith("nsec1")) return false;
+                try
+                {
+                    var (hrp, data) = Bech32Decode(t);
+                    return hrp == "nsec" && data != null;
+                }
+                catch { return false; }
+            }
+
+            if (start != null && stop != null)
+            {
+                bool running = NostrService.IsRunning;
+                try { SetControlEnabled(start, !running && IsNpubValid(npub?.Text)); } catch {}
+                try { SetControlEnabled(stop, running); } catch {}
+                try { SetControlEnabled(relay, !running); } catch { }
+                try { SetControlEnabled(fetchRelaysBtn, !running); } catch { }
+                try { SetControlEnabled(npub, !running); } catch { }
+                if (nsec != null) try { SetControlEnabled(nsec, !running); } catch { }
+                try { SetControlEnabled(truncate, !running); } catch { }
+                try { SetControlEnabled(truncateEllipsis, !running); } catch { }
+                try { SetControlEnabled(allowOthers, !running); } catch { }
+                try { SetControlEnabled(speakPetSwitch, !running); } catch { }
+                try { SetControlEnabled(voiceFollowed, !running); } catch { }
+                try { SetControlEnabled(voiceOther, !running); } catch { }
+                try { SetControlEnabled(refreshVoices, !running); } catch { }
+                try { SetControlEnabled(voiceLang, !running); } catch { }
+                try { SetControlEnabled(musicSwitch, !running && IsNsecValid()); } catch { }
+                try { SetControlEnabled(ttsSwitch, !running); } catch { }
+                try { SetControlEnabled(autoStopSwitch, !running); } catch { }
+            }
+
                 // Request current list status from service (to recover from activity restart)
                 var listReq = new Intent("nokandro.ACTION_REQUEST_LIST_STATUS");
                 LocalBroadcast.SendBroadcast(this, listReq);
 
                 // Update UI based on current permissions and settings
-                var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
                 var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
                 var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
 
@@ -1056,14 +1183,12 @@ namespace nokandro
                     if (musicSwitch.Checked)
                     {
                         var enabledListeners = Android.Provider.Settings.Secure.GetString(ContentResolver, "enabled_notification_listeners");
-                        var hasPerm = !string.IsNullOrEmpty(enabledListeners) && enabledListeners.Contains(PackageName);
+                        var hasPerm = !string.IsNullOrEmpty(enabledListeners) && (enabledListeners?.Contains(PackageName) ?? false);
                         if (grantBtn != null) grantBtn.Visibility = hasPerm ? ViewStates.Gone : ViewStates.Visible;
-                        // if (testPostBtn != null) testPostBtn.Visibility = ViewStates.Visible;
                     }
                     else
                     {
                         if (grantBtn != null) grantBtn.Visibility = ViewStates.Gone;
-                        // if (testPostBtn != null) testPostBtn.Visibility = ViewStates.Gone;
                     }
                 }
             }

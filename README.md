@@ -23,23 +23,26 @@ Package name: `com.nokakoi.nokandro`
 ## Main Screen Description
 
 - **App Title & Version**: Tap the version number (top right) to open the latest GitHub release page.
-- **Relay**: The URL of the relay to connect to (e.g., `wss://yabu.me`).
-- **Your npub**: Your Nostr public key (bech32 `npub...` or hex).
+- **Follow list / Muted user**: Displays loading status of these lists.
+- **Relay**: The URL of the relay to connect to (e.g., `wss://relay.damus.io/`).
 - **Your nsec (optional)**: Your Nostr private key (bech32 `nsec...`). Required for publishing "Now Playing" status.
-- **Allow non-followed posts**: Toggle to read posts from users you don't follow.
-- **Broadcast Now Playing**: Toggle to enable publishing your current music track to Nostr. Requires "Notification Listener" permission.
-- **Status**: Debug/status text showing the current music state or broadcast result.
+- **Your npub**: Your Nostr public key (bech32 `npub...` or hex).
 - **Enable Text-to-Speech**: Master switch for the TTS feature.
 - **(TTS Settings)**:
+  - **Max characters**: Truncation length for displayed/spoken text.
+  - **Ellipsis**: String to append when text is truncated.
+  - **Speak petname**: Reads the petname (nickname) of the user before the message.
   - **TTS language**: Filter available voices by language.
   - **Voice for followed users**: Select voice for followed users.
+  - **Allow non-followed posts**: Toggle to read posts from users you don't follow.
   - **Voice for non-followed users**: Select voice for others.
   - **Refresh Voices**: Reload available TTS voices.
   - **Speech rate**: Adjust reading speed.
+  - **Stop on audio disconnect**: Automatically stops the service when audio output is disconnected (e.g., Bluetooth).
+- **Broadcast Now Playing**: Toggle to enable publishing your current music track to Nostr. Requires "Notification Listener" permission.
+- **Status**: Debug/status text showing the current music state or broadcast result.
 - **Start**: Start the background service.
 - **Stop**: Stop the background service.
-- **Follow list / Public mute**: Displays loading status of these lists.
-- **Max characters**: Truncation length for displayed/spoken text.
 - **(Last Content)**: Displays the most recent message received or status update.
 
 ## Follow List and Public Mute
@@ -61,7 +64,8 @@ Package name: `com.nokakoi.nokandro`
   - Check device volume.
   - Ensure "Enable Text-to-Speech" is ON.
 - **Service stops unexpectedly**:
-  - Check device battery optimization settings.
+- Check device battery optimization settings.
+- If "Stop on audio disconnect" is enabled, the service stops when audio output changes (e.g. Bluetooth disconnect).
 
 ## ⚠️ For Android 13+ Users
 
@@ -95,22 +99,26 @@ In that case, please follow these steps to allow restricted settings:
 ## メイン画面の説明
 
 - **タイトル・バージョン**: 右上のバージョン番号をタップすると、GitHub の最新リリース配布ページを開きます。更新がある場合は赤字で表示されます。
+- **Follow list / Muted user**: リストの読み込み状況表示。
 - **Relay**: 接続先リレーの URL。
-- **Your npub**: 自分の公開鍵 (`npub...` または hex)。
 - **Your nsec (任意)**: 自分の秘密鍵 (`nsec...`)。「Now Playing」の投稿（署名）に必要です。
-- **Allow non-followed posts**: フォローしていないユーザーの投稿も読み上げるかどうかの設定。
-- **Broadcast Now Playing**: 再生中の音楽情報を Nostr に投稿する機能の ON/OFF。ON にするには通知リスナー権限が必要です。
-- **Status**: 現在の音楽情報や投稿ステータスを表示するデバッグ領域。
+- **Your npub**: 自分の公開鍵 (`npub...` または hex)。
 - **Enable Text-to-Speech**: TTS 読み上げ機能のメインスイッチ。
 - **(TTS 設定)**:
+  - **Max characters**: テキスト表示・読み上げの最大文字数制限。
+  - **Ellipsis**: テキスト省略時に末尾に追加される文字列。
+  - **Speak petname**: メッセージの前にユーザーのペットネーム（ニックネーム）を読み上げます。
   - **TTS language**: ボイス選択リストの言語フィルタ。
   - **Voice for followed users**: フォロー済みユーザー用の声。
+  - **Allow non-followed posts**: フォローしていないユーザーの投稿も読み上げるかどうかの設定。
   - **Voice for non-followed users**: その他のユーザー用の声。
   - **Refresh Voices**: ボイスリストの再取得。
   - **Speech rate**: 読み上げ速度の調整。
-- **Start / Stop**: サービスの開始・停止ボタン。
-- **Follow list / Public mute**: リストの読み込み状況表示。
-- **Max characters**: テキスト表示・読み上げの最大文字数制限。
+  - **Stop on audio disconnect**: オーディオ機器（Bluetoothなど）の切断検知時に自動停止します。
+- **Broadcast Now Playing**: 再生中の音楽情報を Nostr に投稿する機能の ON/OFF。ON にするには通知リスナー権限が必要です。
+- **Status**: 現在の音楽情報や投稿ステータスを表示するデバッグ領域。
+- **Start**: サービスの開始ボタン。
+- **Stop**: サービスの停止ボタン。
 - **(Last Content)**: 最後に受信したメッセージやステータスログが表示されます。
 
 ## 注意点
@@ -120,6 +128,9 @@ In that case, please follow these steps to allow restricted settings:
   - 音楽プレイヤーアプリが標準的なメディア通知を出している必要があります。
 - **TTS が聞こえない**:
   - 音量設定や `Enable Text-to-Speech` スイッチを確認してください。
+- **サービスが停止する**:
+  - バッテリー最適化設定を確認してください。
+  - "Stop on audio disconnect" が有効な場合、オーディオ機器の切断を検知して停止します。
 
 ## 署名と安全性
 

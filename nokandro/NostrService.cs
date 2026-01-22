@@ -54,6 +54,10 @@ namespace nokandro
         // TTS Status
         private bool _enableTts = true;
 
+        // Auto Stop Status
+        private bool _autoStop = true;
+        private BroadcastReceiver? _noisyReceiver;
+
         // Music Status
         private bool _enableMusicStatus = false;
         private string? _lastMusicLog;
@@ -102,6 +106,7 @@ namespace nokandro
                 filter.AddAction("nokandro.ACTION_SET_TRUNCATE_ELLIPSIS");
                 filter.AddAction("nokandro.ACTION_MEDIA_STATUS");
                 filter.AddAction(ACTION_SET_MUSIC_STATUS);
+                filter.AddAction("nokandro.ACTION_SET_AUTO_STOP");
                 filter.AddAction(ACTION_TEST_POST);
                 filter.AddAction(ACTION_REQUEST_LIST_STATUS);
                 LocalBroadcast.RegisterReceiver(_localReceiver, filter);
@@ -186,6 +191,34 @@ namespace nokandro
                 try { _truncateEllipsis = intent.GetStringExtra("truncateEllipsis") ?? _truncateEllipsis; } catch { }
                 try { _enableMusicStatus = intent.GetBooleanExtra("enableMusicStatus", false); } catch { }
                 try { _enableTts = intent.GetBooleanExtra("enableTts", true); } catch { }
+                try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
+
+                // register/unregister noisy receiver based on autoStop
+                if (_autoStop)
+                {
+                    if (_noisyReceiver == null)
+                    {
+                        try
+                        {
+                            _noisyReceiver = new NoisyAudioReceiver(this);
+                            RegisterReceiver(_noisyReceiver, new IntentFilter(Android.Media.AudioManager.ActionAudioBecomingNoisy));
+                            AppLog.D(TAG, "NoisyAudioReceiver registered");
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.W(TAG, "Failed to register NoisyAudioReceiver: " + ex.Message);
+                        }
+                    }
+                }
+                else
+                {
+                    if (_noisyReceiver != null)
+                    {
+                        try { UnregisterReceiver(_noisyReceiver); } catch { }
+                        _noisyReceiver = null;
+                        AppLog.D(TAG, "NoisyAudioReceiver unregistered");
+                    }
+                }
 
                 // register for runtime updates to truncate ellipsis from Activity while running
                 // (Already registered in OnCreate with updated filter, so this block might be redundant or could be removed/simplified if we trust OnCreate logic.
@@ -298,6 +331,16 @@ namespace nokandro
         {
             AppLog.D(TAG, "OnDestroy");
             IsRunning = false;
+            try
+            {
+                if (_noisyReceiver != null)
+                {
+                    UnregisterReceiver(_noisyReceiver);
+                    _noisyReceiver = null;
+                }
+            }
+            catch { }
+
             try
             {
                 var b = new Intent("nokandro.ACTION_SERVICE_STOPPED");
@@ -1183,6 +1226,29 @@ namespace nokandro
             return sb.ToString();
         }
 
+        private class NoisyAudioReceiver(NostrService service) : BroadcastReceiver
+        {
+             private readonly NostrService _service = service;
+             public override void OnReceive(Context? context, Intent? intent)
+             {
+                 if (Android.Media.AudioManager.ActionAudioBecomingNoisy.Equals(intent?.Action))
+                 {
+                     AppLog.D(TAG, "Audio becoming noisy (disconnect) -> Stopping service");
+                     try
+                     {
+                         // Use StartService with STOP action to gracefully shutdown via OnStartCommand logic if preferred,
+                         // but StopSelf is more direct. If we want UI update and logic consistency, firing intent is safest.
+                         // However, we are inside service process.
+                         // The OnStartCommand logic handles clearing music status.
+                         var stopIntent = new Intent(context, typeof(NostrService));
+                         stopIntent.SetAction("STOP");
+                         context?.StartService(stopIntent);
+                     }
+                     catch { _service.StopSelf(); }
+                 }
+             }
+        }
+
         private class LocalReceiver(NostrService service) : BroadcastReceiver
         {
             private readonly NostrService _service = service;
@@ -1214,6 +1280,31 @@ namespace nokandro
                         AppLog.D(TAG, "Music status enabled updated: " + enabled);
                         // Also reset last log to force update?
                         _service._lastMusicLog = null; 
+                        return;
+                    }
+                    if ("nokandro.ACTION_SET_AUTO_STOP".Equals(intent.Action))
+                    {
+                        var enabled = intent.GetBooleanExtra("enabled", true);
+                        _service._autoStop = enabled;
+                        AppLog.D(TAG, "Auto stop updated: " + enabled);
+                        
+                        // Dynamic register/unregister
+                        if (enabled && _service._noisyReceiver == null)
+                        {
+                             try
+                             {
+                                 _service._noisyReceiver = new NoisyAudioReceiver(_service);
+                                 _service.RegisterReceiver(_service._noisyReceiver, new IntentFilter(Android.Media.AudioManager.ActionAudioBecomingNoisy));
+                                 AppLog.D(TAG, "NoisyAudioReceiver registered (dynamic)");
+                             }
+                             catch {}
+                        }
+                        else if (!enabled && _service._noisyReceiver != null)
+                        {
+                             try { _service.UnregisterReceiver(_service._noisyReceiver); } catch {}
+                             _service._noisyReceiver = null;
+                             AppLog.D(TAG, "NoisyAudioReceiver unregistered (dynamic)");
+                        }
                         return;
                     }
                     if (ACTION_TEST_POST.Equals(intent.Action))
