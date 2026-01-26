@@ -1656,7 +1656,7 @@ namespace nokandro
         private static partial Regex CreateVideoExtensionRegex();
         [GeneratedRegex("\\bnostr:(?:npub1|nprofile1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex NpubNprofileRegex();
-        [GeneratedRegex("\\bnostr:(?:nevent1|note1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
+        [GeneratedRegex("\\bnostr:(?:nevent1|note1|naddr1)\\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex NeventNoteRegex();
         [GeneratedRegex("npub1[0-9a-zA-Z]+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreatePlainNpubRegex();
