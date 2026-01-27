@@ -28,6 +28,7 @@ namespace nokandro
         const string PREF_MUSIC_STATUS = "pref_music_status";
         const string PREF_ENABLE_TTS = "pref_enable_tts";
         const string PREF_AUTO_STOP = "pref_auto_stop";
+        const string PREF_SKIP_CW = "pref_skip_cw";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 50;
 
@@ -170,6 +171,7 @@ namespace nokandro
             var ttsSettingsContainer = FindViewById<LinearLayout>(Resource.Id.ttsSettingsContainer); // Added container
             var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
             var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
+            var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
             var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
             var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
             
@@ -517,6 +519,33 @@ namespace nokandro
                 };
             }
 
+            // save skipContentWarning preference
+            if (skipContentWarningSwitch != null)
+            {
+                // load initial value
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    skipContentWarningSwitch.Checked = prefs?.GetBoolean(PREF_SKIP_CW, false) ?? false;
+                }
+                catch { }
+
+                skipContentWarningSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutBoolean(PREF_SKIP_CW, e.IsChecked);
+                            edit.Apply();
+                        }
+                    }
+                    catch { }
+                };
+            }
+
             // music switch logic
             if (musicSwitch != null)
             {
@@ -737,6 +766,7 @@ namespace nokandro
                 SetControlEnabled(voiceLang, !NostrService.IsRunning);
                 try { SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
+                try { SetControlEnabled(skipContentWarningSwitch, !NostrService.IsRunning); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
             }
             catch { }
@@ -798,6 +828,7 @@ namespace nokandro
 
                 intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("enableTts", ttsSwitch?.Checked ?? true);
+                intent.PutExtra("skipContentWarning", skipContentWarningSwitch?.Checked ?? false);
                 intent.PutExtra("autoStop", autoStopSwitch?.Checked ?? true);
                 intent.PutExtra("truncateLen", truncateLen);
                 // include user-configured ellipsis for truncation
@@ -899,6 +930,7 @@ namespace nokandro
                             try { SetControlEnabled(voiceOther, false); } catch { }
                             try { SetControlEnabled(refreshVoices, false); } catch { }
                             try { SetControlEnabled(ttsSwitch, false); } catch { }
+                            try { SetControlEnabled(skipContentWarningSwitch, false); } catch { }
                             try { SetControlEnabled(autoStopSwitch, false); } catch { }
                             // do not disable speechSeek; speech rate applies immediately
                         });
@@ -921,6 +953,7 @@ namespace nokandro
                             try { SetControlEnabled(refreshVoices, true); } catch { }
                             try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
+                            try { SetControlEnabled(skipContentWarningSwitch, true); } catch { }
                             try { SetControlEnabled(autoStopSwitch, true); } catch { }
                             // speechSeek remains enabled
                         });
@@ -1091,6 +1124,7 @@ namespace nokandro
                 var refreshVoices = FindViewById<Button>(Resource.Id.refreshVoicesBtn);
                 var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
                 var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
+                var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
                 var voiceLang = FindViewById<Spinner>(Resource.Id.voiceLangSpinner);
                 var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
 
@@ -1167,6 +1201,7 @@ namespace nokandro
                 try { SetControlEnabled(voiceLang, !running); } catch { }
                 try { SetControlEnabled(musicSwitch, !running && IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, !running); } catch { }
+                try { SetControlEnabled(skipContentWarningSwitch, !running); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !running); } catch { }
             }
 

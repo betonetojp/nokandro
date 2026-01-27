@@ -50,6 +50,7 @@ namespace nokandro
                         var musicStatus = prefs.GetBoolean("pref_music_status", false);
                         var enableTts = prefs.GetBoolean("pref_enable_tts", true);
                         var autoStop = prefs.GetBoolean("pref_auto_stop", true);
+                        var skipContentWarning = prefs.GetBoolean("pref_skip_cw", false);
                         var speakPetname = prefs.GetBoolean("pref_speak_petname", false);
                         var truncateLen = prefs.GetInt("pref_truncate_len", 50);
                         var truncateEllipsis = prefs.GetString("pref_truncate_ellipsis", " ...");
@@ -64,6 +65,7 @@ namespace nokandro
                         startIntent.PutExtra("enableMusicStatus", musicStatus);
                         startIntent.PutExtra("enableTts", enableTts);
                         startIntent.PutExtra("autoStop", autoStop);
+                        startIntent.PutExtra("skipContentWarning", skipContentWarning);
                         startIntent.PutExtra("speakPetname", speakPetname);
                         startIntent.PutExtra("truncateLen", truncateLen);
                         startIntent.PutExtra("truncateEllipsis", truncateEllipsis);

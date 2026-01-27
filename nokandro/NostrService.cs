@@ -56,6 +56,7 @@ namespace nokandro
 
         // Auto Stop Status
         private bool _autoStop = true;
+        private bool _skipContentWarning = false;
         private BroadcastReceiver? _noisyReceiver;
 
         // Music Status
@@ -192,6 +193,7 @@ namespace nokandro
                 try { _enableMusicStatus = intent.GetBooleanExtra("enableMusicStatus", false); } catch { }
                 try { _enableTts = intent.GetBooleanExtra("enableTts", true); } catch { }
                 try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
+                try { _skipContentWarning = intent.GetBooleanExtra("skipContentWarning", false); } catch { }
 
                 // register/unregister noisy receiver based on autoStop
                 if (_autoStop)
@@ -860,6 +862,28 @@ namespace nokandro
             pubkey = pubkey.ToLowerInvariant();
             if (!eventObj.TryGetProperty("content", out var contentEl)) return;
             var content = contentEl.GetString() ?? string.Empty;
+
+            if (_skipContentWarning)
+            {
+                try
+                {
+                    if (eventObj.TryGetProperty("tags", out var tempTags) && tempTags.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var tag in tempTags.EnumerateArray())
+                        {
+                            if (tag.ValueKind == JsonValueKind.Array && tag.GetArrayLength() > 0)
+                            {
+                                if (tag[0].GetString() == "content-warning")
+                                {
+                                    AppLog.D(TAG, "Skipping content-warning post");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
 
             // respect public mute list: if the author is muted, skip
             if (_muted.Contains(pubkey))
