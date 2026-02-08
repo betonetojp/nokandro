@@ -179,6 +179,7 @@ namespace nokandro
             _musicDebugText = FindViewById<TextView>(Resource.Id.musicStatusDebugText);
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
+            var mutedWordsStatusText = FindViewById<TextView>(Resource.Id.mutedWordsStatusText);
             var truncateEdit = FindViewById<EditText>(Resource.Id.truncateEdit);
             // optional ellipsis field (may be absent in some layouts)
             var truncateEllipsis = FindViewById<EditText>(Resource.Id.truncateEllipsisEdit);
@@ -1054,6 +1055,15 @@ namespace nokandro
                     return;
                 }
 
+                    if (intent.Action == "nokandro.ACTION_MUTED_WORDS_UPDATE")
+                    {
+                        var loaded = intent.GetBooleanExtra("mutedWordsLoaded", false);
+                        var count = intent.GetIntExtra("mutedWordsCount", 0);
+                        var text = loaded ? $"Muted words: loaded ({count})" : "Muted words: not loaded";
+                        RunOnUiThread(() => { if (mutedWordsStatusText != null) mutedWordsStatusText.Text = text; });
+                        return;
+                    }
+
                 var text2 = intent.GetStringExtra("content") ?? string.Empty;
                 var isFollowed = intent.GetBooleanExtra("isFollowed", false);
                 var pet = intent.GetStringExtra("petname");
@@ -1073,6 +1083,7 @@ namespace nokandro
             filter.AddAction(ACTION_LAST_CONTENT);
             filter.AddAction("nokandro.ACTION_FOLLOW_UPDATE");
             filter.AddAction("nokandro.ACTION_MUTE_UPDATE");
+            filter.AddAction("nokandro.ACTION_MUTED_WORDS_UPDATE");
             filter.AddAction("nokandro.ACTION_MEDIA_STATUS");
             filter.AddAction("nokandro.ACTION_MUSIC_POST_STATUS");
             LocalBroadcast.RegisterReceiver(_receiver, filter);

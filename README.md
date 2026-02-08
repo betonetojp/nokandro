@@ -23,7 +23,7 @@ Package name: `com.nokakoi.nokandro`
 ## Main Screen Description
 
 - **App Title & Version**: Tap the version number (top right) to open the latest GitHub release page.
-- **Follow list / Muted user**: Displays loading status of these lists.
+- **Follow list / Muted user / Muted words**: Displays loading status of these lists.
 - **Relay**: The URL of the relay to connect to (e.g., `wss://relay.damus.io/`).
 - **Your nsec (optional)**: Your Nostr private key (bech32 `nsec...`). Required for publishing "Now Playing" status.
 - **Your npub**: Your Nostr public key (bech32 `npub...` or hex).
@@ -99,7 +99,7 @@ In that case, please follow these steps to allow restricted settings:
 ## メイン画面の説明
 
 - **タイトル・バージョン**: 右上のバージョン番号をタップすると、GitHub の最新リリース配布ページを開きます。更新がある場合は赤字で表示されます。
-- **Follow list / Muted user**: リストの読み込み状況表示。
+- **Follow list / Muted user / Muted words**: リストの読み込み状況表示。
 - **Relay**: 接続先リレーの URL。
 - **Your nsec (任意)**: 自分の秘密鍵 (`nsec...`)。「Now Playing」の投稿（署名）に必要です。
 - **Your npub**: 自分の公開鍵 (`npub...` または hex)。

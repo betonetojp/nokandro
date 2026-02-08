@@ -25,6 +25,13 @@
             android:text="Muted user: not loaded"
             android:layout_marginBottom="2dp" />
 
+        <TextView
+            android:id="@+id/mutedWordsStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Muted words: not loaded"
+            android:layout_marginBottom="6dp" />
+
         <!-- Relay / npub inputs -->
         <LinearLayout
             android:layout_width="match_parent"

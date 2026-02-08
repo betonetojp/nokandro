@@ -38,6 +38,7 @@ namespace nokandro
         private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
         private Dictionary<string, string> _petnames = [];
         private HashSet<string> _muted = []; // store muted hex pubkeys (public mute lists)
+        private string[] _mutedWords = Array.Empty<string>(); // muted words loaded from prefs
         private AudioManager _audioManager = null!;
         private TextToSpeech? _tts;
         private int _truncateLen = 20;
@@ -125,6 +126,35 @@ namespace nokandro
                 _speakPetname = prefs?.GetBoolean("pref_speak_petname", false) ?? false;
             }
             catch { _speakPetname = false; }
+
+            // load muted words list (comma-separated)
+            try
+            {
+                var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                var muted = prefs?.GetString("pref_muted_words", null);
+                if (!string.IsNullOrWhiteSpace(muted))
+                {
+                    _mutedWords = muted.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                        .Select(s => s.ToLowerInvariant())
+                                        .Distinct()
+                                        .ToArray();
+                }
+                else
+                {
+                    _mutedWords = Array.Empty<string>();
+                }
+            }
+            catch { _mutedWords = Array.Empty<string>(); }
+
+            // broadcast muted words status
+            try
+            {
+                var b = new Intent("nokandro.ACTION_MUTED_WORDS_UPDATE");
+                b.PutExtra("mutedWordsLoaded", true);
+                b.PutExtra("mutedWordsCount", _mutedWords.Length);
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch { }
         }
 
         public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -745,6 +775,7 @@ namespace nokandro
         private async Task UpdateMutedFromEvent(JsonElement eventObj)
         {
             var newSet = new HashSet<string>();
+            var wordsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 1. Process public mutes in tags
             if (eventObj.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array)
@@ -768,6 +799,14 @@ namespace nokandro
 
                             hex = NormalizeHexPubkey(hex);
                             if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
+                        }
+                        else if (tagType == "word")
+                        {
+                            var w = tag.GetArrayLength() >= 2 ? tag[1].GetString() : null;
+                            if (!string.IsNullOrWhiteSpace(w))
+                            {
+                                wordsSet.Add(w.Trim().ToLowerInvariant());
+                            }
                         }
                     }
                 }
@@ -822,6 +861,11 @@ namespace nokandro
                                         hex = NormalizeHexPubkey(hex);
                                         if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                     }
+                                    else if (tagType == "word")
+                                    {
+                                        var w = el[1].GetString();
+                                        if (!string.IsNullOrWhiteSpace(w)) wordsSet.Add(w!.Trim().ToLowerInvariant());
+                                    }
                                 }
                             }
                         }
@@ -834,6 +878,10 @@ namespace nokandro
             }
 
             _muted = newSet;
+            if (wordsSet.Count > 0)
+            {
+                _mutedWords = wordsSet.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            }
             AppLog.D(TAG, $"Mute list updated: count={_muted.Count}");
 
             try
@@ -844,6 +892,16 @@ namespace nokandro
                 LocalBroadcast.SendBroadcast(this, b);
             }
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
+
+            // also broadcast muted words status
+            try
+            {
+                var bw = new Intent("nokandro.ACTION_MUTED_WORDS_UPDATE");
+                bw.PutExtra("mutedWordsLoaded", true);
+                bw.PutExtra("mutedWordsCount", _mutedWords.Length);
+                LocalBroadcast.SendBroadcast(this, bw);
+            }
+            catch { }
         }
 
         private static string? NormalizeHexPubkey(string hex)
@@ -884,6 +942,25 @@ namespace nokandro
                 }
                 catch { }
             }
+
+            // skip if content contains any muted word
+            try
+            {
+                if (_mutedWords.Length > 0)
+                {
+                    var lower = content.ToLowerInvariant();
+                    foreach (var w in _mutedWords)
+                    {
+                        // simple substring match
+                        if (!string.IsNullOrEmpty(w) && lower.Contains(w))
+                        {
+                            AppLog.D(TAG, $"Skipping post due to muted word: {w}");
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { }
 
             // respect public mute list: if the author is muted, skip
             if (_muted.Contains(pubkey))
@@ -1360,6 +1437,14 @@ namespace nokandro
                             b.PutExtra("muteCount", _service._muted.Count);
                             LocalBroadcast.SendBroadcast(_service, b);
                         }
+                        try
+                        {
+                            var b = new Intent("nokandro.ACTION_MUTED_WORDS_UPDATE");
+                            b.PutExtra("mutedWordsLoaded", true);
+                            b.PutExtra("mutedWordsCount", _service._mutedWords.Length);
+                            LocalBroadcast.SendBroadcast(_service, b);
+                        }
+                        catch { }
                         return;
                     }
                 }
