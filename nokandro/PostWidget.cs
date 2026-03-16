@@ -70,6 +70,10 @@ namespace nokandro
                         startIntent.PutExtra("truncateLen", truncateLen);
                         startIntent.PutExtra("truncateEllipsis", truncateEllipsis);
 
+                        var offTimerEnabled = prefs.GetBoolean("pref_off_timer_enabled", false);
+                        var offTimerMinutes = prefs.GetInt("pref_off_timer_minutes", 60);
+                        startIntent.PutExtra("offTimerMinutes", offTimerEnabled ? offTimerMinutes : 0);
+
                         if (!string.IsNullOrEmpty(npub) || !string.IsNullOrEmpty(nsec))
                         {
                             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)

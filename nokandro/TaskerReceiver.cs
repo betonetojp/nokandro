@@ -68,6 +68,10 @@ namespace nokandro
                 serviceIntent.PutExtra("speakPetname", prefs.GetBoolean("pref_speak_petname", false));
                 serviceIntent.PutExtra("enableMusicStatus", prefs.GetBoolean("pref_music_status", false));
 
+                var offTimerEnabled = prefs.GetBoolean("pref_off_timer_enabled", false);
+                var offTimerMinutes = prefs.GetInt("pref_off_timer_minutes", 60);
+                serviceIntent.PutExtra("offTimerMinutes", offTimerEnabled ? offTimerMinutes : 0);
+
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                 {
                     context.StartForegroundService(serviceIntent);

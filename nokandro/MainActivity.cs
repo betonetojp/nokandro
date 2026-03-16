@@ -29,6 +29,9 @@ namespace nokandro
         const string PREF_ENABLE_TTS = "pref_enable_tts";
         const string PREF_AUTO_STOP = "pref_auto_stop";
         const string PREF_SKIP_CW = "pref_skip_cw";
+        const string PREF_OFF_TIMER_ENABLED = "pref_off_timer_enabled";
+        const string PREF_OFF_TIMER_MINUTES = "pref_off_timer_minutes";
+        const string PREF_OFF_TIMER_END_TICKS = "pref_off_timer_end_ticks";
         // maximum length for displayed content before truncation
         private const int CONTENT_TRUNCATE_LENGTH = 50;
 
@@ -36,6 +39,8 @@ namespace nokandro
 
         private TextView? _lastContentView;
         private TextView? _musicDebugText;
+        private TextView? _offTimerCountdownView;
+        private System.Threading.Timer? _countdownTimer;
         private BroadcastReceiver? _receiver;
         private BroadcastReceiver? _serviceStateReceiver;
         // keep references to EditText fields used elsewhere
@@ -174,9 +179,12 @@ namespace nokandro
             var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
             var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
             var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
+            var offTimerSwitch = FindViewById<Switch>(Resource.Id.offTimerSwitch);
+            var offTimerMinutesEdit = FindViewById<EditText>(Resource.Id.offTimerMinutesEdit);
             
             _lastContentView = FindViewById<TextView>(Resource.Id.lastContentText);
             _musicDebugText = FindViewById<TextView>(Resource.Id.musicStatusDebugText);
+            _offTimerCountdownView = FindViewById<TextView>(Resource.Id.offTimerCountdownText);
             var followStatusText = FindViewById<TextView>(Resource.Id.followStatusText);
             var muteStatusText = FindViewById<TextView>(Resource.Id.muteStatusText);
             var mutedWordsStatusText = FindViewById<TextView>(Resource.Id.mutedWordsStatusText);
@@ -343,6 +351,13 @@ namespace nokandro
                 if (autoStopSwitch != null) autoStopSwitch.Checked = prefs.GetBoolean(PREF_AUTO_STOP, true);
                 if (_musicDebugText != null) _musicDebugText.Visibility = (musicSwitch != null && musicSwitch.Checked) ? ViewStates.Visible : ViewStates.Gone;
                 if (ttsSwitch != null) ttsSwitch.Checked = prefs.GetBoolean(PREF_ENABLE_TTS, true);
+
+                if (offTimerSwitch != null) offTimerSwitch.Checked = prefs.GetBoolean(PREF_OFF_TIMER_ENABLED, false);
+                if (offTimerMinutesEdit != null)
+                {
+                    offTimerMinutesEdit.Text = prefs.GetInt(PREF_OFF_TIMER_MINUTES, 60).ToString();
+                    offTimerMinutesEdit.Enabled = offTimerSwitch?.Checked ?? false;
+                }
                 
                 // restore speech rate (0.50..1.50) -> progress (0..200)
                 if (speechSeek != null)
@@ -618,6 +633,40 @@ namespace nokandro
                 };
             }
 
+            // off-timer switch + minutes
+            if (offTimerSwitch != null)
+            {
+                offTimerSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        SetControlEnabled(offTimerMinutesEdit, e.IsChecked);
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutBoolean(PREF_OFF_TIMER_ENABLED, e.IsChecked); edit.Apply(); }
+                    }
+                    catch { }
+                };
+            }
+            if (offTimerMinutesEdit != null)
+            {
+                offTimerMinutesEdit.FocusChange += (s, e) =>
+                {
+                    if (!e.HasFocus)
+                    {
+                        try
+                        {
+                            var val = int.TryParse(offTimerMinutesEdit.Text, out var v) ? v : 60;
+                            if (val < 1) { val = 1; offTimerMinutesEdit.Text = val.ToString(); }
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null) { edit.PutInt(PREF_OFF_TIMER_MINUTES, val); edit.Apply(); }
+                        }
+                        catch { }
+                    }
+                };
+            }
+
             // Test Post Button logic
             if (testPostBtn != null)
             {
@@ -769,6 +818,8 @@ namespace nokandro
                 try { SetControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
                 try { SetControlEnabled(skipContentWarningSwitch, !NostrService.IsRunning); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
+                try { SetControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
+                try { SetControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
             }
             catch { }
 
@@ -852,6 +903,15 @@ namespace nokandro
                 try { intent.PutExtra("speakPetname", speakPetSwitch == null || speakPetSwitch.Checked); } catch { }
                 // pass music status preference
                 try { intent.PutExtra("enableMusicStatus", musicSwitch != null && musicSwitch.Checked); } catch { }
+                // pass off-timer (0 = disabled)
+                try
+                {
+                    var offEnabled = offTimerSwitch?.Checked ?? false;
+                    var offMins = int.TryParse(offTimerMinutesEdit?.Text, out var v) ? v : 60;
+                    if (offMins < 1) offMins = 1;
+                    intent.PutExtra("offTimerMinutes", offEnabled ? offMins : 0);
+                }
+                catch { intent.PutExtra("offTimerMinutes", 0); }
 
                 // Reset UI status to not loaded; service will broadcast updates when lists are loaded
                 try { followStatus.Text = "Follow list: not loaded"; } catch { }
@@ -879,6 +939,25 @@ namespace nokandro
 
                 // Use StartService; the service will call StartForeground
                 StartService(intent);
+                // start countdown display if off-timer is active
+                try
+                {
+                    var offEnabled2 = offTimerSwitch?.Checked ?? false;
+                    var offMins2 = int.TryParse(offTimerMinutesEdit?.Text, out var ov) ? ov : 60;
+                    if (offMins2 < 1) offMins2 = 1;
+                    if (offEnabled2 && offMins2 > 0)
+                    {
+                        var endTime = DateTime.UtcNow.AddMinutes(offMins2);
+                        SaveCountdownEndTime(endTime);
+                        StartCountdown(endTime);
+                    }
+                    else
+                    {
+                        StopCountdown();
+                        ClearCountdownEndTime();
+                    }
+                }
+                catch { }
                 // update UI state
                 try { SetControlEnabled(start, false); SetControlEnabled(stop, true); } catch { }
                 // disable inputs during run
@@ -897,6 +976,8 @@ namespace nokandro
                 try { SetControlEnabled(musicSwitch, false); } catch { }
                 try { SetControlEnabled(ttsSwitch, false); } catch { }
                 try { SetControlEnabled(autoStopSwitch, false); } catch { }
+                try { SetControlEnabled(offTimerSwitch, false); } catch { }
+                try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
             };
 
             stop.Click += (s, e) =>
@@ -933,11 +1014,28 @@ namespace nokandro
                             try { SetControlEnabled(ttsSwitch, false); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, false); } catch { }
                             try { SetControlEnabled(autoStopSwitch, false); } catch { }
+                            try { SetControlEnabled(offTimerSwitch, false); } catch { }
+                            try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
                             // do not disable speechSeek; speech rate applies immediately
                         });
+                        // Start countdown if off-timer was set (e.g. via Tasker or Widget)
+                        try
+                        {
+                            var rPrefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var endTicks = rPrefs?.GetLong(PREF_OFF_TIMER_END_TICKS, 0L) ?? 0L;
+                            if (endTicks > 0)
+                            {
+                                var endTime = new DateTime(endTicks, DateTimeKind.Utc);
+                                if (endTime > DateTime.UtcNow)
+                                    StartCountdown(endTime);
+                            }
+                        }
+                        catch { }
                     }
                     else if (intent.Action == "nokandro.ACTION_SERVICE_STOPPED")
                     {
+                        StopCountdown();
+                        ClearCountdownEndTime();
                         RunOnUiThread(() =>
                         {
                             try { SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text)); SetControlEnabled(stop, false); } catch { }
@@ -956,6 +1054,8 @@ namespace nokandro
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, true); } catch { }
                             try { SetControlEnabled(autoStopSwitch, true); } catch { }
+                            try { SetControlEnabled(offTimerSwitch, true); } catch { }
+                            try { SetControlEnabled(offTimerMinutesEdit, offTimerSwitch?.Checked ?? false); } catch { }
                             // speechSeek remains enabled
                         });
                     }
@@ -1093,6 +1193,7 @@ namespace nokandro
         protected override void OnPause()
         {
             base.OnPause();
+            try { _countdownTimer?.Dispose(); _countdownTimer = null; } catch { }
             try
             {
                 // Save current state to preferences to prevent data loss when Activity is recreated
@@ -1237,6 +1338,70 @@ namespace nokandro
                         if (grantBtn != null) grantBtn.Visibility = ViewStates.Gone;
                     }
                 }
+                // Resume countdown if service is running with an active off-timer
+                if (NostrService.IsRunning)
+                {
+                    try
+                    {
+                        var rPrefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var endTicks = rPrefs?.GetLong(PREF_OFF_TIMER_END_TICKS, 0L) ?? 0L;
+                        if (endTicks > 0)
+                        {
+                            var endTime = new DateTime(endTicks, DateTimeKind.Utc);
+                            if (endTime > DateTime.UtcNow)
+                                StartCountdown(endTime);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        private void StartCountdown(DateTime endTimeUtc)
+        {
+            _countdownTimer?.Dispose();
+            _countdownTimer = null;
+            RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Visible; });
+            _countdownTimer = new System.Threading.Timer(_ =>
+            {
+                var remaining = endTimeUtc - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    _countdownTimer?.Dispose();
+                    _countdownTimer = null;
+                    RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone; });
+                    return;
+                }
+                var h = (int)remaining.TotalHours;
+                var text = $"{h:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+                RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Text = text; });
+            }, null, 0, 1000);
+        }
+
+        private void StopCountdown()
+        {
+            _countdownTimer?.Dispose();
+            _countdownTimer = null;
+            RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone; });
+        }
+
+        private void SaveCountdownEndTime(DateTime endTimeUtc)
+        {
+            try
+            {
+                var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private)?.Edit();
+                if (p != null) { p.PutLong(PREF_OFF_TIMER_END_TICKS, endTimeUtc.Ticks); p.Apply(); }
+            }
+            catch { }
+        }
+
+        private void ClearCountdownEndTime()
+        {
+            try
+            {
+                var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private)?.Edit();
+                if (p != null) { p.Remove(PREF_OFF_TIMER_END_TICKS); p.Apply(); }
             }
             catch { }
         }

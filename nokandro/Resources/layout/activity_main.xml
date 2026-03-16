@@ -265,6 +265,39 @@
             android:visibility="gone"
             android:layout_marginBottom="4dp" />
 
+        <!-- Off timer -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <Switch
+                android:id="@+id/offTimerSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Off timer" />
+            <EditText
+                android:id="@+id/offTimerMinutesEdit"
+                android:layout_width="72dp"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:hint="60"
+                android:layout_marginStart="8dp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" min."
+                android:layout_marginStart="2dp" />
+            <TextView
+                android:id="@+id/offTimerCountdownText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#008800"
+                android:layout_marginStart="16dp"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/startBtn"
             android:layout_width="match_parent"

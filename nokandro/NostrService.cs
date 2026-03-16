@@ -60,6 +60,10 @@ namespace nokandro
         private bool _skipContentWarning = false;
         private BroadcastReceiver? _noisyReceiver;
 
+        // Off timer
+        private int _offTimerMinutes = 0;
+        private CancellationTokenSource? _offTimerCts;
+
         // Music Status
         private bool _enableMusicStatus = false;
         private string? _lastMusicLog;
@@ -224,6 +228,7 @@ namespace nokandro
                 try { _enableTts = intent.GetBooleanExtra("enableTts", true); } catch { }
                 try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
                 try { _skipContentWarning = intent.GetBooleanExtra("skipContentWarning", false); } catch { }
+                try { _offTimerMinutes = intent.GetIntExtra("offTimerMinutes", 0); } catch { }
 
                 // register/unregister noisy receiver based on autoStop
                 if (_autoStop)
@@ -336,6 +341,45 @@ namespace nokandro
             Task.Run(() => RunAsync(_cts.Token));
             AppLog.D(TAG, "Spawned RunAsync task");
 
+            // Start off-timer if configured
+            _offTimerCts?.Cancel();
+            _offTimerCts = null;
+            if (_offTimerMinutes > 0)
+            {
+                var offCts = new CancellationTokenSource();
+                _offTimerCts = offCts;
+                var mins = _offTimerMinutes;
+                try
+                {
+                    var endTicks = DateTime.UtcNow.AddMinutes(mins).Ticks;
+                    var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                    if (ep != null) { ep.PutLong("pref_off_timer_end_ticks", endTicks); ep.Apply(); }
+                }
+                catch { }
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(mins), offCts.Token);
+                        var stopIntent = new Intent(this, typeof(NostrService));
+                        stopIntent.SetAction("STOP");
+                        StartService(stopIntent);
+                    }
+                    catch (System.OperationCanceledException) { }
+                    catch (Exception ex) { AppLog.W(TAG, "Off-timer error: " + ex.Message); }
+                });
+                AppLog.D(TAG, $"Off-timer started: {mins} min");
+            }
+            else
+            {
+                try
+                {
+                    var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                    if (ep != null) { ep.Remove("pref_off_timer_end_ticks"); ep.Apply(); }
+                }
+                catch { }
+            }
+
             // notify UI that service started
             try
             {
@@ -363,6 +407,13 @@ namespace nokandro
         {
             AppLog.D(TAG, "OnDestroy");
             IsRunning = false;
+            try { _offTimerCts?.Cancel(); _offTimerCts = null; } catch { }
+            try
+            {
+                var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                if (ep != null) { ep.Remove("pref_off_timer_end_ticks"); ep.Apply(); }
+            }
+            catch { }
             try
             {
                 if (_noisyReceiver != null)
