@@ -19,6 +19,7 @@ namespace nokandro
         const string PREF_VOICE_OTHER = "pref_voice_other";
         const string PREF_VOICE_LANG = "pref_voice_lang";
         const string PREF_RELAY = "pref_relay";
+        const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
@@ -52,6 +53,10 @@ namespace nokandro
         private List<string> _availableLangCodes = [];
         private string? _lastSelectedLangCode = null;
         private string _lastMusicInfo = "Music: (waiting)"; // State holder for music info
+
+        // NIP-46 Bunker
+        private TextView? _bunkerStatusText;
+        private BroadcastReceiver? _bunkerReceiver;
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -692,6 +697,119 @@ namespace nokandro
                         StartActivity(intent);
                     }
                     catch { try { Toast.MakeText(this, "Could not open settings", ToastLength.Short).Show(); } catch { } }
+                };
+            }
+
+            // --- NIP-46 Bunker ---
+            var bunkerSwitch = FindViewById<Switch>(Resource.Id.bunkerSwitch);
+            var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
+            var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
+            var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
+            var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
+            _bunkerStatusText = FindViewById<TextView>(Resource.Id.bunkerStatusText);
+
+            // restore bunker relay from prefs
+            if (bunkerRelayEdit != null)
+            {
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    bunkerRelayEdit.Text = prefs?.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+                }
+                catch { bunkerRelayEdit.Text = "wss://ephemeral.snowflare.cc/"; }
+
+                bunkerRelayEdit.FocusChange += (s, e) =>
+                {
+                    if (!e.HasFocus)
+                    {
+                        try
+                        {
+                            var val = bunkerRelayEdit.Text ?? "wss://ephemeral.snowflare.cc/";
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null) { edit.PutString(PREF_BUNKER_RELAY, val); edit.Apply(); }
+                        }
+                        catch { }
+                    }
+                };
+            }
+
+            // Register bunker service broadcasts
+            _bunkerReceiver = new BroadcastReceiver();
+            _bunkerReceiver.Receive += (ctx, intent) =>
+            {
+                if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
+                {
+                    var uri = intent.GetStringExtra("bunkerUri") ?? "";
+                    RunOnUiThread(() =>
+                    {
+                        if (bunkerUriText != null) bunkerUriText.Text = uri;
+                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: starting...";
+                    });
+                }
+                else if (intent.Action == "nokandro.ACTION_BUNKER_LOG")
+                {
+                    var msg = intent.GetStringExtra("message") ?? "";
+                    RunOnUiThread(() =>
+                    {
+                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: " + msg;
+                    });
+                }
+                else if (intent.Action == "nokandro.ACTION_BUNKER_STOPPED")
+                {
+                    RunOnUiThread(() =>
+                    {
+                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: stopped";
+                        if (bunkerUriText != null) bunkerUriText.Text = "";
+                        // sync switch state
+                        try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
+                    });
+                }
+            };
+            try
+            {
+                var bunkerFilter = new IntentFilter();
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STARTED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_LOG");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STOPPED");
+                LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
+            }
+            catch { }
+
+            if (bunkerSwitch != null)
+            {
+                // Restore switch state from running service
+                if (BunkerService.IsRunning) bunkerSwitch.Checked = true;
+
+                bunkerSwitch.CheckedChange += (s, e) =>
+                {
+                    if (bunkerContainer != null)
+                        bunkerContainer.Visibility = e.IsChecked ? ViewStates.Visible : ViewStates.Gone;
+
+                    if (e.IsChecked && !BunkerService.IsRunning)
+                    {
+                        StartBunkerService(bunkerRelayEdit, nsec);
+                    }
+                    else if (!e.IsChecked && BunkerService.IsRunning)
+                    {
+                        StopBunkerService();
+                    }
+                };
+            }
+
+            if (bunkerCopyBtn != null)
+            {
+                bunkerCopyBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        var uri = bunkerUriText?.Text;
+                        if (string.IsNullOrEmpty(uri)) return;
+                        var cm = (Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
+                        if (cm != null) cm.PrimaryClip = Android.Content.ClipData.NewPlainText("bunker", uri);
+                        Toast.MakeText(this, "Copied", ToastLength.Short)?.Show();
+                    }
+                    catch { }
                 };
             }
 
@@ -1354,6 +1472,22 @@ namespace nokandro
                     }
                     catch { }
                 }
+
+                // Sync bunker switch with service state
+                try
+                {
+                    var bunkerSwitch = FindViewById<Switch>(Resource.Id.bunkerSwitch);
+                    var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
+                    if (bunkerSwitch != null)
+                    {
+                        var bunkerRunning = BunkerService.IsRunning;
+                        if (bunkerSwitch.Checked != bunkerRunning)
+                            bunkerSwitch.Checked = bunkerRunning;
+                        if (bunkerContainer != null)
+                            bunkerContainer.Visibility = bunkerRunning ? ViewStates.Visible : ViewStates.Gone;
+                    }
+                }
+                catch { }
             }
             catch { }
         }
@@ -1402,6 +1536,62 @@ namespace nokandro
             {
                 var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private)?.Edit();
                 if (p != null) { p.Remove(PREF_OFF_TIMER_END_TICKS); p.Apply(); }
+            }
+            catch { }
+        }
+
+        private void StartBunkerService(EditText? bunkerRelayEdit, EditText? nsec)
+        {
+            try
+            {
+                var nsecText = nsec?.Text?.Trim() ?? "";
+                if (!nsecText.StartsWith("nsec1"))
+                {
+                    Toast.MakeText(this, "nsec required for bunker", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var (hrp, data) = Bech32Decode(nsecText);
+                if (hrp != "nsec" || data == null)
+                {
+                    Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var privKey = ConvertBits(data, 5, 8, false);
+                if (privKey == null || privKey.Length != 32)
+                {
+                    Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var relayUrl = bunkerRelayEdit?.Text?.Trim();
+                if (string.IsNullOrEmpty(relayUrl)) relayUrl = "wss://ephemeral.snowflare.cc/";
+
+                // Convert privKey to hex string for Intent transport
+                var nsecHex = BitConverter.ToString(privKey).Replace("-", "").ToLowerInvariant();
+
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.PutExtra("nsecHex", nsecHex);
+                intent.PutExtra("relay", relayUrl);
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                    StartForegroundService(intent);
+                else
+                    StartService(intent);
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, "Bunker error: " + ex.Message, ToastLength.Short)?.Show();
+            }
+        }
+
+        private void StopBunkerService()
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.SetAction("STOP");
+                StartService(intent);
             }
             catch { }
         }

@@ -265,6 +265,59 @@
             android:visibility="gone"
             android:layout_marginBottom="4dp" />
 
+        <!-- NIP-46 Bunker -->
+        <Switch
+            android:id="@+id/bunkerSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NIP-46 Bunker"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp" />
+
+        <LinearLayout
+            android:id="@+id/bunkerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp">
+
+            <EditText
+                android:id="@+id/bunkerRelayEdit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="wss://ephemeral.snowflare.cc/"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:textSize="13sp"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/bunkerUriText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textIsSelectable="true"
+                android:textSize="11sp"
+                android:typeface="monospace"
+                android:maxLines="3"
+                android:ellipsize="end" />
+
+            <Button
+                android:id="@+id/bunkerCopyBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Copy bunker URI"
+                android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/bunkerStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Bunker: stopped"
+                android:textColor="#008800"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
         <!-- Off timer -->
         <LinearLayout
             android:layout_width="match_parent"
