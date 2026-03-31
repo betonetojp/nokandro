@@ -20,6 +20,7 @@ namespace nokandro
         const string PREF_VOICE_LANG = "pref_voice_lang";
         const string PREF_RELAY = "pref_relay";
         const string PREF_BUNKER_RELAY = "pref_bunker_relay";
+        const string PREF_BUNKER_SECRET = "pref_bunker_secret";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
@@ -143,6 +144,38 @@ namespace nokandro
                 }
                 catch { }
             }
+
+            // --- Tab switching ---
+            var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
+            var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
+            var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
+            var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+
+            void SelectTab(bool mainSelected)
+            {
+                if (tabMainContent != null) tabMainContent.Visibility = mainSelected ? ViewStates.Visible : ViewStates.Gone;
+                if (tabBunkerContent != null) tabBunkerContent.Visibility = mainSelected ? ViewStates.Gone : ViewStates.Visible;
+                if (tabMainBtn != null)
+                {
+                    tabMainBtn.Alpha = mainSelected ? 1.0f : 0.5f;
+                    tabMainBtn.PaintFlags = mainSelected
+                        ? tabMainBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText
+                        : tabMainBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText;
+                }
+                if (tabBunkerBtn != null)
+                {
+                    tabBunkerBtn.Alpha = mainSelected ? 0.5f : 1.0f;
+                    tabBunkerBtn.PaintFlags = mainSelected
+                        ? tabBunkerBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText
+                        : tabBunkerBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText;
+                }
+            }
+
+            // Default: Main tab selected
+            SelectTab(true);
+
+            if (tabMainBtn != null) tabMainBtn.Click += (s, e) => SelectTab(true);
+            if (tabBunkerBtn != null) tabBunkerBtn.Click += (s, e) => SelectTab(false);
 
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
@@ -706,6 +739,7 @@ namespace nokandro
             var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
             var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
             var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
+            var bunkerResetSecretBtn = FindViewById<Button>(Resource.Id.bunkerResetSecretBtn);
             _bunkerStatusText = FindViewById<TextView>(Resource.Id.bunkerStatusText);
 
             // restore bunker relay from prefs
@@ -741,6 +775,22 @@ namespace nokandro
                 if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
                 {
                     var uri = intent.GetStringExtra("bunkerUri") ?? "";
+
+                    // Persist the secret so the bunker URI survives restarts
+                    try
+                    {
+                        var u = new Uri(uri);
+                        var qs = System.Web.HttpUtility.ParseQueryString(u.Query);
+                        var sec = qs["secret"];
+                        if (!string.IsNullOrEmpty(sec))
+                        {
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null) { edit.PutString(PREF_BUNKER_SECRET, sec); edit.Apply(); }
+                        }
+                    }
+                    catch { }
+
                     RunOnUiThread(() =>
                     {
                         if (bunkerUriText != null) bunkerUriText.Text = uri;
@@ -763,6 +813,8 @@ namespace nokandro
                         if (bunkerUriText != null) bunkerUriText.Text = "";
                         // sync switch state
                         try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
+                        // re-enable relay edit
+                        try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = true; bunkerRelayEdit.Alpha = 1.0f; } } catch { }
                     });
                 }
             };
@@ -780,11 +832,16 @@ namespace nokandro
             {
                 // Restore switch state from running service
                 if (BunkerService.IsRunning) bunkerSwitch.Checked = true;
+                // Disable relay edit while bunker is running
+                try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !BunkerService.IsRunning; bunkerRelayEdit.Alpha = BunkerService.IsRunning ? 0.45f : 1.0f; } } catch { }
 
                 bunkerSwitch.CheckedChange += (s, e) =>
                 {
                     if (bunkerContainer != null)
                         bunkerContainer.Visibility = e.IsChecked ? ViewStates.Visible : ViewStates.Gone;
+
+                    // Enable/disable relay edit based on bunker state
+                    try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !e.IsChecked; bunkerRelayEdit.Alpha = e.IsChecked ? 0.45f : 1.0f; } } catch { }
 
                     if (e.IsChecked && !BunkerService.IsRunning)
                     {
@@ -808,6 +865,44 @@ namespace nokandro
                         var cm = (Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
                         if (cm != null) cm.PrimaryClip = Android.Content.ClipData.NewPlainText("bunker", uri);
                         Toast.MakeText(this, "Copied", ToastLength.Short)?.Show();
+                    }
+                    catch { }
+                };
+            }
+
+            if (bunkerResetSecretBtn != null)
+            {
+                bunkerResetSecretBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var saved = prefs?.GetString(PREF_BUNKER_SECRET, null);
+                        if (string.IsNullOrEmpty(saved))
+                        {
+                            Toast.MakeText(this, "No saved secret", ToastLength.Short)?.Show();
+                            return;
+                        }
+
+                        var preview = saved.Length > 8 ? saved[..8] + "..." : saved;
+                        new Android.App.AlertDialog.Builder(this)
+                            .SetTitle("Reset Bunker Secret")
+                            .SetMessage($"Delete saved secret ({preview})?\nBunker will be stopped and a new URI will be generated on next start.")
+                            .SetPositiveButton("Delete", (sender, args) =>
+                            {
+                                try
+                                {
+                                    var edit = prefs?.Edit();
+                                    if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Apply(); }
+                                    // Stop bunker and uncheck switch so next start uses new secret
+                                    if (BunkerService.IsRunning) StopBunkerService();
+                                    try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
+                                    Toast.MakeText(this, "Secret deleted", ToastLength.Short)?.Show();
+                                }
+                                catch { }
+                            })
+                            .SetNegativeButton("Cancel", (sender, args) => { })
+                            .Show();
                     }
                     catch { }
                 };
@@ -1478,6 +1573,7 @@ namespace nokandro
                 {
                     var bunkerSwitch = FindViewById<Switch>(Resource.Id.bunkerSwitch);
                     var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
+                    var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
                     if (bunkerSwitch != null)
                     {
                         var bunkerRunning = BunkerService.IsRunning;
@@ -1485,6 +1581,8 @@ namespace nokandro
                             bunkerSwitch.Checked = bunkerRunning;
                         if (bunkerContainer != null)
                             bunkerContainer.Visibility = bunkerRunning ? ViewStates.Visible : ViewStates.Gone;
+                        // Sync relay edit enabled state
+                        if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !bunkerRunning; bunkerRelayEdit.Alpha = bunkerRunning ? 0.45f : 1.0f; }
                     }
                 }
                 catch { }
@@ -1574,6 +1672,17 @@ namespace nokandro
                 var intent = new Intent(this, typeof(BunkerService));
                 intent.PutExtra("nsecHex", nsecHex);
                 intent.PutExtra("relay", relayUrl);
+
+                // Reuse persisted secret so the bunker URI stays stable across restarts
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var savedSecret = prefs?.GetString(PREF_BUNKER_SECRET, null);
+                    if (!string.IsNullOrEmpty(savedSecret))
+                        intent.PutExtra("secret", savedSecret);
+                }
+                catch { }
+
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                     StartForegroundService(intent);
                 else

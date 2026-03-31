@@ -1,378 +1,462 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical"
+	android:fitsSystemWindows="true">
 
-    <LinearLayout
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:paddingTop="?android:attr/actionBarSize"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+	<!-- Tab bar -->
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="horizontal"
+		android:paddingStart="16dp"
+		android:paddingEnd="16dp"
+		android:paddingTop="4dp">
 
-        <TextView
-            android:id="@+id/followStatusText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Follow list: not loaded"
-            android:layout_marginBottom="2dp" />
+		<Button
+			android:id="@+id/tabMainBtn"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="Main"
+			style="?android:attr/buttonBarButtonStyle" />
 
-        <TextView
-            android:id="@+id/muteStatusText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Muted user: not loaded"
-            android:layout_marginBottom="2dp" />
+		<Button
+			android:id="@+id/tabBunkerBtn"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="Bunker"
+			style="?android:attr/buttonBarButtonStyle" />
+	</LinearLayout>
 
-        <TextView
-            android:id="@+id/mutedWordsStatusText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Muted words: not loaded"
-            android:layout_marginBottom="6dp" />
+	<FrameLayout
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1">
 
-        <!-- Relay / npub inputs -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/relayEdit"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Relay (wss://...)"
-                android:inputType="textUri" />
-            <Button
-                android:id="@+id/fetchRelaysBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="▼"
-                android:minWidth="48dp" />
-        </LinearLayout>
+		<!-- Tab 1: Main -->
+		<ScrollView
+			android:id="@+id/tabMainContent"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent">
 
-        <EditText
-            android:id="@+id/nsecEdit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Your nsec (Archive for posting)"
-            android:inputType="textPassword"
-            android:fontFamily="sans-serif" />
+			<LinearLayout
+				android:orientation="vertical"
+				android:padding="16dp"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content">
 
-        <EditText
-            android:id="@+id/npubEdit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Your npub (derived from nsec or manual)" />
+				<TextView
+					android:id="@+id/followStatusText"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Follow list: not loaded"
+					android:layout_marginBottom="2dp" />
 
-        <!-- Validation error for npub -->
-        <TextView
-            android:id="@+id/npubErrorText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#D32F2F"
-            android:textSize="12sp"
-            android:visibility="gone"
-            android:text="Invalid npub" />
-        
-        <Switch
-            android:id="@+id/ttsSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Enable Text-to-Speech"
-            android:checked="true"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+				<TextView
+					android:id="@+id/muteStatusText"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Muted user: not loaded"
+					android:layout_marginBottom="2dp" />
 
-        <LinearLayout
-            android:id="@+id/ttsSettingsContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+				<TextView
+					android:id="@+id/mutedWordsStatusText"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Muted words: not loaded"
+					android:layout_marginBottom="6dp" />
 
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="2dp">
+				<!-- Relay / npub inputs -->
+				<LinearLayout
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="horizontal">
+					<EditText
+						android:id="@+id/relayEdit"
+						android:layout_width="0dp"
+						android:layout_height="wrap_content"
+						android:layout_weight="1"
+						android:hint="Relay (wss://...)"
+						android:inputType="textUri" />
+					<Button
+						android:id="@+id/fetchRelaysBtn"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="▼"
+						android:minWidth="48dp" />
+				</LinearLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Max characters:" />
+				<EditText
+					android:id="@+id/nsecEdit"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:hint="Your nsec (Archive for posting)"
+					android:inputType="textPassword"
+					android:fontFamily="sans-serif" />
 
-            <EditText
-                android:id="@+id/truncateEdit"
-                android:layout_width="80dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:hint="50"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
+				<EditText
+					android:id="@+id/npubEdit"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:hint="Your npub (derived from nsec or manual)" />
 
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="2dp">
+				<!-- Validation error for npub -->
+				<TextView
+					android:id="@+id/npubErrorText"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:textColor="#D32F2F"
+					android:textSize="12sp"
+					android:visibility="gone"
+					android:text="Invalid npub" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Ellipsis:" />
+				<Switch
+					android:id="@+id/ttsSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Enable Text-to-Speech"
+					android:checked="true"
+					android:layout_marginTop="4dp"
+					android:layout_marginBottom="4dp" />
 
-            <EditText
-                android:id="@+id/truncateEllipsisEdit"
-                android:layout_width="120dp"
-                android:layout_height="wrap_content"
-                android:hint=" ..."
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
+				<LinearLayout
+					android:id="@+id/ttsSettingsContainer"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical">
 
-		<!-- Option: speak petname switch -->
-		<Switch
-            android:id="@+id/speakPetnameSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Speak petname"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+					<LinearLayout
+						android:orientation="horizontal"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:gravity="center_vertical"
+						android:layout_marginBottom="2dp">
 
-        <Switch
-            android:id="@+id/skipContentWarningSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Skip content-warning"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
-		
-        <!-- NEW: TTS language selection -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="TTS language" />
-        <Spinner
-            android:id="@+id/voiceLangSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-			android:layout_marginBottom="8dp"/>
+						<TextView
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="Max characters:" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Voice for followed users" />
-        <Spinner
-            android:id="@+id/voiceFollowedSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+						<EditText
+							android:id="@+id/truncateEdit"
+							android:layout_width="80dp"
+							android:layout_height="wrap_content"
+							android:inputType="number"
+							android:hint="50"
+							android:layout_marginStart="8dp" />
+					</LinearLayout>
 
-		<Switch
-            android:id="@+id/allowOthersSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Allow non-followed posts"
-			android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+					<LinearLayout
+						android:orientation="horizontal"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:gravity="center_vertical"
+						android:layout_marginBottom="2dp">
 
-		<TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Voice for non-followed users" />
-        <Spinner
-            android:id="@+id/voiceOtherSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+						<TextView
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="Ellipsis:" />
 
-        <Button
-            android:id="@+id/refreshVoicesBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Refresh Voices" />
+						<EditText
+							android:id="@+id/truncateEllipsisEdit"
+							android:layout_width="120dp"
+							android:layout_height="wrap_content"
+							android:hint=" ..."
+							android:layout_marginStart="8dp" />
+					</LinearLayout>
 
-        <!-- Speech rate control -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp">
+					<!-- Option: speak petname switch -->
+					<Switch
+						android:id="@+id/speakPetnameSwitch"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Speak petname"
+						android:layout_marginTop="4dp"
+						android:layout_marginBottom="4dp" />
 
-            <TextView
-                android:id="@+id/speechRateLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Speech rate" />
+					<Switch
+						android:id="@+id/skipContentWarningSwitch"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Skip content-warning"
+						android:layout_marginTop="4dp"
+						android:layout_marginBottom="4dp" />
 
-            <TextView
-                android:id="@+id/speechRateValue"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="1.00x"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
+					<!-- TTS language selection -->
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="TTS language" />
+					<Spinner
+						android:id="@+id/voiceLangSpinner"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:layout_marginBottom="8dp"/>
 
-        <SeekBar
-            android:id="@+id/speechRateSeekBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="200"
-            android:progress="100"
-			android:layout_marginBottom="4dp" />
-        </LinearLayout>
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Voice for followed users" />
+					<Spinner
+						android:id="@+id/voiceFollowedSpinner"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content" />
 
-		<Switch
-            android:id="@+id/autoStopSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Stop on audio disconnect"
-            android:checked="true"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+					<Switch
+						android:id="@+id/allowOthersSwitch"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Allow non-followed posts"
+						android:layout_marginTop="4dp"
+						android:layout_marginBottom="4dp" />
 
-		<Switch
-            android:id="@+id/musicStatusSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Broadcast Now Playing"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Voice for non-followed users" />
+					<Spinner
+						android:id="@+id/voiceOtherSpinner"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content" />
 
-        <TextView
-            android:id="@+id/musicStatusDebugText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Music: (waiting)"
-            android:textColor="#008800"
-            android:layout_marginBottom="4dp" />
+					<Button
+						android:id="@+id/refreshVoicesBtn"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:text="Refresh Voices" />
 
-        <Button
-            android:id="@+id/testPostBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Test Post (Kind 1)"
-            android:visibility="gone"
-            android:layout_marginBottom="4dp" />
+					<!-- Speech rate control -->
+					<LinearLayout
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:orientation="horizontal"
+						android:gravity="center_vertical"
+						android:layout_marginTop="4dp"
+						android:layout_marginBottom="4dp">
 
-        <Button
-            android:id="@+id/grantListenerBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Grant Notification Access"
-            android:visibility="gone"
-            android:layout_marginBottom="4dp" />
+						<TextView
+							android:id="@+id/speechRateLabel"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="Speech rate" />
 
-        <!-- NIP-46 Bunker -->
-        <Switch
-            android:id="@+id/bunkerSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="NIP-46 Bunker"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp" />
+						<TextView
+							android:id="@+id/speechRateValue"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="1.00x"
+							android:layout_marginStart="8dp" />
+					</LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/bunkerContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone"
-            android:layout_marginBottom="4dp">
+					<SeekBar
+						android:id="@+id/speechRateSeekBar"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:max="200"
+						android:progress="100"
+						android:layout_marginBottom="4dp" />
+				</LinearLayout>
 
-            <EditText
-                android:id="@+id/bunkerRelayEdit"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="wss://ephemeral.snowflare.cc/"
-                android:inputType="textUri"
-                android:singleLine="true"
-                android:textSize="13sp"
-                android:layout_marginBottom="4dp" />
+				<Switch
+					android:id="@+id/autoStopSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Stop on audio disconnect"
+					android:checked="true"
+					android:layout_marginTop="4dp"
+					android:layout_marginBottom="4dp" />
 
-            <TextView
-                android:id="@+id/bunkerUriText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textIsSelectable="true"
-                android:textSize="11sp"
-                android:typeface="monospace"
-                android:maxLines="3"
-                android:ellipsize="end" />
+				<Switch
+					android:id="@+id/musicStatusSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Broadcast Now Playing"
+					android:layout_marginTop="4dp"
+					android:layout_marginBottom="4dp" />
 
-            <Button
-                android:id="@+id/bunkerCopyBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Copy bunker URI"
-                android:layout_marginTop="2dp" />
+				<TextView
+					android:id="@+id/musicStatusDebugText"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Music: (waiting)"
+					android:textColor="#008800"
+					android:layout_marginBottom="4dp" />
 
-            <TextView
-                android:id="@+id/bunkerStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Bunker: stopped"
-                android:textColor="#008800"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
+				<Button
+					android:id="@+id/testPostBtn"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Test Post (Kind 1)"
+					android:visibility="gone"
+					android:layout_marginBottom="4dp" />
 
-        <!-- Off timer -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
-            <Switch
-                android:id="@+id/offTimerSwitch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Off timer" />
-            <EditText
-                android:id="@+id/offTimerMinutesEdit"
-                android:layout_width="72dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:hint="60"
-                android:layout_marginStart="8dp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=" min."
-                android:layout_marginStart="2dp" />
-            <TextView
-                android:id="@+id/offTimerCountdownText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#008800"
-                android:layout_marginStart="16dp"
-                android:visibility="gone" />
-        </LinearLayout>
+				<Button
+					android:id="@+id/grantListenerBtn"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Grant Notification Access"
+					android:visibility="gone"
+					android:layout_marginBottom="4dp" />
 
-        <Button
-            android:id="@+id/startBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Start" />
+				<!-- Off timer -->
+				<LinearLayout
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="horizontal"
+					android:gravity="center_vertical"
+					android:layout_marginBottom="4dp">
+					<Switch
+						android:id="@+id/offTimerSwitch"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Off timer" />
+					<EditText
+						android:id="@+id/offTimerMinutesEdit"
+						android:layout_width="72dp"
+						android:layout_height="wrap_content"
+						android:inputType="number"
+						android:hint="60"
+						android:layout_marginStart="8dp" />
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text=" min."
+						android:layout_marginStart="2dp" />
+					<TextView
+						android:id="@+id/offTimerCountdownText"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:textColor="#008800"
+						android:layout_marginStart="16dp"
+						android:visibility="gone" />
+				</LinearLayout>
 
-        <Button
-            android:id="@+id/stopBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Stop" />
+				<Button
+					android:id="@+id/startBtn"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Start" />
 
-        <!-- Latest note content (single item). Updated by service broadcasts -->
-        <TextView
-            android:id="@+id/lastContentText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="(no note yet)"
-            android:maxLines="6"
-            android:ellipsize="end" />
+				<Button
+					android:id="@+id/stopBtn"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Stop" />
 
-    </LinearLayout>
+				<!-- Latest note content (single item). Updated by service broadcasts -->
+				<TextView
+					android:id="@+id/lastContentText"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="8dp"
+					android:text="(no note yet)"
+					android:maxLines="6"
+					android:ellipsize="end" />
 
-</ScrollView>
+			</LinearLayout>
+		</ScrollView>
+
+		<!-- Tab 2: Bunker -->
+		<ScrollView
+			android:id="@+id/tabBunkerContent"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:orientation="vertical"
+				android:padding="16dp"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:focusable="true"
+				android:focusableInTouchMode="true">
+
+				<TextView
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Bunker relay"
+					android:layout_marginBottom="2dp" />
+
+				<EditText
+					android:id="@+id/bunkerRelayEdit"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:hint="wss://ephemeral.snowflare.cc/"
+					android:inputType="textUri"
+					android:singleLine="true"
+					android:textSize="13sp"
+					android:layout_marginBottom="4dp" />
+
+				<Switch
+					android:id="@+id/bunkerSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="NIP-46 Bunker"
+					android:layout_marginTop="4dp"
+					android:layout_marginBottom="4dp" />
+
+				<LinearLayout
+					android:id="@+id/bunkerContainer"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical"
+					android:visibility="gone"
+					android:layout_marginBottom="4dp">
+
+					<TextView
+						android:id="@+id/bunkerUriText"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:textIsSelectable="true"
+						android:textSize="11sp"
+						android:typeface="monospace"
+						android:maxLines="3"
+						android:ellipsize="end" />
+
+					<LinearLayout
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:orientation="horizontal"
+						android:layout_marginTop="2dp">
+
+						<Button
+							android:id="@+id/bunkerCopyBtn"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="Copy bunker URI" />
+
+						<Button
+							android:id="@+id/bunkerResetSecretBtn"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="Reset Secret"
+							android:layout_marginStart="8dp" />
+					</LinearLayout>
+
+					<TextView
+						android:id="@+id/bunkerStatusText"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:text="Bunker: stopped"
+						android:textColor="#008800"
+						android:layout_marginTop="2dp" />
+				</LinearLayout>
+
+				<TextView
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="* Enter nsec in Main tab to use Bunker."
+					android:textColor="#888888"
+					android:textSize="12sp"
+					android:layout_marginTop="8dp" />
+
+			</LinearLayout>
+		</ScrollView>
+
+	</FrameLayout>
+
+</LinearLayout>

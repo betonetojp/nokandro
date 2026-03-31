@@ -51,8 +51,9 @@ namespace nokandro
             try { _bunker?.Stop(); } catch { }
             _bunker = null;
 
-            // Start bunker
-            _bunker = new NostrBunker(privKey, relay);
+            // Start bunker (reuse persisted secret if available)
+            var secret = intent?.GetStringExtra("secret");
+            _bunker = new NostrBunker(privKey, relay, secret);
             _bunker.OnLog += msg =>
             {
                 try

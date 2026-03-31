@@ -21,26 +21,32 @@ namespace nokandro
         private readonly string _secret;
         private readonly SemaphoreSlim _wsLock = new(1, 1);
 
-        // Only allow a single connected client at a time for simplicity
-        private string? _connectedClientPubkey;
+        private readonly HashSet<string> _connectedClients = new();
 
         public bool IsRunning { get; private set; }
+        public int ConnectedClientCount => _connectedClients.Count;
         public string BunkerUri { get; }
 
         /// <summary>Raised when bunker wants to report status (runs on background thread).</summary>
         public event Action<string>? OnLog;
 
-        public NostrBunker(byte[] privKey, string relay)
+        public NostrBunker(byte[] privKey, string relay, string? secret = null)
         {
             _privKey = privKey;
             _relay = relay;
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _pubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
 
-            // Generate a random secret for bunker URI
-            var secretBytes = new byte[16];
-            using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(secretBytes);
-            _secret = BitConverter.ToString(secretBytes).Replace("-", "").ToLowerInvariant();
+            if (!string.IsNullOrEmpty(secret))
+            {
+                _secret = secret;
+            }
+            else
+            {
+                var secretBytes = new byte[16];
+                using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(secretBytes);
+                _secret = BitConverter.ToString(secretBytes).Replace("-", "").ToLowerInvariant();
+            }
 
             BunkerUri = $"bunker://{_pubkeyHex}?relay={Uri.EscapeDataString(relay)}&secret={_secret}";
         }
@@ -59,7 +65,7 @@ namespace nokandro
             try { _cts?.Cancel(); } catch { }
             try { _ws?.Abort(); _ws?.Dispose(); } catch { }
             _ws = null;
-            _connectedClientPubkey = null;
+            _connectedClients.Clear();
         }
 
         private async Task RunAsync(CancellationToken ct)
@@ -194,6 +200,13 @@ namespace nokandro
             var method = reqRoot.TryGetProperty("method", out var methodEl) ? methodEl.GetString() ?? "" : "";
             var paramsArr = reqRoot.TryGetProperty("params", out var pEl) && pEl.ValueKind == JsonValueKind.Array ? pEl : default;
 
+            // Require connection for methods other than connect and ping
+            if (method is not "connect" and not "ping" && !_connectedClients.Contains(senderPubkey))
+            {
+                Log($"Rejected '{method}' from unconnected client {senderPubkey[..12]}...");
+                return;
+            }
+
             string result;
             string error = "";
 
@@ -269,8 +282,8 @@ namespace nokandro
             // Even if client didn't send a secret, we still accept the connection
             // (the bunker URI sharing itself is the trust mechanism in minimal mode)
 
-            _connectedClientPubkey = senderPubkey;
-            Log($"Client connected: {senderPubkey[..12]}...");
+            _connectedClients.Add(senderPubkey);
+            Log($"Client connected: {senderPubkey[..12]}... (total: {_connectedClients.Count})");
             return "ack";
         }
 
@@ -427,6 +440,12 @@ namespace nokandro
             var sb = new StringBuilder(bytes.Length * 2);
             foreach (var b in bytes) sb.AppendFormat("{0:x2}", b);
             return sb.ToString();
+        }
+
+        public void DisconnectAllClients()
+        {
+            _connectedClients.Clear();
+            Log("All clients disconnected");
         }
 
         private void Log(string msg)
