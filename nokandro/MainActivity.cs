@@ -11,7 +11,7 @@ using System.Text.Json;
 
 namespace nokandro
 {
-    [Activity(Label = "@string/app_name", MainLauncher = true)]
+    [Activity(Label = "@string/app_name", MainLauncher = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop)]
     public partial class MainActivity : Activity
     {
         const string PREFS_NAME = "nokandro_prefs";
@@ -58,6 +58,15 @@ namespace nokandro
         // NIP-46 Bunker
         private TextView? _bunkerStatusText;
         private BroadcastReceiver? _bunkerReceiver;
+
+        // nostrconnect://
+        private const string PREF_NC_CLIENTS = "pref_nc_clients";
+        private const string PREF_NC_NAMES = "pref_nc_names";
+        private TextView? _ncStatusText;
+        private LinearLayout? _ncClientList;
+        private BroadcastReceiver? _ncReceiver;
+        private string[] _lastNcPubkeys = [];
+        private string[] _lastNcUris = [];
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
@@ -173,6 +182,14 @@ namespace nokandro
 
             // Default: Main tab selected
             SelectTab(true);
+
+            // If launched from Bunker notification, switch to Bunker tab
+            try
+            {
+                if (Intent?.GetStringExtra("openTab") == "bunker")
+                    SelectTab(false);
+            }
+            catch { }
 
             if (tabMainBtn != null) tabMainBtn.Click += (s, e) => SelectTab(true);
             if (tabBunkerBtn != null) tabBunkerBtn.Click += (s, e) => SelectTab(false);
@@ -830,10 +847,10 @@ namespace nokandro
 
             if (bunkerSwitch != null)
             {
-                // Restore switch state from running service
-                if (BunkerService.IsRunning) bunkerSwitch.Checked = true;
+                // Restore switch state from running service (use IsBunkerActive to distinguish from nostrconnect-only)
+                if (BunkerService.IsBunkerActive) bunkerSwitch.Checked = true;
                 // Disable relay edit while bunker is running
-                try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !BunkerService.IsRunning; bunkerRelayEdit.Alpha = BunkerService.IsRunning ? 0.45f : 1.0f; } } catch { }
+                try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !BunkerService.IsBunkerActive; bunkerRelayEdit.Alpha = BunkerService.IsBunkerActive ? 0.45f : 1.0f; } } catch { }
 
                 bunkerSwitch.CheckedChange += (s, e) =>
                 {
@@ -843,11 +860,11 @@ namespace nokandro
                     // Enable/disable relay edit based on bunker state
                     try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !e.IsChecked; bunkerRelayEdit.Alpha = e.IsChecked ? 0.45f : 1.0f; } } catch { }
 
-                    if (e.IsChecked && !BunkerService.IsRunning)
+                    if (e.IsChecked && !BunkerService.IsBunkerActive)
                     {
                         StartBunkerService(bunkerRelayEdit, nsec);
                     }
-                    else if (!e.IsChecked && BunkerService.IsRunning)
+                    else if (!e.IsChecked && BunkerService.IsBunkerActive)
                     {
                         StopBunkerService();
                     }
@@ -907,6 +924,116 @@ namespace nokandro
                     catch { }
                 };
             }
+
+            // --- nostrconnect:// ---
+            var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+            var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
+            _ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
+            _ncClientList = FindViewById<LinearLayout>(Resource.Id.ncClientList);
+
+            if (ncConnectBtn != null)
+            {
+                ncConnectBtn.Click += (s, e) =>
+                {
+                    var uriText = ncUriEdit?.Text?.Trim() ?? "";
+                    if (!NostrConnectUri.TryParse(uriText, out var parsed) || parsed == null)
+                    {
+                        Toast.MakeText(this, "Invalid nostrconnect:// URI", ToastLength.Short)?.Show();
+                        return;
+                    }
+                    StartNostrConnectSession(parsed.RawUri, nsec);
+                    if (ncUriEdit != null) ncUriEdit.Text = "";
+                };
+            }
+
+            // QR code scanning via Google Code Scanner
+            var ncScanQrBtn = FindViewById<Button>(Resource.Id.ncScanQrBtn);
+            if (ncScanQrBtn != null)
+            {
+                ncScanQrBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        var options = new Xamarin.Google.MLKit.Vision.CodeScanner.GmsBarcodeScannerOptions.Builder()
+                            .SetBarcodeFormats(Xamarin.Google.MLKit.Vision.Barcode.Common.Barcode.FormatQrCode)
+                            .Build();
+                        var scanner = Xamarin.Google.MLKit.Vision.CodeScanner.GmsBarcodeScanning.GetClient(this, options);
+                        scanner.StartScan()
+                            .AddOnSuccessListener(new QrScanSuccessListener(barcode =>
+                            {
+                                var rawValue = barcode.RawValue;
+                                if (string.IsNullOrEmpty(rawValue)) return;
+                                RunOnUiThread(() =>
+                                {
+                                    if (ncUriEdit != null) ncUriEdit.Text = rawValue;
+                                    // Auto-connect if it's a valid nostrconnect:// URI
+                                    if (NostrConnectUri.TryParse(rawValue, out var parsed) && parsed != null)
+                                    {
+                                        StartNostrConnectSession(parsed.RawUri, nsec);
+                                        if (ncUriEdit != null) ncUriEdit.Text = "";
+                                    }
+                                    else
+                                    {
+                                        Toast.MakeText(this, "QR code is not a valid nostrconnect:// URI", ToastLength.Short)?.Show();
+                                    }
+                                });
+                            }))
+                            .AddOnFailureListener(new QrScanFailureListener(ex =>
+                            {
+                                RunOnUiThread(() =>
+                                {
+                                    // Ignore user cancellation; only show error for unexpected failures
+                                    try
+                                    {
+                                        var msg = ex?.Message ?? "";
+                                        if (msg.Contains("cancel", StringComparison.OrdinalIgnoreCase)) return;
+                                        if (ex is Xamarin.Google.MLKit.Common.MlKitException) return;
+                                    }
+                                    catch { }
+                                    Toast.MakeText(this, "Scan cancelled or failed", ToastLength.Short)?.Show();
+                                });
+                            }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Toast.MakeText(this, "Scanner error: " + ex.Message, ToastLength.Short)?.Show();
+                    }
+                };
+            }
+
+            // Register nostrconnect broadcast receiver
+            _ncReceiver = new BroadcastReceiver();
+            _ncReceiver.Receive += (ctx, intent) =>
+            {
+                if (intent.Action == "nokandro.ACTION_NC_LIST")
+                {
+                    var pubkeys = intent.GetStringArrayExtra("pubkeys") ?? [];
+                    var uris = intent.GetStringArrayExtra("uris") ?? [];
+                    RunOnUiThread(() => RefreshNostrConnectClientList(pubkeys, uris));
+                }
+                else if (intent.Action == "nokandro.ACTION_NC_LOG")
+                {
+                    var msg = intent.GetStringExtra("message") ?? "";
+                    var pk = intent.GetStringExtra("clientPubkey") ?? "";
+                    var label = pk.Length >= 12 ? pk[..12] + "..." : pk;
+                    RunOnUiThread(() =>
+                    {
+                        if (_ncStatusText != null)
+                            _ncStatusText.Text = $"[{label}] {msg}";
+                    });
+                }
+            };
+            try
+            {
+                var ncFilter = new IntentFilter();
+                ncFilter.AddAction("nokandro.ACTION_NC_LIST");
+                ncFilter.AddAction("nokandro.ACTION_NC_LOG");
+                LocalBroadcast.RegisterReceiver(_ncReceiver, ncFilter);
+            }
+            catch { }
+
+            // Restore persisted nostrconnect clients and show them in the list
+            RestoreNostrConnectClients(nsec);
 
             // save truncate length when edit loses focus
             if (truncate != null)
@@ -1576,16 +1703,60 @@ namespace nokandro
                     var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
                     if (bunkerSwitch != null)
                     {
-                        var bunkerRunning = BunkerService.IsRunning;
-                        if (bunkerSwitch.Checked != bunkerRunning)
-                            bunkerSwitch.Checked = bunkerRunning;
+                        var bunkerActive = BunkerService.IsBunkerActive;
+                        if (bunkerSwitch.Checked != bunkerActive)
+                            bunkerSwitch.Checked = bunkerActive;
                         if (bunkerContainer != null)
-                            bunkerContainer.Visibility = bunkerRunning ? ViewStates.Visible : ViewStates.Gone;
+                            bunkerContainer.Visibility = bunkerActive ? ViewStates.Visible : ViewStates.Gone;
                         // Sync relay edit enabled state
-                        if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !bunkerRunning; bunkerRelayEdit.Alpha = bunkerRunning ? 0.45f : 1.0f; }
+                        if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !bunkerActive; bunkerRelayEdit.Alpha = bunkerActive ? 0.45f : 1.0f; }
+                        // Restore bunker URI and status from running service
+                        if (bunkerActive)
+                        {
+                            var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
+                            if (bunkerUriText != null && !string.IsNullOrEmpty(BunkerService.LastBunkerUri))
+                                bunkerUriText.Text = BunkerService.LastBunkerUri;
+                            if (_bunkerStatusText != null)
+                                _bunkerStatusText.Text = "Bunker: running";
+                        }
                     }
                 }
                 catch { }
+            }
+            catch { }
+        }
+
+        protected override void OnNewIntent(Intent? intent)
+        {
+            base.OnNewIntent(intent);
+            try
+            {
+                var openTab = intent?.GetStringExtra("openTab");
+                if (openTab == "bunker" || openTab == "main")
+                {
+                    bool mainSelected = openTab == "main";
+                    var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
+                    var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
+                    var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
+                    var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+
+                    if (tabMainContent != null) tabMainContent.Visibility = mainSelected ? ViewStates.Visible : ViewStates.Gone;
+                    if (tabBunkerContent != null) tabBunkerContent.Visibility = mainSelected ? ViewStates.Gone : ViewStates.Visible;
+                    if (tabMainBtn != null)
+                    {
+                        tabMainBtn.Alpha = mainSelected ? 1.0f : 0.5f;
+                        tabMainBtn.PaintFlags = mainSelected
+                            ? tabMainBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText
+                            : tabMainBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText;
+                    }
+                    if (tabBunkerBtn != null)
+                    {
+                        tabBunkerBtn.Alpha = mainSelected ? 0.5f : 1.0f;
+                        tabBunkerBtn.PaintFlags = mainSelected
+                            ? tabBunkerBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText
+                            : tabBunkerBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText;
+                    }
+                }
             }
             catch { }
         }
@@ -1703,6 +1874,343 @@ namespace nokandro
                 StartService(intent);
             }
             catch { }
+        }
+
+        private void StartNostrConnectSession(string connectUri, EditText? nsec)
+        {
+            try
+            {
+                var nsecText = nsec?.Text?.Trim() ?? "";
+                if (!nsecText.StartsWith("nsec1"))
+                {
+                    Toast.MakeText(this, "nsec required for nostrconnect", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var (hrp, data) = Bech32Decode(nsecText);
+                if (hrp != "nsec" || data == null)
+                {
+                    Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var privKey = ConvertBits(data, 5, 8, false);
+                if (privKey == null || privKey.Length != 32)
+                {
+                    Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                var nsecHex = BitConverter.ToString(privKey).Replace("-", "").ToLowerInvariant();
+
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.SetAction("START_NOSTRCONNECT");
+                intent.PutExtra("connectUri", connectUri);
+                intent.PutExtra("nsecHex", nsecHex);
+
+                // Pass main relay as fallback for URIs without relay hints
+                // (bunker relay may be a local relay unreachable from remote clients)
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var mainRelay = prefs?.GetString(PREF_RELAY, "wss://nos.lol/") ?? "wss://nos.lol/";
+                    intent.PutExtra("fallbackRelay", mainRelay);
+                }
+                catch { intent.PutExtra("fallbackRelay", "wss://nos.lol/"); }
+
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                    StartForegroundService(intent);
+                else
+                    StartService(intent);
+
+                // Persist the nostrconnect URI
+                PersistNostrConnectClient(connectUri);
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, "NostrConnect error: " + ex.Message, ToastLength.Short)?.Show();
+            }
+        }
+
+        private void StopNostrConnectSession(string clientPubkey)
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.SetAction("STOP_NOSTRCONNECT");
+                intent.PutExtra("clientPubkey", clientPubkey);
+                StartService(intent);
+
+                // Remove from persisted list
+                RemovePersistedNostrConnectClient(clientPubkey);
+            }
+            catch { }
+        }
+
+        private void PersistNostrConnectClient(string uri)
+        {
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var existing = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
+                var list = string.IsNullOrEmpty(existing)
+                    ? new List<string>()
+                    : new List<string>(existing.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+                // Parse to get client pubkey for dedup
+                if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
+                {
+                    list.RemoveAll(u =>
+                    {
+                        if (NostrConnectUri.TryParse(u, out var p) && p != null)
+                            return p.ClientPubkey == parsed.ClientPubkey;
+                        return false;
+                    });
+                }
+
+                list.Add(uri);
+                var edit = prefs?.Edit();
+                if (edit != null) { edit.PutString(PREF_NC_CLIENTS, string.Join('\n', list)); edit.Apply(); }
+            }
+            catch { }
+        }
+
+        private void RemovePersistedNostrConnectClient(string clientPubkey)
+        {
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var existing = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
+                if (string.IsNullOrEmpty(existing)) return;
+
+                var list = new List<string>(existing.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+                list.RemoveAll(u =>
+                {
+                    if (NostrConnectUri.TryParse(u, out var p) && p != null)
+                        return p.ClientPubkey == clientPubkey;
+                    return false;
+                });
+
+                var edit = prefs?.Edit();
+                if (edit != null) { edit.PutString(PREF_NC_CLIENTS, string.Join('\n', list)); edit.Apply(); }
+            }
+            catch { }
+        }
+
+        private void RestoreNostrConnectClients(EditText? nsec)
+        {
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var existing = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
+                if (string.IsNullOrEmpty(existing)) return;
+
+                var list = existing.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+                // Build display data for immediate UI update
+                var pubkeys = new List<string>();
+                var uris = new List<string>();
+
+                foreach (var uri in list)
+                {
+                    if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
+                    {
+                        pubkeys.Add(parsed.ClientPubkey);
+                        uris.Add(uri);
+
+                        // Start session if not already running
+                        var activePks = BunkerService.GetActiveClientPubkeys();
+                        if (!activePks.Contains(parsed.ClientPubkey))
+                        {
+                            StartNostrConnectSession(uri, nsec);
+                        }
+                    }
+                }
+
+                RefreshNostrConnectClientList([.. pubkeys], [.. uris]);
+            }
+            catch { }
+        }
+
+        private void RefreshNostrConnectClientList(string[] pubkeys, string[] uris)
+        {
+            _lastNcPubkeys = pubkeys;
+            _lastNcUris = uris;
+
+            if (_ncClientList == null) return;
+            _ncClientList.RemoveAllViews();
+
+            if (pubkeys.Length == 0)
+            {
+                if (_ncStatusText != null) _ncStatusText.Text = "nostrconnect: no sessions";
+                return;
+            }
+
+            if (_ncStatusText != null)
+                _ncStatusText.Text = $"nostrconnect: {pubkeys.Length} session(s)";
+
+            // Load custom names
+            var customNames = LoadNcClientNames();
+
+            for (int i = 0; i < pubkeys.Length; i++)
+            {
+                var pk = pubkeys[i];
+                var uri = i < uris.Length ? uris[i] : "";
+
+                // Resolve display name: custom name > metadata name > pubkey
+                customNames.TryGetValue(pk, out var customName);
+                string? metadataName = null;
+                if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
+                    metadataName = parsed.GetClientName();
+
+                var displayName = !string.IsNullOrEmpty(customName)
+                    ? customName
+                    : !string.IsNullOrEmpty(metadataName)
+                        ? metadataName
+                        : null;
+
+                var labelText = !string.IsNullOrEmpty(displayName)
+                    ? $"{displayName} ({pk[..Math.Min(12, pk.Length)]}...)"
+                    : $"{pk[..Math.Min(12, pk.Length)]}...";
+
+                var row = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal
+                };
+                row.SetPadding(0, 4, 0, 4);
+
+                var label = new TextView(this)
+                {
+                    TextSize = 11,
+                    Text = labelText
+                };
+                label.SetTypeface(Android.Graphics.Typeface.Monospace, Android.Graphics.TypefaceStyle.Normal);
+                label.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                var lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                lp.Gravity = GravityFlags.CenterVertical;
+                label.LayoutParameters = lp;
+
+                // Tap label to edit client name
+                var clientPk = pk;
+                var currentName = displayName ?? "";
+                label.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+
+                var removeBtn = new Button(this)
+                {
+                    Text = "✕",
+                    TextSize = 12
+                };
+                removeBtn.SetMinimumWidth(0);
+                removeBtn.SetMinimumHeight(0);
+                removeBtn.SetPadding(16, 0, 16, 0);
+                removeBtn.Click += (s, e) =>
+                {
+                    var name = GetNcClientDisplayName(clientPk);
+                    new Android.App.AlertDialog.Builder(this)
+                        .SetTitle("Remove client")
+                        .SetMessage($"Disconnect and remove {name}?")
+                        .SetPositiveButton("Remove", (sender, args) =>
+                        {
+                            RemoveNcClientName(clientPk);
+                            StopNostrConnectSession(clientPk);
+                        })
+                        .SetNegativeButton("Cancel", (sender, args) => { })
+                        .Show();
+                };
+
+                row.AddView(label);
+                row.AddView(removeBtn);
+                _ncClientList.AddView(row);
+            }
+        }
+
+        private void ShowEditNcClientNameDialog(string clientPubkey, string currentName)
+        {
+            var input = new EditText(this)
+            {
+                Text = currentName,
+                Hint = "Client name"
+            };
+            input.SetSingleLine(true);
+
+            new Android.App.AlertDialog.Builder(this)
+                .SetTitle("Edit client name")
+                .SetMessage(clientPubkey[..Math.Min(12, clientPubkey.Length)] + "...")
+                .SetView(input)
+                .SetPositiveButton("Save", (sender, args) =>
+                {
+                    var name = input.Text?.Trim() ?? "";
+                    SaveNcClientName(clientPubkey, name);
+                    RefreshNostrConnectClientList(_lastNcPubkeys, _lastNcUris);
+                })
+                .SetNegativeButton("Cancel", (sender, args) => { })
+                .Show();
+        }
+
+        private string GetNcClientDisplayName(string clientPubkey)
+        {
+            var names = LoadNcClientNames();
+            if (names.TryGetValue(clientPubkey, out var custom) && !string.IsNullOrEmpty(custom))
+                return $"{custom} ({clientPubkey[..Math.Min(12, clientPubkey.Length)]}...)";
+            return $"{clientPubkey[..Math.Min(12, clientPubkey.Length)]}...";
+        }
+
+        private Dictionary<string, string> LoadNcClientNames()
+        {
+            var result = new Dictionary<string, string>();
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var raw = prefs?.GetString(PREF_NC_NAMES, "") ?? "";
+                if (string.IsNullOrEmpty(raw)) return result;
+                // Simple format: pubkey=name lines
+                foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var eqIdx = line.IndexOf('=');
+                    if (eqIdx > 0)
+                        result[line[..eqIdx]] = line[(eqIdx + 1)..];
+                }
+            }
+            catch { }
+            return result;
+        }
+
+        private void SaveNcClientName(string clientPubkey, string name)
+        {
+            try
+            {
+                var names = LoadNcClientNames();
+                if (string.IsNullOrEmpty(name))
+                    names.Remove(clientPubkey);
+                else
+                    names[clientPubkey] = name;
+                PersistNcClientNames(names);
+            }
+            catch { }
+        }
+
+        private void RemoveNcClientName(string clientPubkey)
+        {
+            try
+            {
+                var names = LoadNcClientNames();
+                if (names.Remove(clientPubkey))
+                    PersistNcClientNames(names);
+            }
+            catch { }
+        }
+
+        private void PersistNcClientNames(Dictionary<string, string> names)
+        {
+            var sb = new StringBuilder();
+            foreach (var kvp in names)
+            {
+                if (!string.IsNullOrEmpty(kvp.Value))
+                    sb.Append(kvp.Key).Append('=').Append(kvp.Value).Append('\n');
+            }
+            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+            var edit = prefs?.Edit();
+            if (edit != null) { edit.PutString(PREF_NC_NAMES, sb.ToString()); edit.Apply(); }
         }
 
         private static (string? hrp, byte[]? data) Bech32Decode(string bech)
@@ -2381,6 +2889,24 @@ namespace nokandro
                 if (context == null || intent == null) return;
                 Receive(context, intent);
             }
+        }
+
+        // Google Code Scanner listener helpers
+        class QrScanSuccessListener : Java.Lang.Object, Android.Gms.Tasks.IOnSuccessListener
+        {
+            private readonly Action<Xamarin.Google.MLKit.Vision.Barcode.Common.Barcode> _action;
+            public QrScanSuccessListener(Action<Xamarin.Google.MLKit.Vision.Barcode.Common.Barcode> action) => _action = action;
+            public void OnSuccess(Java.Lang.Object? result)
+            {
+                if (result is Xamarin.Google.MLKit.Vision.Barcode.Common.Barcode barcode) _action(barcode);
+            }
+        }
+
+        class QrScanFailureListener : Java.Lang.Object, Android.Gms.Tasks.IOnFailureListener
+        {
+            private readonly Action<Java.Lang.Exception> _action;
+            public QrScanFailureListener(Action<Java.Lang.Exception> action) => _action = action;
+            public void OnFailure(Java.Lang.Exception e) => _action(e);
         }
 
         private static readonly Regex UrlPattern = CreateUrlRegex();

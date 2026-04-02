@@ -289,6 +289,7 @@ namespace nokandro
 
                 // PendingIntent to open app when tapping notification
                 var mainIntent = new Intent(this, typeof(MainActivity));
+                mainIntent.PutExtra("openTab", "main");
                 var mainPending = PendingIntent.GetActivity(this, 0, mainIntent, piFlags);
 
                 // PendingIntent to stop service
@@ -318,6 +319,7 @@ namespace nokandro
             {
                 // Pre-Oreo
                 var mainIntent = new Intent(this, typeof(MainActivity));
+                mainIntent.PutExtra("openTab", "main");
                 var mainPending = PendingIntent.GetActivity(this, 0, mainIntent, piFlags);
                 var stopIntent = new Intent(this, typeof(NostrService));
                 stopIntent.SetAction("STOP");

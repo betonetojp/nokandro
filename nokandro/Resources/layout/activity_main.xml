@@ -454,6 +454,67 @@
 					android:textSize="12sp"
 					android:layout_marginTop="8dp" />
 
+				<!-- nostrconnect:// section -->
+				<View
+					android:layout_width="match_parent"
+					android:layout_height="1dp"
+					android:background="#444444"
+					android:layout_marginTop="16dp"
+					android:layout_marginBottom="8dp" />
+
+				<TextView
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="nostrconnect://"
+					android:textSize="14sp"
+					android:textStyle="bold"
+					android:layout_marginBottom="4dp" />
+
+				<EditText
+					android:id="@+id/ncUriEdit"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:hint="nostrconnect://&lt;pubkey&gt;?relay=wss://..."
+					android:inputType="textUri"
+					android:singleLine="true"
+					android:textSize="12sp"
+					android:layout_marginBottom="4dp" />
+
+				<LinearLayout
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="horizontal"
+					android:layout_marginBottom="4dp">
+
+					<Button
+						android:id="@+id/ncConnectBtn"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Connect" />
+
+					<Button
+						android:id="@+id/ncScanQrBtn"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="📷 Scan QR"
+						android:layout_marginStart="8dp" />
+				</LinearLayout>
+
+				<TextView
+					android:id="@+id/ncStatusText"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="nostrconnect: no sessions"
+					android:textColor="#008800"
+					android:textSize="12sp"
+					android:layout_marginBottom="4dp" />
+
+				<LinearLayout
+					android:id="@+id/ncClientList"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical" />
+
 			</LinearLayout>
 		</ScrollView>
 
