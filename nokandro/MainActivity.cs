@@ -1908,16 +1908,6 @@ namespace nokandro
                 intent.PutExtra("connectUri", connectUri);
                 intent.PutExtra("nsecHex", nsecHex);
 
-                // Pass main relay as fallback for URIs without relay hints
-                // (bunker relay may be a local relay unreachable from remote clients)
-                try
-                {
-                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                    var mainRelay = prefs?.GetString(PREF_RELAY, "wss://nos.lol/") ?? "wss://nos.lol/";
-                    intent.PutExtra("fallbackRelay", mainRelay);
-                }
-                catch { intent.PutExtra("fallbackRelay", "wss://nos.lol/"); }
-
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                     StartForegroundService(intent);
                 else

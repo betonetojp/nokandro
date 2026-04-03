@@ -128,17 +128,20 @@ namespace nokandro
                 return StartCommandResult.NotSticky;
             }
 
-            // Apply fallback relay if URI has no relay hints
+            // Apply fixed fallback relays if URI has no relay hints
             if (connectUri.Relays.Length == 0)
             {
-                var fallbackRelay = intent.GetStringExtra("fallbackRelay") ?? "wss://nos.lol/";
-                connectUri = connectUri.WithFallbackRelays(fallbackRelay);
-                AppLog.D(TAG, $"No relay hint in URI, using fallback: {fallbackRelay}");
+                connectUri = connectUri.WithFallbackRelays(
+                    "wss://nostr.oxtr.dev/",
+                    "wss://theforest.nostr1.com/",
+                    "wss://relay.primal.net/",
+                    "wss://ephemeral.snowflare.cc/");
+                AppLog.D(TAG, "No relay hint in URI, using fixed fallback relays");
                 try
                 {
                     var b = new Intent("nokandro.ACTION_NC_LOG");
                     b.PutExtra("clientPubkey", connectUri.ClientPubkey);
-                    b.PutExtra("message", $"No relay in URI, using {fallbackRelay}");
+                    b.PutExtra("message", "No relay in URI, using fallback relays");
                     LocalBroadcast.SendBroadcast(this, b);
                 }
                 catch { }
