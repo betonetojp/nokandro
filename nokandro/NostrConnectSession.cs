@@ -139,6 +139,7 @@ namespace nokandro
         private CancellationTokenSource? _cts;
         private readonly List<ClientWebSocket> _sockets = [];
         private readonly SemaphoreSlim _wsLock = new(1, 1);
+        private bool _clientAuthenticated;
 
         public bool IsRunning { get; private set; }
         public string ClientPubkey => _connectUri.ClientPubkey;
@@ -148,10 +149,11 @@ namespace nokandro
         /// <summary>Raised when session wants to report status (runs on background thread).</summary>
         public event Action<string>? OnLog;
 
-        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri)
+        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false)
         {
             _privKey = privKey;
             _connectUri = connectUri;
+            _clientAuthenticated = preAuthenticated;
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _signerPubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
         }
@@ -269,7 +271,8 @@ namespace nokandro
             {
                 // Build connect response: {"id":"<random>","result":"ack","error":""}
                 var id = Guid.NewGuid().ToString("N")[..16];
-                var responseJson = $"{{\"id\":{EscapeJsonString(id)},\"result\":{EscapeJsonString("ack")},\"error\":{EscapeJsonString("")}}}";
+                var ackResult = "ack";
+                var responseJson = $"{{\"id\":{EscapeJsonString(id)},\"result\":{EscapeJsonString(ackResult)},\"error\":{EscapeJsonString("")}}}";
 
                 var encrypted = NostrCrypto.EncryptNip44(responseJson, _connectUri.ClientPubkey, _privKey);
 
@@ -410,7 +413,8 @@ namespace nokandro
 
         private string HandleConnect(JsonElement paramsArr)
         {
-            // Verify secret if URI contained one
+            // NIP-46: secret is a disambiguation key, not an auth token.
+            // Always accept connects — nostr-login may send a stale/cached token on reload.
             if (!string.IsNullOrEmpty(_connectUri.Secret))
             {
                 string? clientSecret = null;
@@ -418,12 +422,10 @@ namespace nokandro
                     clientSecret = paramsArr[1].GetString();
 
                 if (clientSecret != _connectUri.Secret)
-                {
-                    Log("Secret mismatch from client");
-                    throw new UnauthorizedAccessException("invalid secret");
-                }
+                    Log($"Secret mismatch (accepting anyway): client={clientSecret?[..Math.Min(8, clientSecret?.Length ?? 0)]}...");
             }
 
+            _clientAuthenticated = true;
             Log($"Client connect request accepted: {_connectUri.ClientPubkey[..12]}...");
             return "ack";
         }

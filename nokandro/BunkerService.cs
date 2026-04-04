@@ -75,15 +75,26 @@ namespace nokandro
             try { _bunker?.Stop(); } catch { }
             _bunker = null;
 
-            // Start bunker (reuse persisted secret if available)
+            // Start bunker (reuse persisted secret and authorized clients if available)
             var secret = intent?.GetStringExtra("secret");
-            _bunker = new NostrBunker(privKey, relay, secret);
+            var savedClients = intent?.GetStringArrayExtra("authorizedClients");
+            _bunker = new NostrBunker(privKey, relay, secret, savedClients);
             _bunker.OnLog += msg =>
             {
                 try
                 {
                     var b = new Intent("nokandro.ACTION_BUNKER_LOG");
                     b.PutExtra("message", msg);
+                    LocalBroadcast.SendBroadcast(this, b);
+                }
+                catch { }
+            };
+            _bunker.OnClientAuthorized += pubkey =>
+            {
+                try
+                {
+                    var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
+                    b.PutExtra("clientPubkey", pubkey);
                     LocalBroadcast.SendBroadcast(this, b);
                 }
                 catch { }
@@ -162,7 +173,8 @@ namespace nokandro
                     _ncSessions.Remove(connectUri.ClientPubkey);
                 }
 
-                var session = new NostrConnectSession(privKey, connectUri);
+                var preAuth = intent.GetBooleanExtra("preAuthenticated", false);
+                var session = new NostrConnectSession(privKey, connectUri, preAuth);
                 session.OnLog += msg =>
                 {
                     try

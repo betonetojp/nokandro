@@ -22,6 +22,8 @@ namespace nokandro
         private readonly SemaphoreSlim _wsLock = new(1, 1);
 
         private readonly HashSet<string> _connectedClients = new();
+        private readonly HashSet<string> _authorizedClients;
+        private readonly HashSet<string> _processedEventIds = new();
 
         public bool IsRunning { get; private set; }
         public int ConnectedClientCount => _connectedClients.Count;
@@ -30,10 +32,14 @@ namespace nokandro
         /// <summary>Raised when bunker wants to report status (runs on background thread).</summary>
         public event Action<string>? OnLog;
 
-        public NostrBunker(byte[] privKey, string relay, string? secret = null)
+        /// <summary>Raised when a new client pubkey is authorized. Persist this for reconnection support.</summary>
+        public event Action<string>? OnClientAuthorized;
+
+        public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null)
         {
             _privKey = privKey;
             _relay = relay;
+            _authorizedClients = authorizedClients != null ? new HashSet<string>(authorizedClients) : [];
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _pubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
 
@@ -81,8 +87,9 @@ namespace nokandro
                     Log("Connected to relay");
 
                     // Subscribe to kind 24133 events tagged with our pubkey
+                    // Use a 60-second buffer to catch events published just before (re)connection
                     var subId = "bunker";
-                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
                     var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"#p\":[\"{_pubkeyHex}\"],\"since\":{since}}}]";
                     await SendTextAsync(reqJson, ct);
                     Log("Subscribed (kind:24133)");
@@ -171,6 +178,18 @@ namespace nokandro
             var ev = root[2];
             if (!ev.TryGetProperty("kind", out var kEl) || kEl.GetInt32() != 24133) return;
 
+            // Deduplicate: skip events we have already processed
+            if (ev.TryGetProperty("id", out var evIdEl))
+            {
+                var evId = evIdEl.GetString();
+                if (!string.IsNullOrEmpty(evId))
+                {
+                    if (!_processedEventIds.Add(evId)) return;
+                    // Keep the set from growing unbounded
+                    if (_processedEventIds.Count > 1000) _processedEventIds.Clear();
+                }
+            }
+
             // Get sender pubkey
             if (!ev.TryGetProperty("pubkey", out var pkEl)) return;
             var senderPubkey = pkEl.GetString();
@@ -200,8 +219,8 @@ namespace nokandro
             var method = reqRoot.TryGetProperty("method", out var methodEl) ? methodEl.GetString() ?? "" : "";
             var paramsArr = reqRoot.TryGetProperty("params", out var pEl) && pEl.ValueKind == JsonValueKind.Array ? pEl : default;
 
-            // Require connection for methods other than connect and ping
-            if (method is not "connect" and not "ping" && !_connectedClients.Contains(senderPubkey))
+            // Require connection for methods other than connect, ping, and get_public_key
+            if (method is not "connect" and not "ping" and not "get_public_key" && !_connectedClients.Contains(senderPubkey))
             {
                 Log($"Rejected '{method}' from unconnected client {senderPubkey[..12]}...");
                 return;
@@ -266,23 +285,32 @@ namespace nokandro
 
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)
         {
-            // params: [<client_pubkey>, <secret>?, ...]
+            // params: [<remote_user_pubkey>, <secret>?, ...]
             string? clientSecret = null;
             if (paramsArr.ValueKind == JsonValueKind.Array && paramsArr.GetArrayLength() >= 2)
             {
                 clientSecret = paramsArr[1].GetString();
             }
 
-            // Verify secret if provided
-            if (!string.IsNullOrEmpty(clientSecret) && clientSecret != _secret)
+            if (_authorizedClients.Contains(senderPubkey))
             {
-                Log($"Secret mismatch: received={clientSecret?[..Math.Min(8, clientSecret?.Length ?? 0)]}... expected={_secret[..8]}...");
+                // Known client reconnecting — skip secret check (may have stale cached token)
+                Log($"Known client reconnecting: {senderPubkey[..12]}...");
+            }
+            else if (!string.IsNullOrEmpty(clientSecret) && clientSecret != _secret)
+            {
+                // New client sent a wrong secret — reject
+                Log($"Secret mismatch: received={clientSecret[..Math.Min(8, clientSecret.Length)]}... expected={_secret[..8]}...");
                 throw new UnauthorizedAccessException("invalid secret");
             }
-            // Even if client didn't send a secret, we still accept the connection
-            // (the bunker URI sharing itself is the trust mechanism in minimal mode)
 
+            // NIP-46: secret param is optional — accept empty/null from new clients too
             _connectedClients.Add(senderPubkey);
+            if (_authorizedClients.Add(senderPubkey))
+            {
+                Log($"New client authorized: {senderPubkey[..12]}...");
+                OnClientAuthorized?.Invoke(senderPubkey);
+            }
             Log($"Client connected: {senderPubkey[..12]}... (total: {_connectedClients.Count})");
             return "ack";
         }

@@ -21,6 +21,7 @@ namespace nokandro
         const string PREF_RELAY = "pref_relay";
         const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         const string PREF_BUNKER_SECRET = "pref_bunker_secret";
+        const string PREF_BUNKER_AUTHORIZED = "pref_bunker_authorized";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
@@ -834,6 +835,25 @@ namespace nokandro
                         try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = true; bunkerRelayEdit.Alpha = 1.0f; } } catch { }
                     });
                 }
+                else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED")
+                {
+                    var pubkey = intent.GetStringExtra("clientPubkey") ?? "";
+                    if (!string.IsNullOrEmpty(pubkey))
+                    {
+                        try
+                        {
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var existing = prefs?.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
+                            var set = new HashSet<string>(existing.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                            if (set.Add(pubkey))
+                            {
+                                var edit = prefs?.Edit();
+                                if (edit != null) { edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set)); edit.Apply(); }
+                            }
+                        }
+                        catch { }
+                    }
+                }
             };
             try
             {
@@ -841,6 +861,7 @@ namespace nokandro
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STARTED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_LOG");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STOPPED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
                 LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
             }
             catch { }
@@ -910,7 +931,7 @@ namespace nokandro
                                 try
                                 {
                                     var edit = prefs?.Edit();
-                                    if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Apply(); }
+                                    if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Remove(PREF_BUNKER_AUTHORIZED); edit.Apply(); }
                                     // Stop bunker and uncheck switch so next start uses new secret
                                     if (BunkerService.IsRunning) StopBunkerService();
                                     try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
@@ -1844,13 +1865,16 @@ namespace nokandro
                 intent.PutExtra("nsecHex", nsecHex);
                 intent.PutExtra("relay", relayUrl);
 
-                // Reuse persisted secret so the bunker URI stays stable across restarts
+                // Reuse persisted secret and authorized clients so the bunker survives restarts
                 try
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                     var savedSecret = prefs?.GetString(PREF_BUNKER_SECRET, null);
                     if (!string.IsNullOrEmpty(savedSecret))
                         intent.PutExtra("secret", savedSecret);
+                    var savedClients = prefs?.GetString(PREF_BUNKER_AUTHORIZED, null);
+                    if (!string.IsNullOrEmpty(savedClients))
+                        intent.PutExtra("authorizedClients", savedClients.Split(',', StringSplitOptions.RemoveEmptyEntries));
                 }
                 catch { }
 
@@ -1876,7 +1900,7 @@ namespace nokandro
             catch { }
         }
 
-        private void StartNostrConnectSession(string connectUri, EditText? nsec)
+        private void StartNostrConnectSession(string connectUri, EditText? nsec, bool preAuthenticated = false)
         {
             try
             {
@@ -1907,6 +1931,7 @@ namespace nokandro
                 intent.SetAction("START_NOSTRCONNECT");
                 intent.PutExtra("connectUri", connectUri);
                 intent.PutExtra("nsecHex", nsecHex);
+                intent.PutExtra("preAuthenticated", preAuthenticated);
 
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                     StartForegroundService(intent);
@@ -2012,7 +2037,7 @@ namespace nokandro
                         var activePks = BunkerService.GetActiveClientPubkeys();
                         if (!activePks.Contains(parsed.ClientPubkey))
                         {
-                            StartNostrConnectSession(uri, nsec);
+                            StartNostrConnectSession(uri, nsec, preAuthenticated: true);
                         }
                     }
                 }
