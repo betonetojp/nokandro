@@ -965,24 +965,32 @@ namespace nokandro
                         }
 
                         var preview = saved.Length > 8 ? saved[..8] + "..." : saved;
-                        new Android.App.AlertDialog.Builder(this)
-                            .SetTitle("Reset Bunker Secret")
-                            .SetMessage($"Delete saved secret ({preview})?\nBunker will be stopped and a new URI will be generated on next start.")
-                            .SetPositiveButton("Delete", (sender, args) =>
-                            {
-                                try
-                                {
-                                    var edit = prefs?.Edit();
-                                    if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Remove(PREF_BUNKER_AUTHORIZED); edit.Apply(); }
-                                    // Stop bunker and uncheck switch so next start uses new secret
-                                    if (BunkerService.IsRunning) StopBunkerService();
-                                    try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
-                                    Toast.MakeText(this, "Secret deleted", ToastLength.Short)?.Show();
-                                }
-                                catch { }
-                            })
-                            .SetNegativeButton("Cancel", (sender, args) => { })
-                            .Show();
+                        var resetDialog = new Android.App.AlertDialog.Builder(this)
+                             .SetTitle("Reset Bunker Secret")
+                             .SetMessage($"Delete saved secret ({preview})?\nBunker will be stopped and a new URI will be generated on next start.")
+                             .SetPositiveButton("Delete", (sender, args) =>
+                             {
+                                 try
+                                 {
+                                     var edit = prefs?.Edit();
+                                     if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Remove(PREF_BUNKER_AUTHORIZED); edit.Apply(); }
+                                     // Stop bunker and uncheck switch so next start uses new secret
+                                     if (BunkerService.IsRunning) StopBunkerService();
+                                     try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
+                                     Toast.MakeText(this, "Secret deleted", ToastLength.Short)?.Show();
+                                 }
+                                 catch { }
+                             })
+                             .SetNegativeButton("Cancel", (sender, args) => { })
+                             .Create();
+
+                        resetDialog.Show();
+                        try
+                        {
+                            resetDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                            resetDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+                        }
+                        catch { }
                     }
                     catch { }
                 };
@@ -2018,44 +2026,23 @@ namespace nokandro
                         btn.SetPadding(16, 0, 16, 0);
                         btn.Click += (s, e) =>
                         {
+                            var name = GetNcClientDisplayName(clientPk);
+                            var removeDialog = new Android.App.AlertDialog.Builder(this)
+                                .SetTitle("Remove client")
+                                .SetMessage($"Disconnect and remove {name}?")
+                                .SetPositiveButton("Remove", (sender, args) =>
+                                {
+                                    RemoveNcClientName(clientPk);
+                                    StopNostrConnectSession(clientPk);
+                                })
+                                .SetNegativeButton("Cancel", (sender, args) => { })
+                                .Create();
+
+                            removeDialog.Show();
                             try
                             {
-                                var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
-                                var builder = new Android.App.AlertDialog.Builder(this);
-                                builder.SetTitle("Revoke authorization");
-                                builder.SetMessage($"Remove authorized client\n{shortName}?\nThis will require the client to re-authorize.");
-                                builder.SetPositiveButton("Remove", (sender, args) =>
-                                {
-                                    try
-                                    {
-                                        var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                                        var edit = p?.Edit();
-                                        if (edit != null)
-                                        {
-                                            var cur = p.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
-                                            var set = new HashSet<string>(cur.Split(',', StringSplitOptions.RemoveEmptyEntries));
-                                            if (set.Remove(pk))
-                                            {
-                                                edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set));
-                                                edit.Apply();
-                                            }
-                                        }
-
-                                        try
-                                        {
-                                            var intent = new Intent(this, typeof(BunkerService));
-                                            intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
-                                            intent.PutExtra("clientPubkey", pk);
-                                            StartService(intent);
-                                        }
-                                        catch { }
-
-                                        try { RefreshBunkerAuthorizedList(); } catch { }
-                                    }
-                                    catch { }
-                                });
-                                builder.SetNegativeButton("Cancel", (sender, args) => { });
-                                builder.Show();
+                                removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                                removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
                             }
                             catch { }
                         };
@@ -2293,7 +2280,7 @@ namespace nokandro
                 removeBtn.Click += (s, e) =>
                 {
                     var name = GetNcClientDisplayName(clientPk);
-                    new Android.App.AlertDialog.Builder(this)
+                    var removeDialog = new Android.App.AlertDialog.Builder(this)
                         .SetTitle("Remove client")
                         .SetMessage($"Disconnect and remove {name}?")
                         .SetPositiveButton("Remove", (sender, args) =>
@@ -2302,7 +2289,15 @@ namespace nokandro
                             StopNostrConnectSession(clientPk);
                         })
                         .SetNegativeButton("Cancel", (sender, args) => { })
-                        .Show();
+                        .Create();
+
+                    removeDialog.Show();
+                    try
+                    {
+                        removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                        removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+                    }
+                    catch { }
                 };
 
                 row.AddView(label);
@@ -2320,19 +2315,27 @@ namespace nokandro
             };
             input.SetSingleLine(true);
 
-            new Android.App.AlertDialog.Builder(this)
-                .SetTitle("Edit client name")
-                .SetMessage(clientPubkey[..Math.Min(12, clientPubkey.Length)] + "...")
-                .SetView(input)
-                .SetPositiveButton("Save", (sender, args) =>
-                {
-                    var name = input.Text?.Trim() ?? "";
-                    SaveNcClientName(clientPubkey, name);
-                    RefreshNostrConnectClientList(_lastNcPubkeys, _lastNcUris);
-                    RefreshBunkerAuthorizedList();
-                })
-                .SetNegativeButton("Cancel", (sender, args) => { })
-                .Show();
+            var editDialog = new Android.App.AlertDialog.Builder(this)
+                 .SetTitle("Edit client name")
+                 .SetMessage(clientPubkey[..Math.Min(12, clientPubkey.Length)] + "...")
+                 .SetView(input)
+                 .SetPositiveButton("Save", (sender, args) =>
+                 {
+                     var name = input.Text?.Trim() ?? "";
+                     SaveNcClientName(clientPubkey, name);
+                     RefreshNostrConnectClientList(_lastNcPubkeys, _lastNcUris);
+                     RefreshBunkerAuthorizedList();
+                 })
+                 .SetNegativeButton("Cancel", (sender, args) => { })
+                 .Create();
+
+            editDialog.Show();
+            try
+            {
+                editDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                editDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+            }
+            catch { }
         }
 
         private string GetNcClientDisplayName(string clientPubkey)
