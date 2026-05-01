@@ -62,6 +62,7 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running.
 - **Copy bunker URI**: Copies the URI to the clipboard.
 - **Reset Secret**: Deletes the saved bunker secret and stops the bunker. A new URI with a fresh secret will be generated on next start.
+- **Authorized clients**: Shows a list of authorized clients. Tap a name to edit its label, swipe to remove authorization.
 - **Status**: Shows bunker connection status and client activity.
 
 ### nostrconnect:// (Client-initiated)
@@ -76,6 +77,9 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`.
 
 > **Note**: Enter your `nsec` in the Main tab before using the Bunker or nostrconnect features.
+> 
+> - `bunker://` requires secret match for new client connections. Reconnecting authorized clients will skip the secret check.
+> - `nostrconnect://` will accept connections even with secret mismatch (mismatch will be logged).
 
 For detailed documentation on the Bunker feature, see [BUNKER.md](BUNKER.md).
 
@@ -187,6 +191,7 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 - **Bunker URI**: NIP-46 対応クライアントに貼り付ける `bunker://` URI。Bunker 実行中に表示されます。
 - **Copy bunker URI**: URI をクリップボードにコピーします。
 - **Reset Secret**: 保存されたシークレットを削除し Bunker を停止します。次回起動時に新しいシークレットの URI が生成されます。
+- **Authorized clients**: 認証済みクライアントを一覧表示します。名前タップでラベル編集、Remove で認証を取り消せます。
 - **Status**: Bunker の接続状態やクライアントの動作状況を表示します。
 
 ### nostrconnect://（クライアント起点）
@@ -201,6 +206,9 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 **対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`
 
 > **注意**: Bunker や nostrconnect を使用するには Main タブで `nsec` を入力してください。
+> 
+> - bunker:// は新規クライアント接続時にシークレット一致が必要です。既に認証済みのクライアント再接続時はシークレットチェックをスキップします。
+> - nostrconnect:// はシークレット不一致でも接続は受け入れます（不一致はログに記録されます）。
 
 Bunker 機能の詳細なドキュメントは [BUNKER.md](BUNKER.md) を参照してください。
 
