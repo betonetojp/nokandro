@@ -70,6 +70,24 @@ namespace nokandro
         private string[] _lastNcPubkeys = [];
         private string[] _lastNcUris = [];
 
+        private void setControlEnabled(View? v, bool enabled)
+        {
+            if (v == null) return;
+            try
+            {
+                v.Enabled = enabled;
+                v.Alpha = enabled ? 1.0f : 0.45f;
+                if (v is EditText et)
+                {
+                    try { et.Focusable = enabled; } catch { }
+                    try { et.FocusableInTouchMode = enabled; } catch { }
+                    et.Clickable = enabled;
+                    try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                }
+            }
+            catch { }
+        }
+
         protected override void OnCreate(Bundle? savedInstanceState)
         {
 #pragma warning disable CS8600,CS8601,CS8602
@@ -324,31 +342,13 @@ namespace nokandro
                 try
                 {
                     v.Enabled = enabled;
-                    // subtle visual cue when disabled
                     v.Alpha = enabled ? 1.0f : 0.45f;
-
                     if (v is EditText et)
                     {
-                        // make non-focusable when disabled so keyboard won't appear
                         try { et.Focusable = enabled; } catch { }
                         try { et.FocusableInTouchMode = enabled; } catch { }
                         et.Clickable = enabled;
                         try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
-                    }
-
-                    if (v is Spinner sp)
-                    {
-                        try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    }
-
-                    if (v is Button btn)
-                    {
-                        try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    }
-
-                    if (v is Switch sw)
-                    {
-                        try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
                     }
                 }
                 catch { }
@@ -1202,27 +1202,27 @@ namespace nokandro
             // set initial start/stop button state from service flag and npub validity
             try
             {
-                SetControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text));
-                SetControlEnabled(stop, NostrService.IsRunning);
+                setControlEnabled(start, !NostrService.IsRunning && IsNpubValid(npub.Text));
+                setControlEnabled(stop, NostrService.IsRunning);
                 // disable all settings if service already running
-                SetControlEnabled(relay, !NostrService.IsRunning);
-                try { SetControlEnabled(fetchRelaysBtn, !NostrService.IsRunning); } catch { }
-                SetControlEnabled(npub, !NostrService.IsRunning);
-                if (nsec != null) SetControlEnabled(nsec, !NostrService.IsRunning);
-                SetControlEnabled(truncate, !NostrService.IsRunning);
-                try { SetControlEnabled(truncateEllipsis, !NostrService.IsRunning); } catch { }
-                SetControlEnabled(allowOthers, !NostrService.IsRunning);
-                SetControlEnabled(speakPetSwitch, !NostrService.IsRunning);
-                SetControlEnabled(voiceFollowed, !NostrService.IsRunning);
-                SetControlEnabled(voiceOther, !NostrService.IsRunning);
-                SetControlEnabled(refreshVoices, !NostrService.IsRunning);
-                SetControlEnabled(voiceLang, !NostrService.IsRunning);
-                try { SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
-                try { SetControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
-                try { SetControlEnabled(skipContentWarningSwitch, !NostrService.IsRunning); } catch { }
-                try { SetControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
-                try { SetControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
-                try { SetControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
+                setControlEnabled(relay, !NostrService.IsRunning);
+                try { setControlEnabled(fetchRelaysBtn, !NostrService.IsRunning); } catch { }
+                setControlEnabled(npub, !NostrService.IsRunning);
+                if (nsec != null) setControlEnabled(nsec, !NostrService.IsRunning);
+                setControlEnabled(truncate, !NostrService.IsRunning);
+                try { setControlEnabled(truncateEllipsis, !NostrService.IsRunning); } catch { }
+                setControlEnabled(allowOthers, !NostrService.IsRunning);
+                setControlEnabled(speakPetSwitch, !NostrService.IsRunning);
+                setControlEnabled(voiceFollowed, !NostrService.IsRunning);
+                setControlEnabled(voiceOther, !NostrService.IsRunning);
+                setControlEnabled(refreshVoices, !NostrService.IsRunning);
+                setControlEnabled(voiceLang, !NostrService.IsRunning);
+                try { setControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
+                try { setControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(skipContentWarningSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
             }
             catch { }
 
@@ -1649,31 +1649,13 @@ namespace nokandro
                 try
                 {
                     v.Enabled = enabled;
-                    // subtle visual cue when disabled
                     v.Alpha = enabled ? 1.0f : 0.45f;
-
                     if (v is EditText et)
                     {
-                        // make non-focusable when disabled so keyboard won't appear
                         try { et.Focusable = enabled; } catch { }
                         try { et.FocusableInTouchMode = enabled; } catch { }
                         et.Clickable = enabled;
                         try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
-                    }
-
-                    if (v is Spinner sp)
-                    {
-                        try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    }
-
-                    if (v is Button btn)
-                    {
-                        try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    }
-
-                    if (v is Switch sw)
-                    {
-                        try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
                     }
                 }
                 catch { }
@@ -2023,8 +2005,7 @@ namespace nokandro
 
                         var btn = new Button(this)
                         {
-                            Text = "Remove",
-                            TextSize = 12
+                            Text = "Remove"
                         };
                         btn.SetMinimumWidth(0);
                         btn.SetMinimumHeight(0);
@@ -2284,10 +2265,8 @@ namespace nokandro
 
                 var label = new TextView(this)
                 {
-                    TextSize = 11,
                     Text = labelText
                 };
-                label.SetTypeface(Android.Graphics.Typeface.Monospace, Android.Graphics.TypefaceStyle.Normal);
                 label.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
                 var lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 lp.Gravity = GravityFlags.CenterVertical;
@@ -2300,8 +2279,7 @@ namespace nokandro
 
                 var removeBtn = new Button(this)
                 {
-                    Text = "Remove",
-                    TextSize = 12
+                    Text = "Remove"
                 };
                 removeBtn.SetMinimumWidth(0);
                 removeBtn.SetMinimumHeight(0);

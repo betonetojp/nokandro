@@ -3,16 +3,18 @@
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
 	android:orientation="vertical"
-	android:fitsSystemWindows="true">
+	android:fitsSystemWindows="true"
+	android:background="#FDF2F8">
 
 	<!-- Tab bar -->
 	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:orientation="horizontal"
-		android:paddingStart="16dp"
-		android:paddingEnd="16dp"
-		android:paddingTop="4dp">
+		android:paddingStart="12dp"
+		android:paddingEnd="12dp"
+		android:paddingTop="8dp"
+		android:paddingBottom="4dp">
 
 		<Button
 			android:id="@+id/tabMainBtn"
@@ -34,7 +36,10 @@
 	<FrameLayout
 		android:layout_width="match_parent"
 		android:layout_height="0dp"
-		android:layout_weight="1">
+		android:layout_weight="1"
+		android:paddingStart="10dp"
+		android:paddingEnd="10dp"
+		android:paddingBottom="10dp">
 
 		<!-- Tab 1: Main -->
 		<ScrollView
@@ -43,10 +48,12 @@
 			android:layout_height="match_parent">
 
 			<LinearLayout
+				style="@style/SectionCard"
 				android:orientation="vertical"
-				android:padding="16dp"
 				android:layout_width="match_parent"
-				android:layout_height="wrap_content">
+				android:layout_height="wrap_content"
+				android:layout_marginTop="4dp"
+				android:layout_marginBottom="4dp">
 
 				<TextView
 					android:id="@+id/followStatusText"
@@ -94,8 +101,7 @@
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:hint="Your nsec (Archive for posting)"
-					android:inputType="textPassword"
-					android:fontFamily="sans-serif" />
+					android:inputType="textPassword" />
 
 				<EditText
 					android:id="@+id/npubEdit"
@@ -283,7 +289,7 @@
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:text="Music: (waiting)"
-					android:textColor="#008800"
+					android:textColor="@color/status_message_color"
 					android:layout_marginBottom="4dp" />
 
 				<Button
@@ -330,7 +336,7 @@
 						android:id="@+id/offTimerCountdownText"
 						android:layout_width="wrap_content"
 						android:layout_height="wrap_content"
-						android:textColor="#008800"
+						android:textColor="@color/status_message_color"
 						android:layout_marginStart="16dp"
 						android:visibility="gone" />
 				</LinearLayout>
@@ -368,10 +374,12 @@
 			android:visibility="gone">
 
 			<LinearLayout
+				style="@style/SectionCard"
 				android:orientation="vertical"
-				android:padding="16dp"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:layout_marginTop="4dp"
+				android:layout_marginBottom="4dp"
 				android:focusable="true"
 				android:focusableInTouchMode="true">
 
@@ -379,7 +387,8 @@
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
 					android:text="Bunker relay"
-					android:layout_marginBottom="2dp" />
+					style="@style/SectionTitle"
+					android:layout_marginBottom="4dp" />
 
 				<EditText
 					android:id="@+id/bunkerRelayEdit"
@@ -412,8 +421,6 @@
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:textIsSelectable="true"
-						android:textSize="11sp"
-						android:typeface="monospace"
 						android:maxLines="3"
 						android:ellipsize="end" />
 
@@ -442,7 +449,7 @@
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:text="Bunker: stopped"
-						android:textColor="#008800"
+						android:textColor="@color/status_message_color"
 						android:layout_marginTop="2dp" />
 				</LinearLayout>
 
@@ -451,7 +458,6 @@
 					android:layout_height="wrap_content"
 					android:text="* Enter nsec in Main tab to use Bunker."
 					android:textColor="#888888"
-					android:textSize="12sp"
 					android:layout_marginTop="8dp" />
 
 				<!-- nostrconnect:// section -->
@@ -466,9 +472,8 @@
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
 					android:text="nostrconnect://"
-					android:textSize="14sp"
-					android:textStyle="bold"
-					android:layout_marginBottom="4dp" />
+					style="@style/SectionTitle"
+					android:layout_marginBottom="6dp" />
 
 				<EditText
 					android:id="@+id/ncUriEdit"
@@ -477,7 +482,6 @@
 					android:hint="nostrconnect://&lt;pubkey&gt;?relay=wss://..."
 					android:inputType="textUri"
 					android:singleLine="true"
-					android:textSize="12sp"
 					android:layout_marginBottom="4dp" />
 
 				<LinearLayout
@@ -505,8 +509,7 @@
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:text="nostrconnect: no sessions"
-					android:textColor="#008800"
-					android:textSize="12sp"
+					android:textColor="@color/status_message_color"
 					android:layout_marginBottom="4dp" />
 
 				<LinearLayout
