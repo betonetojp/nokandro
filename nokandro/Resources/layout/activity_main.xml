@@ -22,7 +22,7 @@
 			android:layout_height="wrap_content"
 			android:layout_weight="1"
 			android:text="Main"
-			style="?android:attr/buttonBarButtonStyle" />
+			style="@style/AppButton" />
 
 		<Button
 			android:id="@+id/tabBunkerBtn"
@@ -30,7 +30,7 @@
 			android:layout_height="wrap_content"
 			android:layout_weight="1"
 			android:text="Bunker"
-			style="?android:attr/buttonBarButtonStyle" />
+			style="@style/AppButton" />
 	</LinearLayout>
 
 	<FrameLayout

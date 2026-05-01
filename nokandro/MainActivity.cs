@@ -1251,7 +1251,7 @@ namespace nokandro
                         {
                             try
                             {
-                                new Android.App.AlertDialog.Builder(this)
+                                var dlg = new Android.App.AlertDialog.Builder(this)
                                     .SetTitle("Permission Required")
                                     .SetMessage("To use Now Playing, you must grant the Notification Listener permission.")
                                     .SetPositiveButton("Grant", (sender, args) =>
@@ -1265,6 +1265,12 @@ namespace nokandro
                                     })
                                     .SetNegativeButton("Cancel", (sender, args) => { })
                                     .Show();
+                                try
+                                {
+                                    dlg.GetButton((int)Android.Content.DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                                    dlg.GetButton((int)Android.Content.DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+                                }
+                                catch { }
                             }
                             catch { }
                             return;
@@ -3062,8 +3068,9 @@ namespace nokandro
                              try 
                              { 
                                  verTv.Text = $"{currentVer} -> {latestTag}";
-                                 verTv.SetTextColor(Android.Graphics.Color.Red);
-                             } catch {}
+                                 verTv.SetTextColor(Android.Graphics.Color.ParseColor("#4A001F"));
+                                 verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
+                             } catch { }
                          });
                     }
                 }
