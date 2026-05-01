@@ -21,6 +21,7 @@ namespace nokandro
         const string PREF_RELAY = "pref_relay";
         const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         const string PREF_BUNKER_SECRET = "pref_bunker_secret";
+        const string PREF_BUNKER_ENABLED = "pref_bunker_enabled";
         const string PREF_BUNKER_AUTHORIZED = "pref_bunker_authorized";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
@@ -814,6 +815,14 @@ namespace nokandro
                         if (bunkerUriText != null) bunkerUriText.Text = uri;
                         if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: starting...";
                     });
+                    // Persist desired bunker enabled state
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, true); edit.Apply(); }
+                    }
+                    catch { }
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_LOG")
                 {
@@ -834,6 +843,14 @@ namespace nokandro
                         // re-enable relay edit
                         try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = true; bunkerRelayEdit.Alpha = 1.0f; } } catch { }
                     });
+                    // Persist desired bunker disabled state
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, false); edit.Apply(); }
+                    }
+                    catch { }
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED")
                 {
@@ -852,6 +869,7 @@ namespace nokandro
                             }
                         }
                         catch { }
+                        try { RunOnUiThread(() => RefreshBunkerAuthorizedList()); } catch { }
                     }
                 }
             };
@@ -865,6 +883,9 @@ namespace nokandro
                 LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
             }
             catch { }
+
+            // Populate authorized clients list UI
+            try { RefreshBunkerAuthorizedList(); } catch { }
 
             if (bunkerSwitch != null)
             {
@@ -881,6 +902,15 @@ namespace nokandro
                     // Enable/disable relay edit based on bunker state
                     try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !e.IsChecked; bunkerRelayEdit.Alpha = e.IsChecked ? 0.45f : 1.0f; } } catch { }
 
+                    // Persist user's bunker switch preference
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, e.IsChecked); edit.Apply(); }
+                    }
+                    catch { }
+
                     if (e.IsChecked && !BunkerService.IsBunkerActive)
                     {
                         StartBunkerService(bunkerRelayEdit, nsec);
@@ -890,6 +920,18 @@ namespace nokandro
                         StopBunkerService();
                     }
                 };
+                // Restore user's desired bunker state (attempt start if user had enabled it)
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var want = prefs?.GetBoolean(PREF_BUNKER_ENABLED, false) ?? false;
+                    if (want && !BunkerService.IsBunkerActive)
+                    {
+                        // Programmatically checking will trigger the CheckedChange handler and start the service
+                        bunkerSwitch.Checked = true;
+                    }
+                }
+                catch { }
             }
 
             if (bunkerCopyBtn != null)
@@ -1896,6 +1938,110 @@ namespace nokandro
                 var intent = new Intent(this, typeof(BunkerService));
                 intent.SetAction("STOP");
                 StartService(intent);
+            }
+            catch { }
+        }
+
+        // Refresh the authorized clients list UI under the bunker container.
+        private void RefreshBunkerAuthorizedList()
+        {
+            try
+            {
+                var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
+                if (bunkerContainer == null) return;
+
+                // Remove existing list if present
+                Android.Views.View? existing = null;
+                for (int i = 0; i < bunkerContainer.ChildCount; i++)
+                {
+                    var child = bunkerContainer.GetChildAt(i);
+                    if (child != null && child.Tag is string t && t == "bunkerAuthorizedList") { existing = child; break; }
+                }
+                if (existing != null) bunkerContainer.RemoveView(existing);
+
+                // Build new vertical list
+                var list = new LinearLayout(this) { Orientation = Orientation.Vertical };
+                list.Tag = "bunkerAuthorizedList";
+
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var saved = prefs?.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
+                var items = new HashSet<string>(saved.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+                if (items.Count == 0)
+                {
+                    var emptyTv = new TextView(this);
+                    emptyTv.Text = "No authorized clients";
+                    emptyTv.SetPadding(8, 8, 8, 8);
+                    list.AddView(emptyTv);
+                }
+                else
+                {
+                    foreach (var pk in items)
+                    {
+                        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                        row.SetPadding(4, 4, 4, 4);
+
+                        var tv = new TextView(this);
+                        var shortPk = pk.Length > 24 ? pk.Substring(0, 12) + "..." + pk.Substring(pk.Length - 8) : pk;
+                        tv.Text = shortPk;
+                        tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
+
+                        var btn = new Button(this);
+                        btn.Text = "Remove";
+                        btn.Click += (s, e) =>
+                        {
+                            try
+                            {
+                                // Confirm
+                                var builder = new Android.App.AlertDialog.Builder(this);
+                                builder.SetTitle("Revoke authorization");
+                                builder.SetMessage($"Remove authorized client \n{pk.Substring(0, Math.Min(64, pk.Length))}?\nThis will require the client to re-authorize.");
+                                builder.SetPositiveButton("Remove", (sd, ea) =>
+                                {
+                                    try
+                                    {
+                                        // remove from prefs
+                                        var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                                        var edit = p?.Edit();
+                                        if (edit != null)
+                                        {
+                                            var cur = p.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
+                                            var set = new HashSet<string>(cur.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                                            if (set.Remove(pk))
+                                            {
+                                                edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set));
+                                                edit.Apply();
+                                            }
+                                        }
+
+                                        // Notify service to revoke immediately
+                                        try
+                                        {
+                                            var intent = new Intent(this, typeof(BunkerService));
+                                            intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
+                                            intent.PutExtra("clientPubkey", pk);
+                                            StartService(intent);
+                                        }
+                                        catch { }
+
+                                        // refresh UI
+                                        try { RefreshBunkerAuthorizedList(); } catch { }
+                                    }
+                                    catch { }
+                                });
+                                builder.SetNegativeButton("Cancel", (sd, ea) => { });
+                                builder.Show();
+                            }
+                            catch { }
+                        };
+
+                        row.AddView(tv);
+                        row.AddView(btn);
+                        list.AddView(row);
+                    }
+                }
+
+                bunkerContainer.AddView(list);
             }
             catch { }
         }

@@ -35,6 +35,23 @@ namespace nokandro
         /// <summary>Raised when a new client pubkey is authorized. Persist this for reconnection support.</summary>
         public event Action<string>? OnClientAuthorized;
 
+        /// <summary>
+        /// Remove an authorized client (and disconnect if currently connected).
+        /// </summary>
+        public void RemoveAuthorizedClient(string pubkey)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return;
+            try
+            {
+                if (_authorizedClients.Remove(pubkey))
+                {
+                    _connectedClients.Remove(pubkey);
+                    Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
+                }
+            }
+            catch { }
+        }
+
         public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null)
         {
             _privKey = privKey;
@@ -291,20 +308,21 @@ namespace nokandro
             {
                 clientSecret = paramsArr[1].GetString();
             }
-
             if (_authorizedClients.Contains(senderPubkey))
             {
                 // Known client reconnecting — skip secret check (may have stale cached token)
                 Log($"Known client reconnecting: {senderPubkey[..12]}...");
             }
-            else if (!string.IsNullOrEmpty(clientSecret) && clientSecret != _secret)
+            else
             {
-                // New client sent a wrong secret — reject
-                Log($"Secret mismatch: received={clientSecret[..Math.Min(8, clientSecret.Length)]}... expected={_secret[..8]}...");
-                throw new UnauthorizedAccessException("invalid secret");
+                // For security, require secret even on initial connect. Reject if missing or wrong.
+                if (string.IsNullOrEmpty(clientSecret) || clientSecret != _secret)
+                {
+                    var receivedPreview = string.IsNullOrEmpty(clientSecret) ? "(missing)" : clientSecret[..Math.Min(8, clientSecret.Length)];
+                    Log($"Secret mismatch or missing: received={receivedPreview}... expected={_secret[..8]}...");
+                    throw new UnauthorizedAccessException("invalid secret");
+                }
             }
-
-            // NIP-46: secret param is optional — accept empty/null from new clients too
             _connectedClients.Add(senderPubkey);
             if (_authorizedClients.Add(senderPubkey))
             {

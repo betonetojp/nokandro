@@ -35,6 +35,21 @@ namespace nokandro
                 return HandleStopBunker();
             }
 
+            if (intent?.Action == "nokandro.ACTION_BUNKER_REVOKE_CLIENT")
+            {
+                var clientPubkey = intent.GetStringExtra("clientPubkey");
+                if (!string.IsNullOrEmpty(clientPubkey))
+                {
+                    try
+                    {
+                        AppLog.D(TAG, $"Revoking bunker client: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
+                        _bunker?.RemoveAuthorizedClient(clientPubkey);
+                    }
+                    catch { }
+                }
+                return StartCommandResult.Sticky;
+            }
+
             if (intent?.Action == "START_NOSTRCONNECT")
             {
                 return HandleStartNostrConnect(intent);
