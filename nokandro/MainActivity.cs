@@ -974,6 +974,10 @@ namespace nokandro
                                  {
                                      var edit = prefs?.Edit();
                                      if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Remove(PREF_BUNKER_AUTHORIZED); edit.Apply(); }
+
+                                     // Immediately reflect cleared clients on UI
+                                     try { RefreshBunkerAuthorizedList(); } catch { }
+
                                      // Stop bunker and uncheck switch so next start uses new secret
                                      if (BunkerService.IsRunning) StopBunkerService();
                                      try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
@@ -2026,14 +2030,39 @@ namespace nokandro
                         btn.SetPadding(16, 0, 16, 0);
                         btn.Click += (s, e) =>
                         {
-                            var name = GetNcClientDisplayName(clientPk);
+                            var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                             var removeDialog = new Android.App.AlertDialog.Builder(this)
-                                .SetTitle("Remove client")
-                                .SetMessage($"Disconnect and remove {name}?")
+                                .SetTitle("Revoke authorization")
+                                .SetMessage($"Remove authorized client\n{shortName}?\nThis will require the client to re-authorize.")
                                 .SetPositiveButton("Remove", (sender, args) =>
                                 {
-                                    RemoveNcClientName(clientPk);
-                                    StopNostrConnectSession(clientPk);
+                                    try
+                                    {
+                                        var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                                        var edit = p?.Edit();
+                                        if (edit != null)
+                                        {
+                                            var cur = p.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
+                                            var set = new HashSet<string>(cur.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                                            if (set.Remove(pk))
+                                            {
+                                                edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set));
+                                                edit.Apply();
+                                            }
+                                        }
+
+                                        try
+                                        {
+                                            var intent = new Intent(this, typeof(BunkerService));
+                                            intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
+                                            intent.PutExtra("clientPubkey", pk);
+                                            StartService(intent);
+                                        }
+                                        catch { }
+
+                                        try { RefreshBunkerAuthorizedList(); } catch { }
+                                    }
+                                    catch { }
                                 })
                                 .SetNegativeButton("Cancel", (sender, args) => { })
                                 .Create();
