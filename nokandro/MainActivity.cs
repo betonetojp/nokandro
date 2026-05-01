@@ -1413,13 +1413,11 @@ namespace nokandro
                             try { SetControlEnabled(speakPetSwitch, false); } catch { }
                             try { SetControlEnabled(voiceFollowed, false); } catch { }
                             try { SetControlEnabled(voiceOther, false); } catch { }
-                            try { SetControlEnabled(refreshVoices, false); } catch { }
                             try { SetControlEnabled(ttsSwitch, false); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, false); } catch { }
                             try { SetControlEnabled(autoStopSwitch, false); } catch { }
                             try { SetControlEnabled(offTimerSwitch, false); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
-                            // do not disable speechSeek; speech rate applies immediately
                         });
                         // Start countdown if off-timer was set (e.g. via Tasker or Widget)
                         try
@@ -1453,7 +1451,6 @@ namespace nokandro
                             try { SetControlEnabled(voiceFollowed, true); } catch { }
                             try { SetControlEnabled(voiceOther, true); } catch { }
                             try { SetControlEnabled(refreshVoices, true); } catch { }
-                            try { SetControlEnabled(musicSwitch, IsNsecValid()); } catch { }
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, true); } catch { }
                             try { SetControlEnabled(autoStopSwitch, true); } catch { }
@@ -1642,6 +1639,8 @@ namespace nokandro
                 var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
                 var voiceLang = FindViewById<Spinner>(Resource.Id.voiceLangSpinner);
                 var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
+                var offTimerSwitch = FindViewById<Switch>(Resource.Id.offTimerSwitch);
+                var offTimerMinutesEdit = FindViewById<EditText>(Resource.Id.offTimerMinutesEdit);
 
             // Helper to set Enabled + visual appearance
             void SetControlEnabled(View? v, bool enabled)
@@ -1650,37 +1649,57 @@ namespace nokandro
                 try
                 {
                     v.Enabled = enabled;
+                    // subtle visual cue when disabled
                     v.Alpha = enabled ? 1.0f : 0.45f;
+
                     if (v is EditText et)
                     {
+                        // make non-focusable when disabled so keyboard won't appear
                         try { et.Focusable = enabled; } catch { }
                         try { et.FocusableInTouchMode = enabled; } catch { }
                         et.Clickable = enabled;
                         try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
                     }
-                    if (v is Spinner sp) try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    if (v is Button btn) try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
-                    if (v is Switch sw) try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+
+                    if (v is Spinner sp)
+                    {
+                        try { sp.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
+
+                    if (v is Button btn)
+                    {
+                        try { btn.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
+
+                    if (v is Switch sw)
+                    {
+                        try { sw.Alpha = enabled ? 1.0f : 0.45f; } catch { }
+                    }
                 }
                 catch { }
             }
 
-            // Helper to validate npub input
+            // Helper to validate npub input format
             bool IsNpubValid(string? input)
             {
                 if (string.IsNullOrWhiteSpace(input)) return false;
                 var s = input.Trim();
+
+                // Accept only exact npub1... token or exact 64-hex string
                 try
                 {
                     var m = CreateNpubPlainRegex().Match(s);
                     if (m.Success && m.Index == 0 && m.Length == s.Length)
                     {
+                        // Typical npub bech32 length for 32-byte payload + 6 checksum: hrp(4) + '1' + 58 = 63
                         if (s.Length == 63) return true;
                         return false;
                     }
                 }
                 catch { }
+
                 try { if (CreateHex64Regex().IsMatch(s)) return true; } catch { }
+
                 return false;
             }
 
@@ -1718,6 +1737,8 @@ namespace nokandro
                 try { SetControlEnabled(ttsSwitch, !running); } catch { }
                 try { SetControlEnabled(skipContentWarningSwitch, !running); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !running); } catch { }
+                try { SetControlEnabled(offTimerSwitch, !running); } catch { }
+                try { SetControlEnabled(offTimerMinutesEdit, !running && (offTimerSwitch?.Checked ?? false)); } catch { }
             }
 
                 // Request current list status from service (to recover from activity restart)
@@ -1955,7 +1976,7 @@ namespace nokandro
                 for (int i = 0; i < bunkerContainer.ChildCount; i++)
                 {
                     var child = bunkerContainer.GetChildAt(i);
-                    if (child != null && child.Tag is string t && t == "bunkerAuthorizedList") { existing = child; break; }
+                    if (child != null && string.Equals(child.Tag?.ToString(), "bunkerAuthorizedList", StringComparison.Ordinal)) { existing = child; break; }
                 }
                 if (existing != null) bunkerContainer.RemoveView(existing);
 
@@ -1966,6 +1987,10 @@ namespace nokandro
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                 var saved = prefs?.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
                 var items = new HashSet<string>(saved.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+                // Resolve known names from nostrconnect settings for display consistency
+                var ncCustomNames = LoadNcClientNames();
+                var ncMetadataNames = LoadNcMetadataNamesByPubkey();
 
                 if (items.Count == 0)
                 {
@@ -1982,25 +2007,40 @@ namespace nokandro
                         row.SetPadding(4, 4, 4, 4);
 
                         var tv = new TextView(this);
-                        var shortPk = pk.Length > 24 ? pk.Substring(0, 12) + "..." + pk.Substring(pk.Length - 8) : pk;
-                        tv.Text = shortPk;
+                        var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
+                        string? displayName = null;
+                        if (ncCustomNames.TryGetValue(pk, out var customName) && !string.IsNullOrEmpty(customName))
+                            displayName = customName;
+                        else if (ncMetadataNames.TryGetValue(pk, out var metadataName) && !string.IsNullOrEmpty(metadataName))
+                            displayName = metadataName;
+                        tv.Text = !string.IsNullOrEmpty(displayName) ? $"{displayName} ({shortPk})" : shortPk;
                         tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
+                        tv.SetTextColor(Android.Graphics.Color.Black);
+                        tv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                        var clientPk = pk;
+                        var currentName = displayName ?? "";
+                        tv.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
 
-                        var btn = new Button(this);
-                        btn.Text = "Remove";
+                        var btn = new Button(this)
+                        {
+                            Text = "Remove",
+                            TextSize = 12
+                        };
+                        btn.SetMinimumWidth(0);
+                        btn.SetMinimumHeight(0);
+                        btn.SetPadding(16, 0, 16, 0);
                         btn.Click += (s, e) =>
                         {
                             try
                             {
-                                // Confirm
+                                var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                                 var builder = new Android.App.AlertDialog.Builder(this);
                                 builder.SetTitle("Revoke authorization");
-                                builder.SetMessage($"Remove authorized client \n{pk.Substring(0, Math.Min(64, pk.Length))}?\nThis will require the client to re-authorize.");
-                                builder.SetPositiveButton("Remove", (sd, ea) =>
+                                builder.SetMessage($"Remove authorized client\n{shortName}?\nThis will require the client to re-authorize.");
+                                builder.SetPositiveButton("Remove", (sender, args) =>
                                 {
                                     try
                                     {
-                                        // remove from prefs
                                         var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                                         var edit = p?.Edit();
                                         if (edit != null)
@@ -2014,7 +2054,6 @@ namespace nokandro
                                             }
                                         }
 
-                                        // Notify service to revoke immediately
                                         try
                                         {
                                             var intent = new Intent(this, typeof(BunkerService));
@@ -2024,12 +2063,11 @@ namespace nokandro
                                         }
                                         catch { }
 
-                                        // refresh UI
                                         try { RefreshBunkerAuthorizedList(); } catch { }
                                     }
                                     catch { }
                                 });
-                                builder.SetNegativeButton("Cancel", (sd, ea) => { });
+                                builder.SetNegativeButton("Cancel", (sender, args) => { });
                                 builder.Show();
                             }
                             catch { }
@@ -2213,6 +2251,10 @@ namespace nokandro
             // Load custom names
             var customNames = LoadNcClientNames();
 
+            // Resolve known names from nostrconnect settings for display consistency
+            var ncCustomNames = LoadNcClientNames();
+            var ncMetadataNames = LoadNcMetadataNamesByPubkey();
+
             for (int i = 0; i < pubkeys.Length; i++)
             {
                 var pk = pubkeys[i];
@@ -2258,7 +2300,7 @@ namespace nokandro
 
                 var removeBtn = new Button(this)
                 {
-                    Text = "✕",
+                    Text = "Remove",
                     TextSize = 12
                 };
                 removeBtn.SetMinimumWidth(0);
@@ -2303,6 +2345,7 @@ namespace nokandro
                     var name = input.Text?.Trim() ?? "";
                     SaveNcClientName(clientPubkey, name);
                     RefreshNostrConnectClientList(_lastNcPubkeys, _lastNcUris);
+                    RefreshBunkerAuthorizedList();
                 })
                 .SetNegativeButton("Cancel", (sender, args) => { })
                 .Show();
@@ -2314,6 +2357,29 @@ namespace nokandro
             if (names.TryGetValue(clientPubkey, out var custom) && !string.IsNullOrEmpty(custom))
                 return $"{custom} ({clientPubkey[..Math.Min(12, clientPubkey.Length)]}...)";
             return $"{clientPubkey[..Math.Min(12, clientPubkey.Length)]}...";
+        }
+
+        private Dictionary<string, string> LoadNcMetadataNamesByPubkey()
+        {
+            var result = new Dictionary<string, string>();
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var existing = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
+                if (string.IsNullOrEmpty(existing)) return result;
+
+                foreach (var uri in existing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
+                    {
+                        var name = parsed.GetClientName();
+                        if (!string.IsNullOrEmpty(name))
+                            result[parsed.ClientPubkey] = name;
+                    }
+                }
+            }
+            catch { }
+            return result;
         }
 
         private Dictionary<string, string> LoadNcClientNames()
