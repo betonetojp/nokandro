@@ -408,6 +408,13 @@
 					android:layout_marginTop="4dp"
 					android:layout_marginBottom="4dp" />
 
+				<Switch
+					android:id="@+id/bunkerAutoStartSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Auto start bunker on device boot"
+					android:layout_marginBottom="4dp" />
+
 				<LinearLayout
 					android:id="@+id/bunkerContainer"
 					android:layout_width="match_parent"

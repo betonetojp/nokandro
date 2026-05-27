@@ -22,6 +22,7 @@ namespace nokandro
         const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         const string PREF_BUNKER_SECRET = "pref_bunker_secret";
         const string PREF_BUNKER_ENABLED = "pref_bunker_enabled";
+        const string PREF_BUNKER_AUTOSTART_BOOT = "pref_bunker_autostart_boot";
         const string PREF_BUNKER_AUTHORIZED = "pref_bunker_authorized";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
@@ -756,6 +757,7 @@ namespace nokandro
             var bunkerSwitch = FindViewById<Switch>(Resource.Id.bunkerSwitch);
             var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
             var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
+            var bunkerAutoStartSwitch = FindViewById<Switch>(Resource.Id.bunkerAutoStartSwitch);
             var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
             var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
             var bunkerResetSecretBtn = FindViewById<Button>(Resource.Id.bunkerResetSecretBtn);
@@ -886,6 +888,27 @@ namespace nokandro
 
             // Populate authorized clients list UI
             try { RefreshBunkerAuthorizedList(); } catch { }
+
+            if (bunkerAutoStartSwitch != null)
+            {
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    bunkerAutoStartSwitch.Checked = prefs?.GetBoolean(PREF_BUNKER_AUTOSTART_BOOT, false) ?? false;
+                }
+                catch { }
+
+                bunkerAutoStartSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null) { edit.PutBoolean(PREF_BUNKER_AUTOSTART_BOOT, e.IsChecked); edit.Apply(); }
+                    }
+                    catch { }
+                };
+            }
 
             if (bunkerSwitch != null)
             {
