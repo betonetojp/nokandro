@@ -889,8 +889,17 @@ namespace nokandro
 
             if (bunkerSwitch != null)
             {
-                // Restore switch state from running service (use IsBunkerActive to distinguish from nostrconnect-only)
-                if (BunkerService.IsBunkerActive) bunkerSwitch.Checked = true;
+                 // Restore switch state from running service (use IsBunkerActive to distinguish from nostrconnect-only)
+                 try
+                 {
+                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                     var wantBunker = prefs?.GetBoolean(PREF_BUNKER_ENABLED, false) ?? false;
+                     bunkerSwitch.Checked = BunkerService.IsBunkerActive || wantBunker;
+                 }
+                 catch
+                 {
+                     if (BunkerService.IsBunkerActive) bunkerSwitch.Checked = true;
+                 }
                 // Disable relay edit while bunker is running
                 try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !BunkerService.IsBunkerActive; bunkerRelayEdit.Alpha = BunkerService.IsBunkerActive ? 0.45f : 1.0f; } } catch { }
 
@@ -925,10 +934,28 @@ namespace nokandro
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                     var want = prefs?.GetBoolean(PREF_BUNKER_ENABLED, false) ?? false;
-                    if (want && !BunkerService.IsBunkerActive)
+                    var autoStart = want || (nsec != null && IsNsecValid() && !string.IsNullOrWhiteSpace(bunkerRelayEdit?.Text));
+                    if (autoStart && !BunkerService.IsBunkerActive)
                     {
-                        // Programmatically checking will trigger the CheckedChange handler and start the service
-                        bunkerSwitch.Checked = true;
+                        // Start explicitly so startup does not depend on the switch event order.
+                        StartBunkerService(bunkerRelayEdit, nsec);
+                        if (bunkerSwitch != null) bunkerSwitch.Checked = true;
+
+                        if (!BunkerService.IsBunkerActive)
+                        {
+                            var retrySwitch = bunkerSwitch;
+                            var retryRelay = bunkerRelayEdit;
+                            var retryNsec = nsec;
+                            retrySwitch?.PostDelayed(new Java.Lang.Runnable(() =>
+                            {
+                                try
+                                {
+                                    if (!BunkerService.IsBunkerActive)
+                                        StartBunkerService(retryRelay, retryNsec);
+                                }
+                                catch { }
+                            }), 1500);
+                        }
                     }
                 }
                 catch { }
@@ -1787,13 +1814,16 @@ namespace nokandro
                     var bunkerRelayEdit = FindViewById<EditText>(Resource.Id.bunkerRelayEdit);
                     if (bunkerSwitch != null)
                     {
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var wantBunker = prefs?.GetBoolean(PREF_BUNKER_ENABLED, false) ?? false;
                         var bunkerActive = BunkerService.IsBunkerActive;
-                        if (bunkerSwitch.Checked != bunkerActive)
-                            bunkerSwitch.Checked = bunkerActive;
+                        var desiredChecked = bunkerActive || wantBunker;
+                        if (bunkerSwitch.Checked != desiredChecked)
+                            bunkerSwitch.Checked = desiredChecked;
                         if (bunkerContainer != null)
-                            bunkerContainer.Visibility = bunkerActive ? ViewStates.Visible : ViewStates.Gone;
+                            bunkerContainer.Visibility = desiredChecked ? ViewStates.Visible : ViewStates.Gone;
                         // Sync relay edit enabled state
-                        if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !bunkerActive; bunkerRelayEdit.Alpha = bunkerActive ? 0.45f : 1.0f; }
+                        if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = !desiredChecked; bunkerRelayEdit.Alpha = desiredChecked ? 0.45f : 1.0f; }
                         // Restore bunker URI and status from running service
                         if (bunkerActive)
                         {
@@ -1802,6 +1832,14 @@ namespace nokandro
                                 bunkerUriText.Text = BunkerService.LastBunkerUri;
                             if (_bunkerStatusText != null)
                                 _bunkerStatusText.Text = "Bunker: running";
+                        }
+                        else if (wantBunker && _bunkerStatusText != null)
+                        {
+                            _bunkerStatusText.Text = "Bunker: starting...";
+                            if (nsec != null && IsNsecValid())
+                            {
+                                StartBunkerService(bunkerRelayEdit, nsec);
+                            }
                         }
                     }
                 }
