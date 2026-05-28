@@ -71,6 +71,7 @@ namespace nokandro
                 var offTimerEnabled = prefs.GetBoolean("pref_off_timer_enabled", false);
                 var offTimerMinutes = prefs.GetInt("pref_off_timer_minutes", 60);
                 serviceIntent.PutExtra("offTimerMinutes", offTimerEnabled ? offTimerMinutes : 0);
+                serviceIntent.PutExtra("offTimerDisableOnEnd", prefs.GetBoolean("pref_off_timer_disable_on_end", false));
 
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                 {

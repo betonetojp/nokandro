@@ -73,6 +73,7 @@ namespace nokandro
                         var offTimerEnabled = prefs.GetBoolean("pref_off_timer_enabled", false);
                         var offTimerMinutes = prefs.GetInt("pref_off_timer_minutes", 60);
                         startIntent.PutExtra("offTimerMinutes", offTimerEnabled ? offTimerMinutes : 0);
+                        startIntent.PutExtra("offTimerDisableOnEnd", prefs.GetBoolean("pref_off_timer_disable_on_end", false));
 
                         if (!string.IsNullOrEmpty(npub) || !string.IsNullOrEmpty(nsec))
                         {

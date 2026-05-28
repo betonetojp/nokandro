@@ -18,6 +18,7 @@ Package name: `com.nokakoi.nokandro`
 - Retrieves the follow list, public mute list, and muted words list for filtering.
 - Different TTS voices can be specified for followed users and others.
 - **Off timer**: Automatically stops the service after a configurable number of minutes.
+- **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires. This prevents the service from being restarted if the timer is enabled again by accident.
 - **Relay list fetch**: Fetches your relay list (kind: 10002) from known relays and lets you pick one.
 - **Home screen widget**: Start/stop the service and quick-post from a widget.
 - **Tasker / automation support**: Start and stop the service via broadcast intents.
@@ -50,6 +51,7 @@ Package name: `com.nokakoi.nokandro`
 - **Stop on audio disconnect**: Automatically stops the service when audio output is disconnected (e.g., Bluetooth).
 - **Broadcast Now Playing**: Toggle to enable publishing your current music track to Nostr. Requires "Notification Listener" permission and a valid nsec.
 - **Off timer**: When enabled, the service will automatically stop after the specified number of minutes. A countdown is displayed while running.
+- **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires. This prevents the service from being restarted if the timer is enabled again by accident.
 - **Start / Stop**: Start or stop the background service.
 - **(Last Content)**: Displays the most recent message received.
 
@@ -153,6 +155,7 @@ In that case, please follow these steps to allow restricted settings:
 - **端末再起動時の自動起動（任意）**: Bunker タブのスイッチで、端末再起動後に Bunker を自動起動できます。
 - 指定した `npub` に基づくフォローリスト・ミュートリスト・ミュートワードを取得し、読み上げの判定やフィルタリングを行います。
 - **オフタイマー**: 指定時間後にサービスを自動停止します。
+- **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。これにより、誤ってタイマーが再度有効にされてしまうのを防ぎます。
 - **リレーリスト取得**: リレーリスト (kind: 10002) を取得して接続先を選択できます。
 - **ホーム画面ウィジェット**: ウィジェットからサービスのON/OFFや投稿が可能です。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスの開始・停止を制御できます。
@@ -185,6 +188,7 @@ In that case, please follow these steps to allow restricted settings:
 - **Stop on audio disconnect**: オーディオ機器（Bluetoothなど）の切断検知時に自動停止します。
 - **Broadcast Now Playing**: 再生中の音楽情報を Nostr に投稿する機能の ON/OFF。ON にするには通知リスナー権限と nsec が必要です。
 - **Off timer**: 有効にすると、指定した分数の経過後にサービスを自動停止します。実行中はカウントダウンが表示されます。
+- **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。これにより、誤ってタイマーが再度有効にされてしまうのを防ぎます。
 - **Start / Stop**: サービスの開始・停止ボタン。
 - **(Last Content)**: 最後に受信したメッセージが表示されます。
 

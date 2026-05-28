@@ -341,6 +341,13 @@
 						android:visibility="gone" />
 				</LinearLayout>
 
+				<Switch
+					android:id="@+id/offTimerDisableOnEndSwitch"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:text="Turn off Off timer when it ends"
+					android:layout_marginBottom="4dp" />
+
 				<Button
 					android:id="@+id/startBtn"
 					android:layout_width="match_parent"

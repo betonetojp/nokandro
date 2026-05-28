@@ -62,6 +62,7 @@ namespace nokandro
 
         // Off timer
         private int _offTimerMinutes = 0;
+        private bool _offTimerDisableOnEnd = false;
         private CancellationTokenSource? _offTimerCts;
 
         // Music Status
@@ -166,6 +167,17 @@ namespace nokandro
             AppLog.D(TAG, "OnStartCommand: action=" + (intent?.Action ?? "(null)"));
             if (intent != null && intent.Action == "STOP")
             {
+                try
+                {
+                    var offTimerExpired = intent.GetBooleanExtra("offTimerExpired", false);
+                    if (offTimerExpired && _offTimerDisableOnEnd)
+                    {
+                        var p = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                        if (p != null) { p.PutBoolean("pref_off_timer_enabled", false); p.Apply(); }
+                    }
+                }
+                catch { }
+
                 // Stop requested from notification action or UI
                 // If music status is enabled, try to clear it before stopping
                 if (_enableMusicStatus && _ws != null && _ws.State == WebSocketState.Open)
@@ -229,6 +241,7 @@ namespace nokandro
                 try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
                 try { _skipContentWarning = intent.GetBooleanExtra("skipContentWarning", false); } catch { }
                 try { _offTimerMinutes = intent.GetIntExtra("offTimerMinutes", 0); } catch { }
+                try { _offTimerDisableOnEnd = intent.GetBooleanExtra("offTimerDisableOnEnd", false); } catch { }
 
                 // register/unregister noisy receiver based on autoStop
                 if (_autoStop)
@@ -365,6 +378,7 @@ namespace nokandro
                         await Task.Delay(TimeSpan.FromMinutes(mins), offCts.Token);
                         var stopIntent = new Intent(this, typeof(NostrService));
                         stopIntent.SetAction("STOP");
+                        if (_offTimerDisableOnEnd) stopIntent.PutExtra("offTimerExpired", true);
                         StartService(stopIntent);
                     }
                     catch (System.OperationCanceledException) { }
