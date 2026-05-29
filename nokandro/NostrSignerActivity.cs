@@ -79,9 +79,7 @@ namespace nokandro
             var pad = (int)(16 * Resources!.DisplayMetrics!.Density);
             root.SetPadding(pad, pad, pad, pad);
 
-            var title = new TextView(this) { Text = "Nostr Signer Request" };
-            title.SetTextSize(Android.Util.ComplexUnitType.Sp, 18f);
-            root.AddView(title);
+
 
             var detail = new TextView(this)
             {
@@ -93,40 +91,32 @@ namespace nokandro
             var remember = new CheckBox(this) { Text = "Remember my choice" };
             root.AddView(remember);
 
-            var buttons = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-            var deny = new Button(this) { Text = "Deny" };
-            var approve = new Button(this) { Text = "Approve" };
-            buttons.AddView(deny);
-            buttons.AddView(approve);
-            root.AddView(buttons);
-
-            deny.Click += (_, _) =>
-            {
-                if (remember.Checked)
-                    Nip55PermissionStore.SetAlwaysRejected(this, _callerPackage, _requestType);
-                FinishWithFailure("rejected", _requestId, _callbackUrl);
-            };
-
-            approve.Click += (_, _) =>
-            {
-                try
-                {
+            // AlertDialogでタイトルバーをカスタム
+            var dlg = new Android.App.AlertDialog.Builder(this)
+                .SetTitle("nokandro")
+                .SetIcon(Resource.Mipmap.ic_launcher)
+                .SetView(root)
+                .SetCancelable(false)
+                .SetPositiveButton("Approve", (s, e) => {
+                    try {
+                        if (remember.Checked)
+                        {
+                            if (_requestType == "get_public_key" && !string.IsNullOrEmpty(_permissionsJson))
+                                Nip55PermissionStore.GrantFromPermissionsJson(this, _callerPackage, _permissionsJson);
+                            else
+                                Nip55PermissionStore.Grant(this, _callerPackage, _requestType, TryGetEventKind(_payload));
+                        }
+                        ExecuteAndDeliver();
+                    } catch (Exception ex) { FinishWithFailure(ex.Message, _requestId, _callbackUrl); }
+                })
+                .SetNegativeButton("Deny", (s, e) => {
                     if (remember.Checked)
-                    {
-                        if (_requestType == "get_public_key" && !string.IsNullOrEmpty(_permissionsJson))
-                            Nip55PermissionStore.GrantFromPermissionsJson(this, _callerPackage, _permissionsJson);
-                        else
-                            Nip55PermissionStore.Grant(this, _callerPackage, _requestType, TryGetEventKind(_payload));
-                    }
-                    ExecuteAndDeliver();
-                }
-                catch (Exception ex)
-                {
-                    FinishWithFailure(ex.Message, _requestId, _callbackUrl);
-                }
-            };
+                        Nip55PermissionStore.SetAlwaysRejected(this, _callerPackage, _requestType);
+                    FinishWithFailure("rejected", _requestId, _callbackUrl);
+                })
+                .Create();
+            dlg.Show();
 
-            SetContentView(root);
         }
 
         private void ExecuteAndDeliver()

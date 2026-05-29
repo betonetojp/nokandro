@@ -19,6 +19,7 @@ namespace nokandro
         private const string TAG = "BunkerService";
         private const int NOTIF_ID = 1002;
         private NostrBunker? _bunker;
+        public static NostrBunker? CurrentBunkerInstance { get; private set; }
 
         // nostrconnect:// sessions (shared across service lifetime)
         private static readonly Lock _ncLock = new();
@@ -43,9 +44,14 @@ namespace nokandro
                     try
                     {
                         AppLog.D(TAG, $"Revoking bunker client: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
-                        new BunkerClientStore(this).Revoke(clientPubkey);
+                        var revokeStore = new BunkerClientStore(this);
+                        revokeStore.Revoke(clientPubkey);
                         _bunker?.RemoveAuthorizedClient(clientPubkey);
                         BroadcastBunkerClientsChanged();
+                        // Revoke後にグローバルsecretをリセット
+                        revokeStore.ResetBunkerSecret();
+                        // Bunker再起動
+                        RestartBunker();
                     }
                     catch { }
                 }
@@ -59,8 +65,15 @@ namespace nokandro
                 {
                     try
                     {
-                        new BunkerClientStore(this).Authorize(clientPubkey);
+                        var approveStore = new BunkerClientStore(this);
+                        // 許可時は必ず最新のグローバルsecretを生成して使う
+                        var approveSecret = approveStore.ResetBunkerSecret();
+                        approveStore.Authorize(clientPubkey, secret: approveSecret);
                         _bunker?.AddAuthorizedClient(clientPubkey);
+                        // 新規許可後にグローバルsecretをリセット
+                        approveStore.ResetBunkerSecret();
+                        // Bunker再起動
+                        RestartBunker();
                     }
                     catch { }
                 }
@@ -68,16 +81,17 @@ namespace nokandro
                 return StartCommandResult.Sticky;
             }
 
-            if (intent?.Action == "nokandro.ACTION_BUNKER_REJECT_PENDING")
+
+        if (intent?.Action == "nokandro.ACTION_BUNKER_REJECT_PENDING")
+        {
+            var clientPubkey = intent.GetStringExtra("clientPubkey");
+            if (!string.IsNullOrEmpty(clientPubkey))
             {
-                var clientPubkey = intent.GetStringExtra("clientPubkey");
-                if (!string.IsNullOrEmpty(clientPubkey))
-                {
-                    try { new BunkerClientStore(this).RejectPending(clientPubkey); } catch { }
-                }
-                BroadcastBunkerClientsChanged();
-                return StartCommandResult.Sticky;
+                try { new BunkerClientStore(this).RejectPending(clientPubkey); } catch { }
             }
+            BroadcastBunkerClientsChanged();
+            return StartCommandResult.Sticky;
+        }
 
             if (intent?.Action == "START_NOSTRCONNECT")
             {
@@ -125,7 +139,9 @@ namespace nokandro
 
             var bunkerOptions = CreateBunkerOptions(store);
             var savedClients = store.GetAuthorized();
-            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
+            var clientSecrets = store.GetAllClientSecrets();
+            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions, clientSecrets);
+            CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
             {
                 try
@@ -268,6 +284,7 @@ namespace nokandro
             // Stop only the bunker:// part, keep nostrconnect sessions alive
             try { _bunker?.Stop(); } catch { }
             _bunker = null;
+            CurrentBunkerInstance = null;
             IsBunkerActive = false;
             LastBunkerUri = null;
 
@@ -511,7 +528,7 @@ namespace nokandro
             IsAuthorized = store.IsAuthorized,
             IsPending = store.IsPending,
             AddPending = store.AddPending,
-            RequireManualApproval = () => store.RequireManualApproval,
+
             GetPermissions = store.GetPermissions,
             SavePermissions = store.SetPermissions,
             OnClientPaired = (pk, perms, isNew) =>
@@ -523,6 +540,33 @@ namespace nokandro
                 BroadcastBunkerClientsChanged();
             }
         };
+
+        private void RestartBunker()
+        {
+            var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+            var nsecHex = prefs?.GetString("pref_nsec_hex", null);
+            var relay = prefs?.GetString("pref_bunker_relay", null);
+            if (string.IsNullOrEmpty(nsecHex) || nsecHex.Length != 64) return;
+            var privKey = new byte[32];
+            for (int i = 0; i < 32; i++)
+                privKey[i] = Convert.ToByte(nsecHex.Substring(i * 2, 2), 16);
+            var store = new BunkerClientStore(this);
+            var secret = store.GetBunkerSecret();
+            var bunkerOptions = CreateBunkerOptions(store);
+            var savedClients = store.GetAuthorized();
+            var clientSecrets = store.GetAllClientSecrets();
+            try { _bunker?.Stop(); } catch { }
+            _bunker = new NostrBunker(privKey, relay ?? "wss://ephemeral.snowflare.cc/", secret, savedClients, bunkerOptions, clientSecrets);
+            CurrentBunkerInstance = _bunker;
+            _bunker.Start();
+            LastBunkerUri = _bunker.BunkerUri;
+            // URI変更をブロードキャスト
+            try {
+                var intent = new Intent("nokandro.ACTION_BUNKER_URI_CHANGED");
+                intent.PutExtra("bunkerUri", _bunker.BunkerUri);
+                LocalBroadcast.SendBroadcast(this, intent);
+            } catch { }
+        }
 
         private void BroadcastBunkerClientsChanged()
         {

@@ -14,6 +14,7 @@ namespace nokandro
         private const string KeyAuthorized = "pref_bunker_authorized";
         private const string KeyPending = "pref_bunker_pending";
         private const string KeyRequireApproval = "pref_bunker_require_approval";
+        private const string KeyBunkerSecret = "pref_bunker_secret";
 
         private readonly ISharedPreferences _prefs;
 
@@ -22,6 +23,31 @@ namespace nokandro
             _prefs = context.GetSharedPreferences(PrefsName, FileCreationMode.Private)
                 ?? throw new InvalidOperationException("SharedPreferences unavailable");
             MigrateLegacyAuthorized();
+        }
+
+        /// <summary>
+        /// グローバルbunker secretをリセットし新しい値を返す
+        /// </summary>
+        public string ResetBunkerSecret()
+        {
+            var secret = GenerateSecret();
+            _prefs.Edit()?.PutString(KeyBunkerSecret, secret)?.Apply();
+            return secret;
+        }
+
+        /// <summary>
+        /// 現在のグローバルbunker secretを取得
+        /// </summary>
+        public string? GetBunkerSecret()
+        {
+            return _prefs.GetString(KeyBunkerSecret, null);
+        }
+
+        private static string GenerateSecret()
+        {
+            var secretBytes = new byte[16];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(secretBytes);
+            return BitConverter.ToString(secretBytes).Replace("-", "").ToLowerInvariant();
         }
 
         private void MigrateLegacyAuthorized()
@@ -37,11 +63,6 @@ namespace nokandro
             _prefs.Edit()?.Remove(legacyKey)?.Apply();
         }
 
-        public bool RequireManualApproval
-        {
-            get => _prefs.GetBoolean(KeyRequireApproval, false);
-            set => _prefs.Edit()?.PutBoolean(KeyRequireApproval, value)?.Apply();
-        }
 
         public bool IsAuthorized(string pubkey) =>
             GetAuthorizedSet().Contains(Normalize(pubkey));
@@ -51,7 +72,7 @@ namespace nokandro
 
         public IReadOnlyCollection<string> GetAuthorized() => GetAuthorizedSet();
 
-        public void Authorize(string pubkey, string? perms = null, string? name = null)
+        public void Authorize(string pubkey, string? perms = null, string? name = null, string? secret = null)
         {
             pubkey = Normalize(pubkey);
             var set = GetAuthorizedSet();
@@ -62,8 +83,20 @@ namespace nokandro
             if (pending.Remove(pubkey))
                 SavePendingSet(pending);
 
-            if (!string.IsNullOrEmpty(perms) || !string.IsNullOrEmpty(name))
-                UpdateClientRecord(pubkey, name, perms);
+            // secretも含めて記憶
+            UpdateClientRecordWithSecret(pubkey, name, perms, secret);
+        }
+
+        private void UpdateClientRecordWithSecret(string pubkey, string? name, string? perms, string? secret)
+        {
+            var data = LoadClientsRoot();
+            if (!data.Clients.TryGetValue(pubkey, out var rec))
+                rec = new ClientRecord();
+            if (name != null) rec.Name = name;
+            if (perms != null) rec.Perms = perms;
+            if (secret != null) rec.Secret = secret;
+            data.Clients[pubkey] = rec;
+            SaveClientsRoot(data);
         }
 
         public void Revoke(string pubkey)
@@ -156,6 +189,18 @@ namespace nokandro
             return data.Clients.TryGetValue(pubkey, out var rec) ? rec : null;
         }
 
+        /// <summary>
+        /// 全クライアントのpubkey→secretマッピングを返す
+        /// </summary>
+        public Dictionary<string, string?> GetAllClientSecrets()
+        {
+            var data = LoadClientsRoot();
+            return data.Clients.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Secret,
+                StringComparer.OrdinalIgnoreCase);
+        }
+
         private ClientsRoot LoadClientsRoot()
         {
             try
@@ -208,6 +253,7 @@ namespace nokandro
         {
             public string? Name { get; set; }
             public string? Perms { get; set; }
+            public string? Secret { get; set; }
         }
     }
 }

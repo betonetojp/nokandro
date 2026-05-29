@@ -422,12 +422,6 @@
 					android:text="Auto start bunker on device boot"
 					android:layout_marginBottom="4dp" />
 
-				<Switch
-					android:id="@+id/bunkerRequireApprovalSwitch"
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
-					android:text="Approve new bunker clients manually"
-					android:layout_marginBottom="4dp" />
 
 				<LinearLayout
 					android:id="@+id/bunkerContainer"

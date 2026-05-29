@@ -49,19 +49,38 @@ namespace nokandro
         public void AddAuthorizedClient(string pubkey)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
-            _authorizedClients.Add(pubkey);
+            var isNew = _authorizedClients.Add(pubkey);
             var perms = _options?.GetPermissions?.Invoke(pubkey);
             if (perms != null)
                 _handler.SetPermissions(pubkey, perms);
             Log($"Client authorized in memory: {pubkey[..Math.Min(12, pubkey.Length)]}...");
+            if (isNew)
+            {
+                OnClientAuthorized?.Invoke(pubkey);
+                // NIP-46: 明示的にackレスポンスを送信
+                try
+                {
+                    var ackJson = $"[\"OK\",\"{pubkey}\",true,\"approved\"]";
+                    if (_ws != null && _ws.State == System.Net.WebSockets.WebSocketState.Open)
+                    {
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(ackJson);
+                        _ws.SendAsync(new ArraySegment<byte>(bytes), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+                        Log($"Sent explicit ack to {pubkey[..Math.Min(12, pubkey.Length)]}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Failed to send explicit ack: {ex.Message}");
+                }
+            }
         }
 
-        public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
-            : this(privKey, [relay], secret, authorizedClients, options)
+        public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null, Dictionary<string, string?>? clientSecrets = null)
+            : this(privKey, [relay], secret, authorizedClients, options, clientSecrets)
         {
         }
 
-        public NostrBunker(byte[] privKey, string[] relays, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
+        public NostrBunker(byte[] privKey, string[] relays, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null, Dictionary<string, string?>? clientSecrets = null)
         {
             _privKey = privKey;
             _options = options;
@@ -79,6 +98,10 @@ namespace nokandro
             _secret = !string.IsNullOrEmpty(secret) ? secret : GenerateSecret();
             _handler = new Nip46Handler(_privKey, _pubkeyHex, _relays);
 
+            _clientSecrets = clientSecrets != null
+                ? new Dictionary<string, string?>(clientSecrets, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string?>();
+
             foreach (var pk in _authorizedClients)
             {
                 var perms = _options?.GetPermissions?.Invoke(pk);
@@ -86,6 +109,8 @@ namespace nokandro
                     _handler.SetPermissions(pk, perms);
             }
         }
+
+        private readonly Dictionary<string, string?> _clientSecrets;
 
         private static string GenerateSecret()
         {
@@ -243,22 +268,23 @@ namespace nokandro
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)
         {
             var isKnown = IsKnownClient(senderPubkey);
+            var normalizedPubkey = senderPubkey.Trim().ToLowerInvariant();
+            if (!_clientSecrets.TryGetValue(normalizedPubkey, out var clientSecret) || string.IsNullOrEmpty(clientSecret))
+            {
+                // 新規クライアント: paramsArrのsecretがグローバルsecretと一致すれば許可
+                if (!ParamsContainSecret(paramsArr, _secret))
+                    throw new UnauthorizedAccessException("invalid secret");
+                // 許可: _clientSecrets/_authorizedClientsに追加し、永続化
+                _clientSecrets[normalizedPubkey] = _secret;
+                _authorizedClients.Add(senderPubkey);
+                _options?.OnClientPaired?.Invoke(senderPubkey, PermsToString(paramsArr), true);
+                Log($"New client auto-authorized: {senderPubkey[..12]}...");
+                clientSecret = _secret;
+            }
 
             if (!isKnown)
             {
-                var requireApproval = _options?.RequireManualApproval?.Invoke() == true;
-                if (requireApproval)
-                {
-                    if (ParamsContainSecret(paramsArr, _secret))
-                    {
-                        _options?.AddPending?.Invoke(senderPubkey);
-                        OnClientPendingApproval?.Invoke(senderPubkey);
-                        Log($"Pending approval: {senderPubkey[..12]}...");
-                    }
-                    throw new UnauthorizedAccessException("pending approval");
-                }
-
-                if (!ParamsContainSecret(paramsArr, _secret))
+                if (!ParamsContainSecret(paramsArr, clientSecret))
                     throw new UnauthorizedAccessException("invalid secret");
             }
             else

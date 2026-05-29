@@ -181,6 +181,7 @@ namespace nokandro
             var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
             var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
             var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+            EditText? ncUriEdit = null;
 
             void SelectTab(bool mainSelected)
             {
@@ -202,8 +203,18 @@ namespace nokandro
                 }
             }
 
-            // Default: Main tab selected
-            SelectTab(true);
+            // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け
+            var nostrconnectUri = Intent?.GetStringExtra("nostrconnect_uri");
+            if (!string.IsNullOrEmpty(nostrconnectUri))
+            {
+                SelectTab(false);
+                ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+                if (ncUriEdit != null) ncUriEdit.Text = nostrconnectUri;
+            }
+            else
+            {
+                SelectTab(true);
+            }
 
             // If launched from Bunker notification, switch to Bunker tab
             try
@@ -849,6 +860,7 @@ namespace nokandro
                         }
                         catch { }
                     }
+                    return;
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_LOG")
                 {
@@ -884,12 +896,7 @@ namespace nokandro
                 {
                     try { RunOnUiThread(() => RefreshBunkerAuthorizedList()); } catch { }
                 }
-                else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_PENDING")
-                {
-                    var pubkey = intent.GetStringExtra("clientPubkey") ?? "";
-                    if (!string.IsNullOrEmpty(pubkey))
-                        try { RunOnUiThread(() => ShowBunkerPendingApprovalDialog(pubkey)); } catch { }
-                }
+
             };
             try
             {
@@ -900,7 +907,6 @@ namespace nokandro
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STOPPED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
-                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_PENDING");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_RECONNECTED");
                 LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
             }
@@ -909,7 +915,6 @@ namespace nokandro
             // Populate authorized clients list UI
             try { RefreshBunkerAuthorizedList(); } catch { }
 
-            var bunkerRequireApprovalSwitch = FindViewById<Switch>(Resource.Id.bunkerRequireApprovalSwitch);
             var bunkerStore = new BunkerClientStore(this);
 
             if (bunkerAutoStartSwitch != null)
@@ -933,14 +938,6 @@ namespace nokandro
                 };
             }
 
-            if (bunkerRequireApprovalSwitch != null)
-            {
-                try { bunkerRequireApprovalSwitch.Checked = bunkerStore.RequireManualApproval; } catch { }
-                bunkerRequireApprovalSwitch.CheckedChange += (s, e) =>
-                {
-                    try { bunkerStore.RequireManualApproval = e.IsChecked; } catch { }
-                };
-            }
 
             if (bunkerSwitch != null)
             {
@@ -1022,7 +1019,8 @@ namespace nokandro
                 {
                     try
                     {
-                        var uri = bunkerUriText?.Text;
+                        // 現在のBunkerインスタンスのURIをコピー
+                        var uri = BunkerService.CurrentBunkerInstance?.BunkerUri;
                         if (string.IsNullOrEmpty(uri)) return;
                         var cm = (Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
                         if (cm != null) cm.PrimaryClip = Android.Content.ClipData.NewPlainText("bunker", uri);
@@ -1083,7 +1081,7 @@ namespace nokandro
             }
 
             // --- nostrconnect:// ---
-            var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+            ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
             var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
             _ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
             _ncClientList = FindViewById<LinearLayout>(Resource.Id.ncClientList);
@@ -1921,6 +1919,32 @@ namespace nokandro
             base.OnNewIntent(intent);
             try
             {
+                // nostrconnect_uriがあればBunkerタブを表示してncUriEditに貼り付ける
+                var ncUri = intent?.GetStringExtra("nostrconnect_uri");
+                if (!string.IsNullOrEmpty(ncUri))
+                {
+                    // Bunkerタブを表示
+                    var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
+                    var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+                    var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
+                    var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
+                    if (tabMainContent != null) tabMainContent.Visibility = ViewStates.Gone;
+                    if (tabBunkerContent != null) tabBunkerContent.Visibility = ViewStates.Visible;
+                    if (tabMainBtn != null) {
+                        tabMainBtn.Alpha = 0.5f;
+                        tabMainBtn.PaintFlags &= ~Android.Graphics.PaintFlags.UnderlineText;
+                    }
+                    if (tabBunkerBtn != null) {
+                        tabBunkerBtn.Alpha = 1.0f;
+                        tabBunkerBtn.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                    }
+                    // 入力欄に貼り付け
+                    var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+                    if (ncUriEdit != null)
+                    {
+                        ncUriEdit.Text = ncUri;
+                    }
+                }
                 var openTab = intent?.GetStringExtra("openTab");
                 if (openTab == "bunker" || openTab == "main")
                 {
@@ -2076,17 +2100,6 @@ namespace nokandro
             return "";
         }
 
-        private void ShowBunkerPendingApprovalDialog(string clientPubkey)
-        {
-            var shortPk = $"{clientPubkey[..Math.Min(12, clientPubkey.Length)]}...";
-            var dialog = new Android.App.AlertDialog.Builder(this)
-                .SetTitle("Approve bunker client?")
-                .SetMessage($"New client wants to connect:\n{shortPk}")
-                .SetPositiveButton("Approve", (sender, args) => ApproveBunkerPending(clientPubkey))
-                .SetNegativeButton("Reject", (sender, args) => RejectBunkerPending(clientPubkey))
-                .Create();
-            dialog.Show();
-        }
 
         private void ApproveBunkerPending(string clientPubkey)
         {
@@ -2134,52 +2147,36 @@ namespace nokandro
                 list.Tag = "bunkerAuthorizedList";
 
                 var store = new BunkerClientStore(this);
-                var pending = store.GetPending();
-                if (pending.Count > 0)
+                // BunkerServiceのNostrBunkerインスタンスからリスト取得
+                var items = new List<string>();
+                var bunker = BunkerService.CurrentBunkerInstance;
+                if (bunker != null)
                 {
-                    var pendingHeader = new TextView(this) { Text = "Pending approval" };
-                    pendingHeader.SetPadding(8, 8, 8, 4);
-                    pendingHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
-                    list.AddView(pendingHeader);
-
-                    foreach (var pk in pending)
-                    {
-                        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-                        row.SetPadding(4, 4, 4, 4);
-                        var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
-                        var tv = new TextView(this) { Text = shortPk };
-                        tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
-                        var pkCopy = pk;
-                        var approveBtn = new Button(this) { Text = "Approve" };
-                        approveBtn.Click += (s, e) => ApproveBunkerPending(pkCopy);
-                        var rejectBtn = new Button(this) { Text = "Reject" };
-                        rejectBtn.Click += (s, e) => RejectBunkerPending(pkCopy);
-                        row.AddView(tv);
-                        row.AddView(approveBtn);
-                        row.AddView(rejectBtn);
-                        list.AddView(row);
-                    }
+                    var field = typeof(nokandro.NostrBunker).GetField("_authorizedClients", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (field?.GetValue(bunker) is HashSet<string> set)
+                        items.AddRange(set);
+                }
+                else
+                {
+                    items.AddRange(store.GetAuthorized());
                 }
 
-                var items = store.GetAuthorized();
-                if (items.Count == 0 && pending.Count == 0)
+
+                if (items.Count == 0)
                 {
                     var emptyTv = new TextView(this);
                     emptyTv.Text = "No authorized clients";
                     emptyTv.SetPadding(8, 8, 8, 8);
                     list.AddView(emptyTv);
                 }
-                else if (items.Count > 0)
+                else
                 {
-                    if (pending.Count > 0)
-                    {
-                        var authHeader = new TextView(this) { Text = "Authorized clients" };
-                        authHeader.SetPadding(8, 12, 8, 4);
-                        authHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
-                        list.AddView(authHeader);
-                    }
+                    var authHeader = new TextView(this) { Text = "Authorized clients" };
+                    authHeader.SetPadding(8, 12, 8, 4);
+                    authHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+                    list.AddView(authHeader);
 
-                    foreach (var pk in items)
+                    foreach (var pk in items.Distinct())
                     {
                         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
                         row.SetPadding(4, 4, 4, 4);
@@ -2221,6 +2218,12 @@ namespace nokandro
                                 .SetNegativeButton("Cancel", (sender, args) => { })
                                 .Create();
                             removeDialog.Show();
+                            try
+                            {
+                                removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                                removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+                            }
+                            catch { }
                         };
 
                         row.AddView(tv);
