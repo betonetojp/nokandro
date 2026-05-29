@@ -12,7 +12,6 @@ namespace nokandro
         private const string PREF_BUNKER_ENABLED = "pref_bunker_enabled";
         private const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         private const string PREF_BUNKER_SECRET = "pref_bunker_secret";
-        private const string PREF_BUNKER_AUTHORIZED = "pref_bunker_authorized";
         private const string PREF_NSEC = "pref_nsec";
 
         public override void OnReceive(Context? context, Intent? intent)
@@ -38,14 +37,11 @@ namespace nokandro
 
                 var relay = prefs.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
                 var secret = prefs.GetString(PREF_BUNKER_SECRET, null);
-                var savedClients = prefs.GetString(PREF_BUNKER_AUTHORIZED, null);
 
                 var serviceIntent = new Intent(context, typeof(BunkerService));
                 serviceIntent.PutExtra("nsecHex", nsecHex);
                 serviceIntent.PutExtra("relay", relay);
                 if (!string.IsNullOrEmpty(secret)) serviceIntent.PutExtra("secret", secret);
-                if (!string.IsNullOrEmpty(savedClients))
-                    serviceIntent.PutExtra("authorizedClients", savedClients.Split(',', StringSplitOptions.RemoveEmptyEntries));
 
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                     context.StartForegroundService(serviceIntent);

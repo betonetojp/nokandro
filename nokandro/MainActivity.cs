@@ -814,7 +814,7 @@ namespace nokandro
             _bunkerReceiver = new BroadcastReceiver();
             _bunkerReceiver.Receive += (ctx, intent) =>
             {
-                if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
+                if (intent.Action == "nokandro.ACTION_BUNKER_STARTED" || intent.Action == "nokandro.ACTION_BUNKER_URI_CHANGED")
                 {
                     var uri = intent.GetStringExtra("bunkerUri") ?? "";
 
@@ -836,16 +836,19 @@ namespace nokandro
                     RunOnUiThread(() =>
                     {
                         if (bunkerUriText != null) bunkerUriText.Text = uri;
-                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: starting...";
+                        if (intent.Action == "nokandro.ACTION_BUNKER_STARTED" && _bunkerStatusText != null)
+                            _bunkerStatusText.Text = "Bunker: starting...";
                     });
-                    // Persist desired bunker enabled state
-                    try
+                    if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
                     {
-                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                        var edit = prefs?.Edit();
-                        if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, true); edit.Apply(); }
+                        try
+                        {
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, true); edit.Apply(); }
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_LOG")
                 {
@@ -875,40 +878,39 @@ namespace nokandro
                     }
                     catch { }
                 }
-                else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED")
+                else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED"
+                    || intent.Action == "nokandro.ACTION_BUNKER_CLIENTS_CHANGED"
+                    || intent.Action == "nokandro.ACTION_BUNKER_CLIENT_RECONNECTED")
+                {
+                    try { RunOnUiThread(() => RefreshBunkerAuthorizedList()); } catch { }
+                }
+                else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_PENDING")
                 {
                     var pubkey = intent.GetStringExtra("clientPubkey") ?? "";
                     if (!string.IsNullOrEmpty(pubkey))
-                    {
-                        try
-                        {
-                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                            var existing = prefs?.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
-                            var set = new HashSet<string>(existing.Split(',', StringSplitOptions.RemoveEmptyEntries));
-                            if (set.Add(pubkey))
-                            {
-                                var edit = prefs?.Edit();
-                                if (edit != null) { edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set)); edit.Apply(); }
-                            }
-                        }
-                        catch { }
-                        try { RunOnUiThread(() => RefreshBunkerAuthorizedList()); } catch { }
-                    }
+                        try { RunOnUiThread(() => ShowBunkerPendingApprovalDialog(pubkey)); } catch { }
                 }
             };
             try
             {
                 var bunkerFilter = new IntentFilter();
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STARTED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_URI_CHANGED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_LOG");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_STOPPED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_PENDING");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_RECONNECTED");
                 LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
             }
             catch { }
 
             // Populate authorized clients list UI
             try { RefreshBunkerAuthorizedList(); } catch { }
+
+            var bunkerRequireApprovalSwitch = FindViewById<Switch>(Resource.Id.bunkerRequireApprovalSwitch);
+            var bunkerStore = new BunkerClientStore(this);
 
             if (bunkerAutoStartSwitch != null)
             {
@@ -928,6 +930,15 @@ namespace nokandro
                         if (edit != null) { edit.PutBoolean(PREF_BUNKER_AUTOSTART_BOOT, e.IsChecked); edit.Apply(); }
                     }
                     catch { }
+                };
+            }
+
+            if (bunkerRequireApprovalSwitch != null)
+            {
+                try { bunkerRequireApprovalSwitch.Checked = bunkerStore.RequireManualApproval; } catch { }
+                bunkerRequireApprovalSwitch.CheckedChange += (s, e) =>
+                {
+                    try { bunkerStore.RequireManualApproval = e.IsChecked; } catch { }
                 };
             }
 
@@ -1044,9 +1055,9 @@ namespace nokandro
                                  try
                                  {
                                      var edit = prefs?.Edit();
-                                     if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Remove(PREF_BUNKER_AUTHORIZED); edit.Apply(); }
+                                     if (edit != null) { edit.Remove(PREF_BUNKER_SECRET); edit.Apply(); }
+                                     try { new BunkerClientStore(this).ClearAllPairings(); } catch { }
 
-                                     // Immediately reflect cleared clients on UI
                                      try { RefreshBunkerAuthorizedList(); } catch { }
 
                                      // Stop bunker and uncheck switch so next start uses new secret
@@ -1084,7 +1095,7 @@ namespace nokandro
                     var uriText = ncUriEdit?.Text?.Trim() ?? "";
                     if (!NostrConnectUri.TryParse(uriText, out var parsed) || parsed == null)
                     {
-                        Toast.MakeText(this, "Invalid nostrconnect:// URI", ToastLength.Short)?.Show();
+                        Toast.MakeText(this, "Invalid nostrconnect:// URI (relay and secret required)", ToastLength.Short)?.Show();
                         return;
                     }
                     StartNostrConnectSession(parsed.RawUri, nsec);
@@ -2023,16 +2034,12 @@ namespace nokandro
                 intent.PutExtra("nsecHex", nsecHex);
                 intent.PutExtra("relay", relayUrl);
 
-                // Reuse persisted secret and authorized clients so the bunker survives restarts
                 try
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                     var savedSecret = prefs?.GetString(PREF_BUNKER_SECRET, null);
                     if (!string.IsNullOrEmpty(savedSecret))
                         intent.PutExtra("secret", savedSecret);
-                    var savedClients = prefs?.GetString(PREF_BUNKER_AUTHORIZED, null);
-                    if (!string.IsNullOrEmpty(savedClients))
-                        intent.PutExtra("authorizedClients", savedClients.Split(',', StringSplitOptions.RemoveEmptyEntries));
                 }
                 catch { }
 
@@ -2058,7 +2065,55 @@ namespace nokandro
             catch { }
         }
 
-        // Refresh the authorized clients list UI under the bunker container.
+        private string ResolveBunkerClientDisplayName(string pk, BunkerClientStore store)
+        {
+            var name = store.GetName(pk);
+            if (!string.IsNullOrEmpty(name)) return name;
+            var ncCustomNames = LoadNcClientNames();
+            if (ncCustomNames.TryGetValue(pk, out var custom) && !string.IsNullOrEmpty(custom)) return custom;
+            var ncMetadataNames = LoadNcMetadataNamesByPubkey();
+            if (ncMetadataNames.TryGetValue(pk, out var meta) && !string.IsNullOrEmpty(meta)) return meta;
+            return "";
+        }
+
+        private void ShowBunkerPendingApprovalDialog(string clientPubkey)
+        {
+            var shortPk = $"{clientPubkey[..Math.Min(12, clientPubkey.Length)]}...";
+            var dialog = new Android.App.AlertDialog.Builder(this)
+                .SetTitle("Approve bunker client?")
+                .SetMessage($"New client wants to connect:\n{shortPk}")
+                .SetPositiveButton("Approve", (sender, args) => ApproveBunkerPending(clientPubkey))
+                .SetNegativeButton("Reject", (sender, args) => RejectBunkerPending(clientPubkey))
+                .Create();
+            dialog.Show();
+        }
+
+        private void ApproveBunkerPending(string clientPubkey)
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.SetAction("nokandro.ACTION_BUNKER_APPROVE_PENDING");
+                intent.PutExtra("clientPubkey", clientPubkey);
+                StartService(intent);
+                RefreshBunkerAuthorizedList();
+            }
+            catch { }
+        }
+
+        private void RejectBunkerPending(string clientPubkey)
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(BunkerService));
+                intent.SetAction("nokandro.ACTION_BUNKER_REJECT_PENDING");
+                intent.PutExtra("clientPubkey", clientPubkey);
+                StartService(intent);
+                RefreshBunkerAuthorizedList();
+            }
+            catch { }
+        }
+
         private void RefreshBunkerAuthorizedList()
         {
             try
@@ -2066,7 +2121,6 @@ namespace nokandro
                 var bunkerContainer = FindViewById<LinearLayout>(Resource.Id.bunkerContainer);
                 if (bunkerContainer == null) return;
 
-                // Remove existing list if present
                 Android.Views.View? existing = null;
                 for (int i = 0; i < bunkerContainer.ChildCount; i++)
                 {
@@ -2075,51 +2129,72 @@ namespace nokandro
                 }
                 if (existing != null) bunkerContainer.RemoveView(existing);
 
-                // Build new vertical list
                 var list = new LinearLayout(this) { Orientation = Orientation.Vertical };
                 list.Tag = "bunkerAuthorizedList";
 
-                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var saved = prefs?.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
-                var items = new HashSet<string>(saved.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                var store = new BunkerClientStore(this);
+                var pending = store.GetPending();
+                if (pending.Count > 0)
+                {
+                    var pendingHeader = new TextView(this) { Text = "Pending approval" };
+                    pendingHeader.SetPadding(8, 8, 8, 4);
+                    pendingHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+                    list.AddView(pendingHeader);
 
-                // Resolve known names from nostrconnect settings for display consistency
-                var ncCustomNames = LoadNcClientNames();
-                var ncMetadataNames = LoadNcMetadataNamesByPubkey();
+                    foreach (var pk in pending)
+                    {
+                        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                        row.SetPadding(4, 4, 4, 4);
+                        var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
+                        var tv = new TextView(this) { Text = shortPk };
+                        tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
+                        var pkCopy = pk;
+                        var approveBtn = new Button(this) { Text = "Approve" };
+                        approveBtn.Click += (s, e) => ApproveBunkerPending(pkCopy);
+                        var rejectBtn = new Button(this) { Text = "Reject" };
+                        rejectBtn.Click += (s, e) => RejectBunkerPending(pkCopy);
+                        row.AddView(tv);
+                        row.AddView(approveBtn);
+                        row.AddView(rejectBtn);
+                        list.AddView(row);
+                    }
+                }
 
-                if (items.Count == 0)
+                var items = store.GetAuthorized();
+                if (items.Count == 0 && pending.Count == 0)
                 {
                     var emptyTv = new TextView(this);
                     emptyTv.Text = "No authorized clients";
                     emptyTv.SetPadding(8, 8, 8, 8);
                     list.AddView(emptyTv);
                 }
-                else
+                else if (items.Count > 0)
                 {
+                    if (pending.Count > 0)
+                    {
+                        var authHeader = new TextView(this) { Text = "Authorized clients" };
+                        authHeader.SetPadding(8, 12, 8, 4);
+                        authHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+                        list.AddView(authHeader);
+                    }
+
                     foreach (var pk in items)
                     {
                         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
                         row.SetPadding(4, 4, 4, 4);
 
-                        var tv = new TextView(this);
                         var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
-                        string? displayName = null;
-                        if (ncCustomNames.TryGetValue(pk, out var customName) && !string.IsNullOrEmpty(customName))
-                            displayName = customName;
-                        else if (ncMetadataNames.TryGetValue(pk, out var metadataName) && !string.IsNullOrEmpty(metadataName))
-                            displayName = metadataName;
+                        var displayName = ResolveBunkerClientDisplayName(pk, store);
+                        var tv = new TextView(this);
                         tv.Text = !string.IsNullOrEmpty(displayName) ? $"{displayName} ({shortPk})" : shortPk;
                         tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
                         tv.SetTextColor(Android.Graphics.Color.Black);
                         tv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
                         var clientPk = pk;
-                        var currentName = displayName ?? "";
+                        var currentName = displayName;
                         tv.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
 
-                        var btn = new Button(this)
-                        {
-                            Text = "Remove"
-                        };
+                        var btn = new Button(this) { Text = "Remove" };
                         btn.SetMinimumWidth(0);
                         btn.SetMinimumHeight(0);
                         btn.SetPadding(16, 0, 16, 0);
@@ -2128,47 +2203,23 @@ namespace nokandro
                             var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                             var removeDialog = new Android.App.AlertDialog.Builder(this)
                                 .SetTitle("Revoke authorization")
-                                .SetMessage($"Remove authorized client\n{shortName}?\nThis will require the client to re-authorize.")
+                                .SetMessage($"Remove authorized client\n{shortName}?\nKnown clients can reconnect without re-scanning the URI.")
                                 .SetPositiveButton("Remove", (sender, args) =>
                                 {
                                     try
                                     {
-                                        var p = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                                        var edit = p?.Edit();
-                                        if (edit != null)
-                                        {
-                                            var cur = p.GetString(PREF_BUNKER_AUTHORIZED, "") ?? "";
-                                            var set = new HashSet<string>(cur.Split(',', StringSplitOptions.RemoveEmptyEntries));
-                                            if (set.Remove(pk))
-                                            {
-                                                edit.PutString(PREF_BUNKER_AUTHORIZED, string.Join(",", set));
-                                                edit.Apply();
-                                            }
-                                        }
-
-                                        try
-                                        {
-                                            var intent = new Intent(this, typeof(BunkerService));
-                                            intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
-                                            intent.PutExtra("clientPubkey", pk);
-                                            StartService(intent);
-                                        }
-                                        catch { }
-
-                                        try { RefreshBunkerAuthorizedList(); } catch { }
+                                        store.Revoke(pk);
+                                        var intent = new Intent(this, typeof(BunkerService));
+                                        intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
+                                        intent.PutExtra("clientPubkey", pk);
+                                        StartService(intent);
+                                        RefreshBunkerAuthorizedList();
                                     }
                                     catch { }
                                 })
                                 .SetNegativeButton("Cancel", (sender, args) => { })
                                 .Create();
-
                             removeDialog.Show();
-                            try
-                            {
-                                removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                                removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-                            }
-                            catch { }
                         };
 
                         row.AddView(tv);
@@ -2319,7 +2370,8 @@ namespace nokandro
                         var activePks = BunkerService.GetActiveClientPubkeys();
                         if (!activePks.Contains(parsed.ClientPubkey))
                         {
-                            StartNostrConnectSession(uri, nsec, preAuthenticated: true);
+                            var store = new BunkerClientStore(this);
+                            StartNostrConnectSession(uri, nsec, preAuthenticated: store.IsAuthorized(parsed.ClientPubkey));
                         }
                     }
                 }
@@ -2447,6 +2499,7 @@ namespace nokandro
                  {
                      var name = input.Text?.Trim() ?? "";
                      SaveNcClientName(clientPubkey, name);
+                     try { new BunkerClientStore(this).SetName(clientPubkey, string.IsNullOrEmpty(name) ? null : name); } catch { }
                      RefreshNostrConnectClientList(_lastNcPubkeys, _lastNcUris);
                      RefreshBunkerAuthorizedList();
                  })

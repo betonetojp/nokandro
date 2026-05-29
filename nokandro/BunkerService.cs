@@ -43,10 +43,34 @@ namespace nokandro
                     try
                     {
                         AppLog.D(TAG, $"Revoking bunker client: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
+                        new BunkerClientStore(this).Revoke(clientPubkey);
                         _bunker?.RemoveAuthorizedClient(clientPubkey);
+                        BroadcastBunkerClientsChanged();
                     }
                     catch { }
                 }
+                return StartCommandResult.Sticky;
+            }
+
+            if (intent?.Action == "nokandro.ACTION_BUNKER_APPROVE_PENDING")
+            {
+                var clientPubkey = intent.GetStringExtra("clientPubkey");
+                if (!string.IsNullOrEmpty(clientPubkey))
+                {
+                    try { new BunkerClientStore(this).Authorize(clientPubkey); } catch { }
+                }
+                BroadcastBunkerClientsChanged();
+                return StartCommandResult.Sticky;
+            }
+
+            if (intent?.Action == "nokandro.ACTION_BUNKER_REJECT_PENDING")
+            {
+                var clientPubkey = intent.GetStringExtra("clientPubkey");
+                if (!string.IsNullOrEmpty(clientPubkey))
+                {
+                    try { new BunkerClientStore(this).RejectPending(clientPubkey); } catch { }
+                }
+                BroadcastBunkerClientsChanged();
                 return StartCommandResult.Sticky;
             }
 
@@ -90,10 +114,13 @@ namespace nokandro
             try { _bunker?.Stop(); } catch { }
             _bunker = null;
 
-            // Start bunker (reuse persisted secret and authorized clients if available)
-            var secret = intent?.GetStringExtra("secret");
-            var savedClients = intent?.GetStringArrayExtra("authorizedClients");
-            _bunker = new NostrBunker(privKey, relay, secret, savedClients);
+            var store = new BunkerClientStore(this);
+            var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+            var secret = intent?.GetStringExtra("secret") ?? prefs?.GetString("pref_bunker_secret", null);
+
+            var bunkerOptions = CreateBunkerOptions(store);
+            var savedClients = store.GetAuthorized();
+            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
             _bunker.OnLog += msg =>
             {
                 try
@@ -109,6 +136,27 @@ namespace nokandro
                 try
                 {
                     var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
+                    b.PutExtra("clientPubkey", pubkey);
+                    b.PutExtra("isNew", true);
+                    LocalBroadcast.SendBroadcast(this, b);
+                }
+                catch { }
+            };
+            _bunker.OnClientReconnected += pubkey =>
+            {
+                try
+                {
+                    var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_RECONNECTED");
+                    b.PutExtra("clientPubkey", pubkey);
+                    LocalBroadcast.SendBroadcast(this, b);
+                }
+                catch { }
+            };
+            _bunker.OnClientPendingApproval += pubkey =>
+            {
+                try
+                {
+                    var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_PENDING");
                     b.PutExtra("clientPubkey", pubkey);
                     LocalBroadcast.SendBroadcast(this, b);
                 }
@@ -154,25 +202,6 @@ namespace nokandro
                 return StartCommandResult.NotSticky;
             }
 
-            // Apply fixed fallback relays if URI has no relay hints
-            if (connectUri.Relays.Length == 0)
-            {
-                connectUri = connectUri.WithFallbackRelays(
-                    "wss://nostr.oxtr.dev/",
-                    "wss://theforest.nostr1.com/",
-                    "wss://relay.primal.net/",
-                    "wss://ephemeral.snowflare.cc/");
-                AppLog.D(TAG, "No relay hint in URI, using fixed fallback relays");
-                try
-                {
-                    var b = new Intent("nokandro.ACTION_NC_LOG");
-                    b.PutExtra("clientPubkey", connectUri.ClientPubkey);
-                    b.PutExtra("message", "No relay in URI, using fallback relays");
-                    LocalBroadcast.SendBroadcast(this, b);
-                }
-                catch { }
-            }
-
             var privKey = new byte[32];
             for (int i = 0; i < 32; i++)
                 privKey[i] = Convert.ToByte(nsecHex.Substring(i * 2, 2), 16);
@@ -188,8 +217,21 @@ namespace nokandro
                     _ncSessions.Remove(connectUri.ClientPubkey);
                 }
 
+                var ncStore = new BunkerClientStore(this);
                 var preAuth = intent.GetBooleanExtra("preAuthenticated", false);
-                var session = new NostrConnectSession(privKey, connectUri, preAuth);
+                var storedPerms = ncStore.GetPermissions(connectUri.ClientPubkey)
+                    ?? Nip46Permissions.Parse(connectUri.Perms ?? ncStore.GetPermsString(connectUri.ClientPubkey));
+                var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms);
+                session.OnClientPaired += (pk, perms) =>
+                {
+                    try
+                    {
+                        ncStore.Authorize(pk, perms);
+                        var b = new Intent("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
+                        LocalBroadcast.SendBroadcast(this, b);
+                    }
+                    catch { }
+                };
                 session.OnLog += msg =>
                 {
                     try
@@ -457,6 +499,34 @@ namespace nokandro
         public static string[] GetActiveClientPubkeys()
         {
             lock (_ncLock) { return [.. _ncSessions.Keys]; }
+        }
+
+        private BunkerOptions CreateBunkerOptions(BunkerClientStore store) => new()
+        {
+            IsAuthorized = store.IsAuthorized,
+            IsPending = store.IsPending,
+            AddPending = store.AddPending,
+            RequireManualApproval = () => store.RequireManualApproval,
+            GetPermissions = store.GetPermissions,
+            SavePermissions = store.SetPermissions,
+            OnClientPaired = (pk, perms, isNew) =>
+            {
+                if (isNew)
+                    store.Authorize(pk, perms);
+                else if (!string.IsNullOrEmpty(perms))
+                    store.SetPermissions(pk, perms);
+                BroadcastBunkerClientsChanged();
+            }
+        };
+
+        private void BroadcastBunkerClientsChanged()
+        {
+            try
+            {
+                var b = new Intent("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch { }
         }
     }
 }

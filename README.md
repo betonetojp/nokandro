@@ -12,7 +12,7 @@ Package name: `com.nokakoi.nokandro`
 - **Text-to-Speech (TTS)**: Reads incoming posts from followed users (configurable).
 - **Now Playing**: Detects music playing on your device (via notification listener) and publishes it as a Nostr status (kind: 30315).
 - **NIP-46 Bunker**: Acts as a remote signer so external Nostr clients can request event signing, encryption/decryption via the `bunker://` protocol.
-- **nostrconnect://**: Accepts client-initiated NIP-46 connections by pasting or scanning a `nostrconnect://` URI. Multiple concurrent sessions are supported.
+- **nostrconnect://**: Accepts client-initiated NIP-46 connections by pasting or scanning a `nostrconnect://` URI (`relay` and `secret` required per NIP-46). Multiple concurrent sessions are supported.
 - **NIP-55 Signer**: Handles `nostrsigner:` requests and NIP-55 content provider methods (`SIGN_EVENT`, `NIP04_DECRYPT`, etc.) for external signer-compatible clients.
 - **Boot auto-start (optional)**: Bunker can be auto-started after device reboot via a switch in the Bunker tab.
 - Retrieves the follow list, public mute list, and muted words list for filtering.
@@ -76,8 +76,7 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI and automatically connects.
 - **Client list**: Shows active nostrconnect sessions. Tap a client name to edit its label; tap ✕ to disconnect.
-- If the URI does not include relay hints, the following fixed fallback relays are used:
-  `wss://nostr.oxtr.dev/`, `wss://theforest.nostr1.com/`, `wss://relay.primal.net/`, `wss://ephemeral.snowflare.cc/`
+- The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`.
 
@@ -223,7 +222,7 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 > **注意**: Bunker や nostrconnect を使用するには Main タブで `nsec` を入力してください。
 > 
 > - bunker:// は新規クライアント接続時にシークレット一致が必要です。既に認証済みのクライアント再接続時はシークレットチェックをスキップします。
-> - nostrconnect:// はシークレット不一致でも接続は受け入れます（不一致はログに記録されます）。
+> - nostrconnect:// は接続応答の `result` に URI の `secret` を返します。クライアントが検証します。
 
 Bunker 機能の詳細なドキュメントは [BUNKER.md](BUNKER.md) を参照してください。
 

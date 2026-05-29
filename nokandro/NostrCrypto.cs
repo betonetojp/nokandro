@@ -173,7 +173,7 @@ namespace nokandro
             }
         }
 
-        private static string? DecryptNip44(string content, string pubkeyHex, byte[] privKey)
+        public static string? DecryptNip44(string content, string pubkeyHex, byte[] privKey)
         {
             try
             {

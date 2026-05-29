@@ -1,117 +1,217 @@
 using Android.App;
 using Android.Content;
 using Android.OS;
+using Android.Views;
 using Android.Widget;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using AndroidUri = Android.Net.Uri;
 
 namespace nokandro
 {
-    [Activity(Label = "Nostr Signer", Exported = true, NoHistory = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop, Theme = "@android:style/Theme.Translucent.NoTitleBar")]
+    [Activity(Label = "Nostr Signer", Exported = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop, Theme = "@android:style/Theme.Material.Light.Dialog")]
     [IntentFilter([Intent.ActionView], Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable], DataScheme = "nostrsigner")]
     public sealed class NostrSignerActivity : Activity
     {
-        private const string PREFS_NAME = "nokandro_prefs";
-        private const string PREF_NSEC = "pref_nsec";
+        private string _requestType = "";
+        private string _requestId = "";
+        private string _payload = "";
+        private string? _callbackUrl;
+        private string? _pubkeyParam;
+        private string? _currentUser;
+        private string? _permissionsJson;
+        private string _returnType = "signature";
+        private string _compressionType = "none";
+        private string? _callerPackage;
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-            HandleIntent(Intent);
-        }
-
-        protected override void OnNewIntent(Intent? intent)
-        {
-            base.OnNewIntent(intent);
-            HandleIntent(intent);
-        }
-
-        private void HandleIntent(Intent? intent)
-        {
-            if (intent?.DataString == null)
+            if (Intent?.DataString == null)
             {
                 FinishWithFailure("missing intent data");
                 return;
             }
 
-            if (!TryLoadPrivateKey(out var privKey) || privKey == null)
+            _callerPackage = CallingActivity?.PackageName ?? Referrer?.Host;
+            _requestType = GetRequestType(Intent) ?? "";
+            _requestId = Intent.GetStringExtra("id") ?? GetQueryParameterFromDataString(Intent.DataString, "id") ?? Guid.NewGuid().ToString("N");
+            _callbackUrl = GetCallbackUrl(Intent);
+            _pubkeyParam = GetPubkey(Intent);
+            _currentUser = Intent.GetStringExtra("current_user") ?? GetQueryParameterFromDataString(Intent.DataString, "current_user");
+            _permissionsJson = Intent.GetStringExtra("permissions");
+            _returnType = Intent.GetStringExtra("returnType") ?? GetQueryParameterFromDataString(Intent.DataString, "returnType") ?? "signature";
+            _compressionType = Intent.GetStringExtra("compressionType") ?? GetQueryParameterFromDataString(Intent.DataString, "compressionType") ?? "none";
+            _payload = ExtractPayload(Intent.DataString);
+
+            if (string.IsNullOrWhiteSpace(_requestType))
             {
-                FinishWithFailure("nsec not configured");
+                FinishWithFailure("missing type", _requestId, _callbackUrl);
                 return;
             }
 
-            var requestType = GetRequestType(intent);
-            if (string.IsNullOrWhiteSpace(requestType))
+            if (!NostrSignerOperations.TryLoadPrivateKey(this, out _, out _))
             {
-                FinishWithFailure("missing type");
+                FinishWithFailure("nsec not configured", _requestId, _callbackUrl);
                 return;
             }
 
-            var requestId = intent.GetStringExtra("id") ?? Guid.NewGuid().ToString("N");
-            var callbackUrl = GetCallbackUrl(intent);
-            var payload = ExtractPayload(intent.DataString);
-
-            try
+            var kind = _requestType == "sign_event" ? TryGetEventKind(_payload) : null;
+            if (Nip55PermissionStore.HasPermission(this, _callerPackage, _requestType, kind)
+                && !Nip55PermissionStore.IsAlwaysRejected(this, _callerPackage, _requestType))
             {
-                string result;
-                string? signedEvent = null;
-                string? packageName = null;
-
-                switch (requestType)
+                try
                 {
-                    case "get_public_key":
-                        result = GetPublicKey(privKey);
-                        packageName = PackageName;
-                        break;
-                    case "sign_event":
-                        signedEvent = SignEvent(payload, privKey);
-                        result = GetSignature(signedEvent);
-                        break;
-                    case "nip04_encrypt":
-                        result = Encrypt(payload, intent, privKey, nip44: false);
-                        break;
-                    case "nip04_decrypt":
-                        result = Decrypt(payload, intent, privKey, nip44: false);
-                        break;
-                    case "nip44_encrypt":
-                        result = Encrypt(payload, intent, privKey, nip44: true);
-                        break;
-                    case "nip44_decrypt":
-                        result = Decrypt(payload, intent, privKey, nip44: true);
-                        break;
-                    case "decrypt_zap_event":
-                        result = payload;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unsupported NIP-55 type: {requestType}");
+                    ExecuteAndDeliver();
+                    return;
                 }
+                catch (Exception ex)
+                {
+                    FinishWithFailure(ex.Message, _requestId, _callbackUrl);
+                    return;
+                }
+            }
 
-                DeliverResult(requestId, result, callbackUrl, signedEvent, packageName);
-            }
-            catch (Exception ex)
-            {
-                FinishWithFailure(ex.Message, requestId, callbackUrl);
-            }
+            ShowApprovalUi();
         }
 
-        private void DeliverResult(string requestId, string result, string? callbackUrl, string? signedEvent = null, string? packageName = null)
+        private void ShowApprovalUi()
+        {
+            var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
+            var pad = (int)(16 * Resources!.DisplayMetrics!.Density);
+            root.SetPadding(pad, pad, pad, pad);
+
+            var title = new TextView(this) { Text = "Nostr Signer Request" };
+            title.SetTextSize(Android.Util.ComplexUnitType.Sp, 18f);
+            root.AddView(title);
+
+            var detail = new TextView(this)
+            {
+                Text = $"App: {_callerPackage ?? "unknown"}\nType: {_requestType}\n\n{Truncate(_payload, 400)}"
+            };
+            detail.SetTextSize(Android.Util.ComplexUnitType.Sp, 14f);
+            root.AddView(detail);
+
+            var remember = new CheckBox(this) { Text = "Remember my choice" };
+            root.AddView(remember);
+
+            var buttons = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+            var deny = new Button(this) { Text = "Deny" };
+            var approve = new Button(this) { Text = "Approve" };
+            buttons.AddView(deny);
+            buttons.AddView(approve);
+            root.AddView(buttons);
+
+            deny.Click += (_, _) =>
+            {
+                if (remember.Checked)
+                    Nip55PermissionStore.SetAlwaysRejected(this, _callerPackage, _requestType);
+                FinishWithFailure("rejected", _requestId, _callbackUrl);
+            };
+
+            approve.Click += (_, _) =>
+            {
+                try
+                {
+                    if (remember.Checked)
+                    {
+                        if (_requestType == "get_public_key" && !string.IsNullOrEmpty(_permissionsJson))
+                            Nip55PermissionStore.GrantFromPermissionsJson(this, _callerPackage, _permissionsJson);
+                        else
+                            Nip55PermissionStore.Grant(this, _callerPackage, _requestType, TryGetEventKind(_payload));
+                    }
+                    ExecuteAndDeliver();
+                }
+                catch (Exception ex)
+                {
+                    FinishWithFailure(ex.Message, _requestId, _callbackUrl);
+                }
+            };
+
+            SetContentView(root);
+        }
+
+        private void ExecuteAndDeliver()
+        {
+            if (!NostrSignerOperations.TryLoadPrivateKey(this, out var privKey, out var pubkeyHex) || privKey == null)
+                throw new InvalidOperationException("nsec not configured");
+
+            NostrSignerOperations.ValidateCurrentUser(_currentUser, pubkeyHex);
+
+            string result;
+            string? signedEvent = null;
+
+            switch (_requestType)
+            {
+                case "get_public_key":
+                    result = pubkeyHex;
+                    DeliverResult(_requestId, result, _callbackUrl, null, PackageName, _returnType, _compressionType);
+                    return;
+                case "sign_event":
+                    signedEvent = NostrSignerOperations.SignEvent(_payload, privKey);
+                    result = NostrSignerOperations.GetSignature(signedEvent);
+                    break;
+                case "nip04_encrypt":
+                    result = NostrSignerOperations.Encrypt(_payload, RequirePubkey(), privKey, nip44: false);
+                    break;
+                case "nip04_decrypt":
+                    result = NostrSignerOperations.Decrypt(_payload, RequirePubkey(), privKey, nip44: false);
+                    break;
+                case "nip44_encrypt":
+                    result = NostrSignerOperations.Encrypt(_payload, RequirePubkey(), privKey, nip44: true);
+                    break;
+                case "nip44_decrypt":
+                    result = NostrSignerOperations.Decrypt(_payload, RequirePubkey(), privKey, nip44: true);
+                    break;
+                case "decrypt_zap_event":
+                    result = NostrZapDecrypt.Decrypt(_payload, privKey, pubkeyHex);
+                    break;
+                default:
+                    throw new NotSupportedException($"Unsupported NIP-55 type: {_requestType}");
+            }
+
+            DeliverResult(_requestId, result, _callbackUrl, signedEvent, PackageName, _returnType, _compressionType);
+        }
+
+        private string RequirePubkey()
+        {
+            var pk = _pubkeyParam ?? _currentUser;
+            if (string.IsNullOrEmpty(pk)) throw new ArgumentException("missing pubkey");
+            return pk;
+        }
+
+        private static int? TryGetEventKind(string payload)
         {
             try
             {
+                using var doc = System.Text.Json.JsonDocument.Parse(payload);
+                if (doc.RootElement.TryGetProperty("kind", out var k)) return k.GetInt32();
+            }
+            catch { }
+            return null;
+        }
+
+        private static string Truncate(string s, int max) =>
+            s.Length <= max ? s : s[..max] + "…";
+
+        private void DeliverResult(string requestId, string result, string? callbackUrl, string? signedEvent, string? packageName, string returnType, string compressionType)
+        {
+            try
+            {
+                var formatted = NostrSignerOperations.FormatWebResult(returnType, compressionType, result, signedEvent);
+
                 var builder = new AndroidUri.Builder()
                     .Scheme("nostrsigner")
                     .Authority("result")
-                    .AppendQueryParameter("result", result)
+                    .AppendQueryParameter("result", formatted)
                     .AppendQueryParameter("id", requestId);
 
-                if (!string.IsNullOrEmpty(signedEvent)) builder.AppendQueryParameter("event", signedEvent);
-                if (!string.IsNullOrEmpty(packageName)) builder.AppendQueryParameter("package", packageName);
+                if (!string.IsNullOrEmpty(signedEvent) && returnType.Equals("event", StringComparison.OrdinalIgnoreCase))
+                    builder.AppendQueryParameter("event", signedEvent);
+                if (!string.IsNullOrEmpty(packageName))
+                    builder.AppendQueryParameter("package", packageName);
 
                 var resultIntent = new Intent();
                 resultIntent.SetData(builder.Build());
-                resultIntent.PutExtra("result", result);
+                resultIntent.PutExtra("result", formatted);
                 resultIntent.PutExtra("id", requestId);
                 if (!string.IsNullOrEmpty(signedEvent)) resultIntent.PutExtra("event", signedEvent);
                 if (!string.IsNullOrEmpty(packageName)) resultIntent.PutExtra("package", packageName);
@@ -119,14 +219,19 @@ namespace nokandro
 
                 if (!string.IsNullOrEmpty(callbackUrl))
                 {
-                    var callbackIntent = new Intent(Intent.ActionView, BuildCallbackUri(callbackUrl, result, requestId, signedEvent, packageName));
+                    var callbackIntent = new Intent(Intent.ActionView, BuildCallbackUri(callbackUrl, formatted, requestId, signedEvent, packageName, null));
                     callbackIntent.AddFlags(ActivityFlags.NewTask);
                     StartActivity(callbackIntent);
+                }
+                else
+                {
+                    if (GetSystemService(ClipboardService) is ClipboardManager cm)
+                        cm.PrimaryClip = ClipData.NewPlainText("nostr-signer-result", formatted);
                 }
             }
             catch
             {
-                // ignore delivery errors, but still close the activity
+                // ignore delivery errors
             }
             finally
             {
@@ -154,21 +259,17 @@ namespace nokandro
                     Toast.MakeText(this, error, ToastLength.Short)?.Show();
                 }
             }
-            catch
-            {
-                // ignore
-            }
+            catch { }
             finally
             {
                 Finish();
             }
         }
 
-        private static AndroidUri BuildCallbackUri(string callbackUrl, string result, string requestId, string? signedEvent = null, string? packageName = null, string? error = null)
+        private static AndroidUri BuildCallbackUri(string callbackUrl, string result, string requestId, string? signedEvent, string? packageName, string? error)
         {
-            var builder = new StringBuilder(callbackUrl);
+            var builder = new System.Text.StringBuilder(callbackUrl);
             var separator = callbackUrl.Contains('?') ? "&" : "?";
-
             if (!string.IsNullOrEmpty(result))
             {
                 builder.Append(separator).Append("result=").Append(global::System.Uri.EscapeDataString(result));
@@ -190,39 +291,24 @@ namespace nokandro
                 separator = "&";
             }
             if (!string.IsNullOrEmpty(error))
-            {
                 builder.Append(separator).Append("error=").Append(global::System.Uri.EscapeDataString(error));
-            }
-
             return AndroidUri.Parse(builder.ToString());
         }
 
-        private static string GetRequestType(Intent intent)
-        {
-            return intent.GetStringExtra("type")
-                ?? GetQueryParameterFromDataString(intent.DataString, "type")
-                ?? string.Empty;
-        }
+        private static string? GetRequestType(Intent intent) =>
+            intent.GetStringExtra("type") ?? GetQueryParameterFromDataString(intent.DataString, "type");
 
-        private static string? GetCallbackUrl(Intent intent)
-        {
-            return intent.GetStringExtra("callbackUrl")
-                ?? GetQueryParameterFromDataString(intent.DataString, "callbackUrl");
-        }
+        private static string? GetCallbackUrl(Intent intent) =>
+            intent.GetStringExtra("callbackUrl") ?? GetQueryParameterFromDataString(intent.DataString, "callbackUrl");
 
-        private static string? GetPubkey(Intent intent)
-        {
-            return intent.GetStringExtra("pubkey")
-                 ?? GetQueryParameterFromDataString(intent.DataString, "pubkey");
-        }
+        private static string? GetPubkey(Intent intent) =>
+            intent.GetStringExtra("pubkey") ?? GetQueryParameterFromDataString(intent.DataString, "pubkey");
 
         private static string? GetQueryParameterFromDataString(string? dataString, string key)
         {
             if (string.IsNullOrEmpty(dataString)) return null;
-
             var qIndex = dataString.IndexOf('?');
             if (qIndex < 0 || qIndex + 1 >= dataString.Length) return null;
-
             var query = dataString[(qIndex + 1)..];
             foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
             {
@@ -232,7 +318,6 @@ namespace nokandro
                 if (!string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) continue;
                 return global::System.Uri.UnescapeDataString(pair[(eq + 1)..]);
             }
-
             return null;
         }
 
@@ -240,16 +325,9 @@ namespace nokandro
         {
             var raw = dataString;
             if (raw.StartsWith("nostrsigner:", StringComparison.OrdinalIgnoreCase))
-            {
                 raw = raw["nostrsigner:".Length..];
-            }
-
             var queryIndex = FindSignerQueryStart(raw);
-            if (queryIndex >= 0)
-            {
-                raw = raw[..queryIndex];
-            }
-
+            if (queryIndex >= 0) raw = raw[..queryIndex];
             return global::System.Uri.UnescapeDataString(raw);
         }
 
@@ -257,244 +335,17 @@ namespace nokandro
         {
             var markers = new[]
             {
-                "?compressionType=", "&compressionType=",
-                "?returnType=", "&returnType=",
-                "?type=", "&type=",
-                "?pubkey=", "&pubkey=",
-                "?callbackUrl=", "&callbackUrl=",
-                "?id=", "&id=",
-                "?current_user=", "&current_user=",
-                "?permissions=", "&permissions=",
-                "?secret=", "&secret=",
-                "?relay=", "&relay=",
-                "?metadata=", "&metadata=",
-                "?name=", "&name=",
+                "?compressionType=", "&compressionType=", "?returnType=", "&returnType=",
+                "?type=", "&type=", "?pubkey=", "&pubkey=", "?callbackUrl=", "&callbackUrl=",
+                "?id=", "&id=", "?current_user=", "&current_user=", "?permissions=", "&permissions="
             };
-
             var best = -1;
             foreach (var marker in markers)
             {
                 var idx = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0 && (best < 0 || idx < best))
-                {
-                    best = idx;
-                }
+                if (idx >= 0 && (best < 0 || idx < best)) best = idx;
             }
-
             return best;
-        }
-
-        private static string GetPublicKey(byte[] privKey)
-        {
-            var pubBytes = NostrCrypto.GetPublicKey(privKey);
-            return BitConverter.ToString(pubBytes).Replace("-", string.Empty).ToLowerInvariant();
-        }
-
-        private static string SignEvent(string unsignedJson, byte[] privKey)
-        {
-            using var evDoc = JsonDocument.Parse(unsignedJson);
-            var ev = evDoc.RootElement;
-
-            var kind = ev.TryGetProperty("kind", out var kEl) ? kEl.GetInt32() : 1;
-            var createdAt = ev.TryGetProperty("created_at", out var ctEl) ? ctEl.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var content = ev.TryGetProperty("content", out var cEl) ? cEl.GetString() ?? string.Empty : string.Empty;
-            var tags = ev.TryGetProperty("tags", out var tEl) ? tEl.GetRawText() : "[]";
-
-            var pubkeyBytes = NostrCrypto.GetPublicKey(privKey);
-            var pubkeyHex = BitConverter.ToString(pubkeyBytes).Replace("-", string.Empty).ToLowerInvariant();
-            var eventId = ComputeEventId(pubkeyHex, createdAt, kind, tags, content);
-            var sig = NostrCrypto.Sign(eventId, privKey);
-
-            return $"{{\"id\":\"{BytesToHex(eventId)}\",\"pubkey\":\"{pubkeyHex}\",\"created_at\":{createdAt},\"kind\":{kind},\"tags\":{tags},\"content\":{EscapeJsonString(content)},\"sig\":\"{BytesToHex(sig)}\"}}";
-        }
-
-        private static string GetSignature(string signedEventJson)
-        {
-            using var doc = JsonDocument.Parse(signedEventJson);
-            if (doc.RootElement.TryGetProperty("sig", out var sigEl))
-            {
-                return sigEl.GetString() ?? string.Empty;
-            }
-
-            throw new InvalidOperationException("signed event is missing sig");
-        }
-
-        private static string Encrypt(string plaintext, Intent intent, byte[] privKey, bool nip44)
-        {
-            var pubkey = GetPubkey(intent);
-            if (string.IsNullOrEmpty(pubkey)) throw new ArgumentException("missing pubkey");
-            return nip44
-                ? NostrCrypto.EncryptNip44(plaintext, pubkey, privKey)
-                : NostrCrypto.EncryptNip04(plaintext, pubkey, privKey);
-        }
-
-        private static string Decrypt(string ciphertext, Intent intent, byte[] privKey, bool nip44)
-        {
-            var pubkey = intent.GetStringExtra("pubkey")
-                ?? intent.GetStringExtra("current_user")
-                ?? GetQueryParameterFromDataString(intent.DataString, "pubkey");
-             if (string.IsNullOrEmpty(pubkey)) throw new ArgumentException("missing pubkey");
-             return NostrCrypto.Decrypt(ciphertext, pubkey, privKey)
-                 ?? throw new InvalidOperationException(nip44 ? "NIP-44 decryption failed" : "NIP-04 decryption failed");
-        }
-
-        private bool TryLoadPrivateKey(out byte[]? privKey)
-        {
-            privKey = null;
-            try
-            {
-                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var nsec = prefs?.GetString(PREF_NSEC, null);
-                if (string.IsNullOrWhiteSpace(nsec)) return false;
-
-                var (hrp, data) = Bech32Decode(nsec.Trim());
-                if (hrp != "nsec" || data == null) return false;
-
-                var bytes = ConvertBits(data, 5, 8, false);
-                if (bytes == null || bytes.Length != 32) return false;
-
-                privKey = bytes;
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static byte[]? ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
-        {
-            var acc = 0;
-            var bits = 0;
-            var maxv = (1 << toBits) - 1;
-            var result = new List<byte>();
-            foreach (var value in data)
-            {
-                if ((value >> fromBits) != 0) return null;
-                acc = (acc << fromBits) | value;
-                bits += fromBits;
-                while (bits >= toBits)
-                {
-                    bits -= toBits;
-                    result.Add((byte)((acc >> bits) & maxv));
-                }
-            }
-
-            if (pad)
-            {
-                if (bits > 0) result.Add((byte)((acc << (toBits - bits)) & maxv));
-            }
-            else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv) != 0)
-            {
-                return null;
-            }
-
-            return [.. result];
-        }
-
-        private static (string? hrp, byte[]? data) Bech32Decode(string bech)
-        {
-            const string Bech32Chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-            if (string.IsNullOrEmpty(bech)) return (null, null);
-            bech = bech.ToLowerInvariant();
-            var pos = bech.LastIndexOf('1');
-            if (pos < 1 || pos + 7 > bech.Length) return (null, null);
-            var hrp = bech[..pos];
-            var dataPart = bech[(pos + 1)..];
-            var data = new byte[dataPart.Length];
-            for (int i = 0; i < dataPart.Length; i++)
-            {
-                var idx = Bech32Chars.IndexOf(dataPart[i]);
-                if (idx == -1) return (null, null);
-                data[i] = (byte)idx;
-            }
-
-            var values = new List<byte>();
-            values.AddRange(HrpExpand(hrp));
-            values.AddRange(data);
-            if (Polymod([.. values]) != 1) return (null, null);
-
-            var payload = new byte[data.Length - 6];
-            Array.Copy(data, 0, payload, 0, payload.Length);
-            return (hrp, payload);
-        }
-
-        private static int Polymod(byte[] values)
-        {
-            var chk = 1;
-            var generators = new[] { 0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3 };
-            foreach (var v in values)
-            {
-                var top = chk >> 25;
-                chk = ((chk & 0x1ffffff) << 5) ^ v;
-                for (int i = 0; i < 5; i++)
-                {
-                    if (((top >> i) & 1) != 0) chk ^= generators[i];
-                }
-            }
-            return chk;
-        }
-
-        private static byte[] HrpExpand(string hrp)
-        {
-            var hrpBytes = Encoding.ASCII.GetBytes(hrp);
-            var expand = new List<byte>(hrpBytes.Length * 2 + 1);
-            foreach (var b in hrpBytes) expand.Add((byte)(b >> 5));
-            expand.Add(0);
-            foreach (var b in hrpBytes) expand.Add((byte)(b & 31));
-            return [.. expand];
-        }
-
-        private static byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
-        {
-            var sb = new StringBuilder();
-            sb.Append("[0,\"");
-            sb.Append(pubkey);
-            sb.Append("\",");
-            sb.Append(createdAt);
-            sb.Append(',');
-            sb.Append(kind);
-            sb.Append(',');
-            sb.Append(tagsJson);
-            sb.Append(',');
-            sb.Append(EscapeJsonString(content));
-            sb.Append(']');
-
-            using var sha = SHA256.Create();
-            return sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
-        }
-
-        private static string EscapeJsonString(string text)
-        {
-            if (text == null) return "null";
-            var sb = new StringBuilder();
-            sb.Append('"');
-            foreach (var c in text)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"': sb.Append("\\\""); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < ' ') sb.Append($"\\u{(int)c:x4}");
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            sb.Append('"');
-            return sb.ToString();
-        }
-
-        private static string BytesToHex(byte[] bytes)
-        {
-            var sb = new StringBuilder(bytes.Length * 2);
-            foreach (var b in bytes) sb.AppendFormat("{0:x2}", b);
-            return sb.ToString();
         }
     }
 }
