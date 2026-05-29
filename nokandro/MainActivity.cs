@@ -2097,6 +2097,7 @@ namespace nokandro
                 intent.PutExtra("clientPubkey", clientPubkey);
                 StartService(intent);
                 RefreshBunkerAuthorizedList();
+                Toast.MakeText(this, "Approved. Client may need to reconnect.", ToastLength.Long)?.Show();
             }
             catch { }
         }

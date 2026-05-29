@@ -20,7 +20,19 @@ namespace nokandro
 
         public bool IsClientConnected(string pubkey) => _connectedClients.Contains(pubkey);
 
-        public void DisconnectAll() => _connectedClients.Clear();
+        public void DisconnectAll()
+        {
+            _connectedClients.Clear();
+            _clientPermissions.Clear();
+        }
+
+        public bool DisconnectClient(string pubkey)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return false;
+            var removed = _connectedClients.Remove(pubkey);
+            _clientPermissions.Remove(pubkey);
+            return removed;
+        }
 
         public async Task<(bool sent, string method, bool ok, string? error)> ProcessRequestAsync(
             string senderPubkey,

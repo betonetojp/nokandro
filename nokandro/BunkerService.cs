@@ -57,7 +57,12 @@ namespace nokandro
                 var clientPubkey = intent.GetStringExtra("clientPubkey");
                 if (!string.IsNullOrEmpty(clientPubkey))
                 {
-                    try { new BunkerClientStore(this).Authorize(clientPubkey); } catch { }
+                    try
+                    {
+                        new BunkerClientStore(this).Authorize(clientPubkey);
+                        _bunker?.AddAuthorizedClient(clientPubkey);
+                    }
+                    catch { }
                 }
                 BroadcastBunkerClientsChanged();
                 return StartCommandResult.Sticky;

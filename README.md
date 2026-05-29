@@ -64,10 +64,11 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Bunker relay**: The relay used for bunker communication (editable only when the bunker is stopped).
 - **NIP-46 Bunker switch**: Starts or stops the bunker service.
 - **Auto start bunker on device boot**: When enabled, bunker starts automatically after reboot if bunker was enabled and valid `nsec`/relay are saved.
-- **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running.
+- **Approve new bunker clients manually**: When enabled, new clients appear in a pending list until you tap **Approve** or **Reject**. After approval, the client may need to reconnect (retry `connect` on the client side).
+- **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running. The secret in the URI stays the same until you use **Reset Secret** (Amber-style stable URI).
 - **Copy bunker URI**: Copies the URI to the clipboard.
-- **Reset Secret**: Deletes the saved bunker secret and stops the bunker. A new URI with a fresh secret will be generated on next start.
-- **Authorized clients**: Shows a list of authorized clients. Tap a name to edit its label, swipe to remove authorization.
+- **Reset Secret**: Deletes the saved bunker secret, clears all paired clients (authorized and pending), and stops the bunker. A new URI with a fresh secret will be generated on next start.
+- **Authorized clients**: Shows authorized and pending clients. Tap a name to edit its label; use **Remove** to revoke one client (other connected clients stay connected).
 - **Status**: Shows bunker connection status and client activity.
 
 ### nostrconnect:// (Client-initiated)
@@ -78,14 +79,14 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Client list**: Shows active nostrconnect sessions. Tap a client name to edit its label; tap ✕ to disconnect.
 - The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
-**Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`.
+**Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`.
 
 **Supported NIP-55 methods**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` (via `nostrsigner:` and content providers).
 
 > **Note**: Enter your `nsec` in the Main tab before using the Bunker or nostrconnect features.
 > 
-> - `bunker://` requires secret match for new client connections. Reconnecting authorized clients will skip the secret check.
-> - `nostrconnect://` will accept connections even with secret mismatch (mismatch will be logged).
+> - `bunker://`: New clients must present the correct secret. Previously paired clients can reconnect without re-entering the secret (pairing is stored in `BunkerClientStore`). The bunker secret is not rotated on each connect (stable URI until **Reset Secret**).
+> - `nostrconnect://`: The client must send the correct `secret` in `connect`; invalid secrets are rejected. The signer returns the URI `secret` in the connect response `result` for the client to validate.
 
 For detailed documentation on the Bunker feature, see [BUNKER.md](BUNKER.md).
 

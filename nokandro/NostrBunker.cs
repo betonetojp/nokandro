@@ -39,12 +39,21 @@ namespace nokandro
         public void RemoveAuthorizedClient(string pubkey)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
-            if (_authorizedClients.Remove(pubkey))
-            {
-                _handler.DisconnectAll();
-                _connectedCount = 0;
-                Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
-            }
+            _authorizedClients.Remove(pubkey);
+            if (_handler.DisconnectClient(pubkey))
+                _connectedCount = Math.Max(0, _connectedCount - 1);
+            Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
+        }
+
+        /// <summary>Registers a client as authorized in memory (e.g. after manual approval).</summary>
+        public void AddAuthorizedClient(string pubkey)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return;
+            _authorizedClients.Add(pubkey);
+            var perms = _options?.GetPermissions?.Invoke(pubkey);
+            if (perms != null)
+                _handler.SetPermissions(pubkey, perms);
+            Log($"Client authorized in memory: {pubkey[..Math.Min(12, pubkey.Length)]}...");
         }
 
         public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
