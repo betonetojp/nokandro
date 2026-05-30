@@ -1,78 +1,13 @@
 <linker>
-  <!-- Preserve JSON serializer reflection metadata and service types used via reflection -->
+  <!-- TrimMode=link (Release): BunkerClientStore uses System.Text.Json reflection -->
   <assembly fullname="System.Text.Json">
     <type fullname="System.Text.Json.JsonSerializer" preserve="all" />
-    <type fullname="System.Text.Json.JsonDocument" preserve="all" />
-    <type fullname="System.Text.Json.JsonElement" preserve="all" />
   </assembly>
   <assembly fullname="nokandro">
-    <type fullname="nokandro.NostrService" preserve="all" />
-    <!-- Preserve BunkerClientStore and its JSON-serialized classes -->
     <type fullname="nokandro.BunkerClientStore" preserve="all" />
     <type fullname="nokandro.BunkerClientStore+ClientsRoot" preserve="all" />
     <type fullname="nokandro.BunkerClientStore+ClientRecord" preserve="all" />
   </assembly>
-  <!-- Preserve Android UI components for dialogs and buttons -->
-  <assembly fullname="Mono.Android" preserve="all">
-    <type fullname="Android.App.AlertDialog" preserve="all" />
-    <type fullname="Android.App.AlertDialog+Builder" preserve="all" />
-    <type fullname="Android.Widget.Button" preserve="all" />
-    <type fullname="Android.Widget.LinearLayout" preserve="all" />
-    <type fullname="Android.Widget.TextView" preserve="all" />
-    <type fullname="Android.Content.ContextThemeWrapper" preserve="all" />
-    <type fullname="Android.Widget.EditText" preserve="all" />
-    <type fullname="Android.Widget.Switch" preserve="all" />
-    <type fullname="Android.Widget.Toast" preserve="all" />
-    <type fullname="Android.Widget.ScrollView" preserve="all" />
-    <type fullname="Android.Widget.ImageView" preserve="all" />
-    <type fullname="Android.Widget.FrameLayout" preserve="all" />
-    <type fullname="Android.Widget.RelativeLayout" preserve="all" />
-    <type fullname="Android.Widget.TableLayout" preserve="all" />
-    <type fullname="Android.Widget.TableRow" preserve="all" />
-    <type fullname="Android.Widget.Space" preserve="all" />
-    <type fullname="Android.Widget.ProgressBar" preserve="all" />
-    <type fullname="Android.Widget.SeekBar" preserve="all" />
-    <type fullname="Android.Widget.CheckBox" preserve="all" />
-    <type fullname="Android.Widget.RadioButton" preserve="all" />
-    <type fullname="Android.Widget.Spinner" preserve="all" />
-    <type fullname="Android.Widget.TextView+SavedState" preserve="all" />
-    <type fullname="Android.App.Dialog" preserve="all" />
-    <type fullname="Android.App.DialogFragment" preserve="all" />
-    <type fullname="Android.App.Fragment" preserve="all" />
-    <type fullname="Android.App.Activity" preserve="all" />
-    <type fullname="Android.App.Application" preserve="all" />
-    <type fullname="Android.App.Service" preserve="all" />
-    <type fullname="Android.App.Notification" preserve="all" />
-    <type fullname="Android.App.NotificationManager" preserve="all" />
-    <type fullname="Android.App.NotificationChannel" preserve="all" />
-    <type fullname="Android.App.NotificationChannelGroup" preserve="all" />
-    <type fullname="Android.App.NotificationManager+NotificationListenerService" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+Builder" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessGrantedReceiver" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessDeniedReceiver" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedReceiver" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy" preserve="all" />
-    <type fullname="Android.App.NotificationManager+Policy+NotificationPolicyAccessChangedListener+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub+Proxy+Stub" preserve="all" />
-  </assembly>
+  <!-- Dialog/UI; assembly-wide preserve (replaces per-widget list). Button colors: SetTextColor in code. -->
+  <assembly fullname="Mono.Android" preserve="all" />
 </linker>
