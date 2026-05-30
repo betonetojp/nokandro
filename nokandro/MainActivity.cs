@@ -2160,7 +2160,7 @@ namespace nokandro
                         {
                             var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                             var removeDialog = new Android.App.AlertDialog.Builder(this)
-                                .SetTitle("Revoke authorization")
+                                .SetTitle("Remove client")
                                 .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI stays the same; other clients are unaffected.")
                                 .SetPositiveButton("Remove", (sender, args) =>
                                 {
@@ -2212,8 +2212,8 @@ namespace nokandro
                 relayPreview = relayPreview[..56] + "...";
 
             var message = string.IsNullOrEmpty(displayName)
-                ? $"Client: {shortPk}\nRelay: {relayPreview}\n\nAllow this app to connect as a remote signer?"
-                : $"Client: {displayName}\n({shortPk})\nRelay: {relayPreview}\n\nAllow this app to connect as a remote signer?";
+                ? $"Client: {shortPk}\nRelay: {relayPreview}\n\nConnect this app as a remote signer?"
+                : $"Client: {displayName}\n({shortPk})\nRelay: {relayPreview}\n\nConnect this app as a remote signer?";
 
             var dialog = new Android.App.AlertDialog.Builder(this)
                 .SetTitle("NostrConnect request")

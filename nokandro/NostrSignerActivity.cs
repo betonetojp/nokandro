@@ -85,7 +85,7 @@ namespace nokandro
 
             var detail = new TextView(this)
             {
-                Text = $"App: {_callerPackage ?? "unknown"}\nType: {_requestType}\n\n{Truncate(_payload, 400)}"
+                Text = $"Sign request from another app\n\nApp: {_callerPackage ?? "unknown"}\nType: {_requestType}\n\n{Truncate(_payload, 400)}"
             };
             detail.SetTextSize(Android.Util.ComplexUnitType.Sp, 14f);
             root.AddView(detail);
@@ -118,6 +118,12 @@ namespace nokandro
                 })
                 .Create();
             dlg.Show();
+            try
+            {
+                dlg.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                dlg.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
+            }
+            catch { }
 
         }
 
