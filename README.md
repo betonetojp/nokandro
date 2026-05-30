@@ -64,15 +64,15 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Bunker relay**: The relay used for bunker communication (editable only when the bunker is stopped).
 - **NIP-46 Bunker switch**: Starts or stops the bunker service.
 - **Auto start bunker on device boot**: When enabled, bunker starts automatically after reboot if bunker was enabled and valid `nsec`/relay are saved.
-- **Approve new bunker clients manually**: When enabled, new clients appear in a pending list until you tap **Approve** or **Reject**. After approval, the client may need to reconnect (retry `connect` on the client side).
-- **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running. The secret in the URI stays the same until you use **Reset Secret** (Amber-style stable URI).
+- **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running. The secret in the URI stays the same until you use **Reset Secret** (stable URI for paired clients).
 - **Copy bunker URI**: Copies the URI to the clipboard.
-- **Reset Secret**: Deletes the saved bunker secret, clears all paired clients (authorized and pending), and stops the bunker. A new URI with a fresh secret will be generated on next start.
-- **Authorized clients**: Shows authorized and pending clients. Tap a name to edit its label; use **Remove** to revoke one client (other connected clients stay connected).
+- **Reset Secret**: Deletes the saved bunker secret, clears all paired clients, and stops the bunker. A new URI with a fresh secret will be generated on next start.
+- **Authorized clients**: Lists paired clients. Tap a name to edit its label; use **Remove** to revoke one client (disconnects only that client; the bunker URI and other clients are unchanged).
 - **Status**: Shows bunker connection status and client activity.
 
 ### nostrconnect:// (Client-initiated)
 
+- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Bunker tab, and fills the URI field (`NostrConnectAutoApproveActivity`).
 - **nostrconnect:// URI input**: Paste a `nostrconnect://` URI provided by the client app.
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI and automatically connects.
@@ -85,7 +85,7 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 
 > **Note**: Enter your `nsec` in the Main tab before using the Bunker or nostrconnect features.
 > 
-> - `bunker://`: New clients must present the correct secret. Previously paired clients can reconnect without re-entering the secret (pairing is stored in `BunkerClientStore`). The bunker secret is not rotated on each connect (stable URI until **Reset Secret**).
+> - `bunker://`: New clients are auto-authorized when they present the correct bunker URI secret. Previously paired clients can reconnect without re-entering the secret (pairing and per-client secrets are stored in `BunkerClientStore`). The global bunker secret is not rotated on each connect (stable URI until **Reset Secret**).
 > - `nostrconnect://`: The client must send the correct `secret` in `connect`; invalid secrets are rejected. The signer returns the URI `secret` in the connect response `result` for the client to validate.
 
 For detailed documentation on the Bunker feature, see [BUNKER.md](BUNKER.md).

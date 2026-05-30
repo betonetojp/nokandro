@@ -27,52 +27,24 @@ namespace nokandro
         private int _connectedCount;
         public int ConnectedClientCount => _connectedCount;
         public string BunkerUri => Nip46Json.BuildBunkerUri(_pubkeyHex, _relays, _secret);
+        public string CurrentSecret => _secret;
 
         public event Action<string>? OnLog;
         /// <summary>Newly paired client (first connect).</summary>
         public event Action<string>? OnClientAuthorized;
         /// <summary>Known client reconnected.</summary>
         public event Action<string>? OnClientReconnected;
-        /// <summary>Connect blocked until user approves in UI.</summary>
-        public event Action<string>? OnClientPendingApproval;
+
+        public IReadOnlyCollection<string> GetAuthorizedClientPubkeys() => _authorizedClients;
 
         public void RemoveAuthorizedClient(string pubkey)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
             _authorizedClients.Remove(pubkey);
+            _clientSecrets.Remove(pubkey.Trim().ToLowerInvariant());
             if (_handler.DisconnectClient(pubkey))
                 _connectedCount = Math.Max(0, _connectedCount - 1);
             Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
-        }
-
-        /// <summary>Registers a client as authorized in memory (e.g. after manual approval).</summary>
-        public void AddAuthorizedClient(string pubkey)
-        {
-            if (string.IsNullOrEmpty(pubkey)) return;
-            var isNew = _authorizedClients.Add(pubkey);
-            var perms = _options?.GetPermissions?.Invoke(pubkey);
-            if (perms != null)
-                _handler.SetPermissions(pubkey, perms);
-            Log($"Client authorized in memory: {pubkey[..Math.Min(12, pubkey.Length)]}...");
-            if (isNew)
-            {
-                OnClientAuthorized?.Invoke(pubkey);
-                // NIP-46: 明示的にackレスポンスを送信
-                try
-                {
-                    var ackJson = $"[\"OK\",\"{pubkey}\",true,\"approved\"]";
-                    if (_ws != null && _ws.State == System.Net.WebSockets.WebSocketState.Open)
-                    {
-                        var bytes = System.Text.Encoding.UTF8.GetBytes(ackJson);
-                        _ws.SendAsync(new ArraySegment<byte>(bytes), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
-                        Log($"Sent explicit ack to {pubkey[..Math.Min(12, pubkey.Length)]}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log($"Failed to send explicit ack: {ex.Message}");
-                }
-            }
         }
 
         public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null, Dictionary<string, string?>? clientSecrets = null)

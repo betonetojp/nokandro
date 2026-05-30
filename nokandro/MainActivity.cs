@@ -2101,33 +2101,6 @@ namespace nokandro
         }
 
 
-        private void ApproveBunkerPending(string clientPubkey)
-        {
-            try
-            {
-                var intent = new Intent(this, typeof(BunkerService));
-                intent.SetAction("nokandro.ACTION_BUNKER_APPROVE_PENDING");
-                intent.PutExtra("clientPubkey", clientPubkey);
-                StartService(intent);
-                RefreshBunkerAuthorizedList();
-                Toast.MakeText(this, "Approved. Client may need to reconnect.", ToastLength.Long)?.Show();
-            }
-            catch { }
-        }
-
-        private void RejectBunkerPending(string clientPubkey)
-        {
-            try
-            {
-                var intent = new Intent(this, typeof(BunkerService));
-                intent.SetAction("nokandro.ACTION_BUNKER_REJECT_PENDING");
-                intent.PutExtra("clientPubkey", clientPubkey);
-                StartService(intent);
-                RefreshBunkerAuthorizedList();
-            }
-            catch { }
-        }
-
         private void RefreshBunkerAuthorizedList()
         {
             try
@@ -2147,20 +2120,7 @@ namespace nokandro
                 list.Tag = "bunkerAuthorizedList";
 
                 var store = new BunkerClientStore(this);
-                // BunkerServiceのNostrBunkerインスタンスからリスト取得
-                var items = new List<string>();
-                var bunker = BunkerService.CurrentBunkerInstance;
-                if (bunker != null)
-                {
-                    var field = typeof(nokandro.NostrBunker).GetField("_authorizedClients", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (field?.GetValue(bunker) is HashSet<string> set)
-                        items.AddRange(set);
-                }
-                else
-                {
-                    items.AddRange(store.GetAuthorized());
-                }
-
+                var items = BunkerService.GetAuthorizedBunkerClientPubkeys(this).ToList();
 
                 if (items.Count == 0)
                 {
@@ -2201,7 +2161,7 @@ namespace nokandro
                             var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                             var removeDialog = new Android.App.AlertDialog.Builder(this)
                                 .SetTitle("Revoke authorization")
-                                .SetMessage($"Remove authorized client\n{shortName}?\nKnown clients can reconnect without re-scanning the URI.")
+                                .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI stays the same; other clients are unaffected.")
                                 .SetPositiveButton("Remove", (sender, args) =>
                                 {
                                     try
