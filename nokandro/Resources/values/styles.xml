@@ -27,6 +27,11 @@
     <item name="colorOnSurface">@color/on_surface</item>
   </style>
 
+  <style name="AppTheme.QuickPostDialog" parent="AppTheme.Dialog">
+    <item name="android:windowMinWidthMajor">90%</item>
+    <item name="android:windowMinWidthMinor">90%</item>
+  </style>
+
   <style name="AppTextView">
     <item name="android:fontFamily">sans-serif</item>
     <item name="android:textSize">14sp</item>

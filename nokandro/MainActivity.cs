@@ -2341,10 +2341,7 @@ namespace nokandro
                         // Start session if not already running
                         var activePks = BunkerService.GetActiveClientPubkeys();
                         if (!activePks.Contains(parsed.ClientPubkey))
-                        {
-                            var store = new BunkerClientStore(this);
-                            StartNostrConnectSession(uri, nsec, preAuthenticated: store.IsAuthorized(parsed.ClientPubkey));
-                        }
+                            StartNostrConnectSession(uri, nsec, preAuthenticated: true);
                     }
                 }
 

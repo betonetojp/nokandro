@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 
 namespace nokandro
 {
-    [Activity(Label = "Quick Post", Theme = "@style/AppTheme.Dialog", ExcludeFromRecents = true, NoHistory = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTask, Exported = false)]
+    [Activity(Label = "Quick Post", Theme = "@style/AppTheme.QuickPostDialog", ExcludeFromRecents = true, NoHistory = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTask, Exported = false)]
     public class QuickPostActivity : AppCompatActivity
     {
         private EditText? _input;

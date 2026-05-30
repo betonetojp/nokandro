@@ -95,7 +95,7 @@ namespace nokandro
             var secret = intent?.GetStringExtra("secret") ?? prefs?.GetString("pref_bunker_secret", null);
 
             var bunkerOptions = CreateBunkerOptions(store);
-            var savedClients = store.GetAuthorized();
+            var savedClients = store.GetBunkerAuthorized(this);
             _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
             CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
@@ -183,21 +183,9 @@ namespace nokandro
                     _ncSessions.Remove(connectUri.ClientPubkey);
                 }
 
-                var ncStore = new BunkerClientStore(this);
                 var preAuth = intent.GetBooleanExtra("preAuthenticated", false);
-                var storedPerms = ncStore.GetPermissions(connectUri.ClientPubkey)
-                    ?? Nip46Permissions.Parse(connectUri.Perms ?? ncStore.GetPermsString(connectUri.ClientPubkey));
+                var storedPerms = Nip46Permissions.Parse(connectUri.Perms);
                 var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms);
-                session.OnClientPaired += (pk, perms) =>
-                {
-                    try
-                    {
-                        ncStore.Authorize(pk, perms);
-                        var b = new Intent("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
-                        LocalBroadcast.SendBroadcast(this, b);
-                    }
-                    catch { }
-                };
                 session.OnLog += msg =>
                 {
                     try
@@ -471,9 +459,14 @@ namespace nokandro
         /// <summary>Authorized bunker client pubkeys (in-memory when running, else from store).</summary>
         public static IReadOnlyCollection<string> GetAuthorizedBunkerClientPubkeys(Context context)
         {
+            var ncSet = BunkerClientStore.LoadNostrConnectClientPubkeys(context);
             if (CurrentBunkerInstance != null)
-                return CurrentBunkerInstance.GetAuthorizedClientPubkeys();
-            return new BunkerClientStore(context).GetAuthorized();
+            {
+                return CurrentBunkerInstance.GetAuthorizedClientPubkeys()
+                    .Where(pk => !ncSet.Contains(pk))
+                    .ToList();
+            }
+            return new BunkerClientStore(context).GetBunkerAuthorized(context);
         }
 
         private BunkerOptions CreateBunkerOptions(BunkerClientStore store) => new()
