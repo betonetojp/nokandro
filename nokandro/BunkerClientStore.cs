@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace nokandro
 {
     /// <summary>
-    /// Persists bunker:// paired clients (names, permissions, pending approval).
+    /// Persists bunker:// paired clients (names, permissions, per-client secrets).
     /// Amber-style long-lived pairing.
     /// </summary>
     public sealed class BunkerClientStore
@@ -12,9 +12,8 @@ namespace nokandro
         private const string PrefsName = "nokandro_prefs";
         private const string KeyClientsJson = "pref_bunker_clients_json";
         private const string KeyAuthorized = "pref_bunker_authorized";
-        private const string KeyPending = "pref_bunker_pending";
-        private const string KeyRequireApproval = "pref_bunker_require_approval";
-        private const string KeyBunkerSecret = "pref_bunker_secret";
+        private const string KeyLegacyPending = "pref_bunker_pending";
+        private const string KeyLegacyRequireApproval = "pref_bunker_require_approval";
 
         private readonly ISharedPreferences _prefs;
 
@@ -23,31 +22,6 @@ namespace nokandro
             _prefs = context.GetSharedPreferences(PrefsName, FileCreationMode.Private)
                 ?? throw new InvalidOperationException("SharedPreferences unavailable");
             MigrateLegacyAuthorized();
-        }
-
-        /// <summary>
-        /// グローバルbunker secretをリセットし新しい値を返す
-        /// </summary>
-        public string ResetBunkerSecret()
-        {
-            var secret = GenerateSecret();
-            _prefs.Edit()?.PutString(KeyBunkerSecret, secret)?.Apply();
-            return secret;
-        }
-
-        /// <summary>
-        /// 現在のグローバルbunker secretを取得
-        /// </summary>
-        public string? GetBunkerSecret()
-        {
-            return _prefs.GetString(KeyBunkerSecret, null);
-        }
-
-        private static string GenerateSecret()
-        {
-            var secretBytes = new byte[16];
-            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(secretBytes);
-            return BitConverter.ToString(secretBytes).Replace("-", "").ToLowerInvariant();
         }
 
         private void MigrateLegacyAuthorized()
@@ -63,12 +37,8 @@ namespace nokandro
             _prefs.Edit()?.Remove(legacyKey)?.Apply();
         }
 
-
         public bool IsAuthorized(string pubkey) =>
             GetAuthorizedSet().Contains(Normalize(pubkey));
-
-        public bool IsPending(string pubkey) =>
-            GetPendingSet().Contains(Normalize(pubkey));
 
         public IReadOnlyCollection<string> GetAuthorized() => GetAuthorizedSet();
 
@@ -79,11 +49,6 @@ namespace nokandro
             set.Add(pubkey);
             SaveAuthorizedSet(set);
 
-            var pending = GetPendingSet();
-            if (pending.Remove(pubkey))
-                SavePendingSet(pending);
-
-            // secretも含めて記憶
             UpdateClientRecordWithSecret(pubkey, name, perms, secret);
         }
 
@@ -109,29 +74,7 @@ namespace nokandro
             var data = LoadClientsRoot();
             data.Clients.Remove(pubkey);
             SaveClientsRoot(data);
-
-            var pending = GetPendingSet();
-            pending.Remove(pubkey);
-            SavePendingSet(pending);
         }
-
-        public void AddPending(string pubkey)
-        {
-            pubkey = Normalize(pubkey);
-            var set = GetPendingSet();
-            if (set.Add(pubkey))
-                SavePendingSet(set);
-        }
-
-        public void RejectPending(string pubkey)
-        {
-            pubkey = Normalize(pubkey);
-            var set = GetPendingSet();
-            if (set.Remove(pubkey))
-                SavePendingSet(set);
-        }
-
-        public IReadOnlyCollection<string> GetPending() => GetPendingSet();
 
         public string? GetName(string pubkey)
         {
@@ -167,7 +110,8 @@ namespace nokandro
         {
             _prefs.Edit()?
                 .Remove(KeyAuthorized)
-                .Remove(KeyPending)
+                .Remove(KeyLegacyPending)
+                .Remove(KeyLegacyRequireApproval)
                 .Remove(KeyClientsJson)
                 ?.Apply();
         }
@@ -230,17 +174,6 @@ namespace nokandro
 
         private void SaveAuthorizedSet(HashSet<string> set) =>
             _prefs.Edit()?.PutString(KeyAuthorized, string.Join(",", set))?.Apply();
-
-        private HashSet<string> GetPendingSet()
-        {
-            var raw = _prefs.GetString(KeyPending, "") ?? "";
-            return new HashSet<string>(
-                raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                StringComparer.OrdinalIgnoreCase);
-        }
-
-        private void SavePendingSet(HashSet<string> set) =>
-            _prefs.Edit()?.PutString(KeyPending, string.Join(",", set))?.Apply();
 
         private static string Normalize(string pubkey) => pubkey.Trim().ToLowerInvariant();
 

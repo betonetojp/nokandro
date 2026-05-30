@@ -23,7 +23,6 @@ namespace nokandro
         const string PREF_BUNKER_SECRET = "pref_bunker_secret";
         const string PREF_BUNKER_ENABLED = "pref_bunker_enabled";
         const string PREF_BUNKER_AUTOSTART_BOOT = "pref_bunker_autostart_boot";
-        const string PREF_BUNKER_AUTHORIZED = "pref_bunker_authorized";
         const string PREF_NPUB = "pref_npub";
         const string PREF_NSEC = "pref_nsec";
         const string PREF_TRUNCATE_LEN = "pref_truncate_len";
@@ -1123,16 +1122,7 @@ namespace nokandro
                                 RunOnUiThread(() =>
                                 {
                                     if (ncUriEdit != null) ncUriEdit.Text = rawValue;
-                                    // Auto-connect if it's a valid nostrconnect:// URI
-                                    if (NostrConnectUri.TryParse(rawValue, out var parsed) && parsed != null)
-                                    {
-                                        StartNostrConnectSession(parsed.RawUri, nsec);
-                                        if (ncUriEdit != null) ncUriEdit.Text = "";
-                                    }
-                                    else
-                                    {
-                                        Toast.MakeText(this, "QR code is not a valid nostrconnect:// URI", ToastLength.Short)?.Show();
-                                    }
+                                    PromptNostrConnectIfValid(rawValue, nsec);
                                 });
                             }))
                             .AddOnFailureListener(new QrScanFailureListener(ex =>

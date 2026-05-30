@@ -141,7 +141,7 @@ nostrconnect://<client_pubkey_hex>?name=AppName&relay=wss://...&secret=xxx
 
 - **貼り付け**: URI 入力欄に `nostrconnect://` URI を貼り付け、**Connect** ボタンをタップ。
 - **ディープリンク**: 他アプリから `nostrconnect://` を開くと Bunker タブに URI が貼り付けられ、**接続確認ダイアログ**で Connect / Cancel を選べます（即接続はしません）。
-- **QR スキャン**: **Scan QR** ボタンをタップし、クライアントが表示する QR コードをスキャン。スキャン成功時は自動接続します。
+- **QR スキャン**: **Scan QR** ボタンをタップし、クライアントが表示する QR コードをスキャン。URI を入力欄に入れたうえで、ディープリンクと同様の**接続確認ダイアログ**が表示されます。
 
 ### 4. セッション管理
 

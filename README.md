@@ -72,10 +72,10 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 
 ### nostrconnect:// (Client-initiated)
 
-- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Bunker tab, fills the URI field, and shows a **confirmation dialog** before starting the session (`NostrConnectAutoApproveActivity`).
+- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Bunker tab, fills the URI field, and shows a **confirmation dialog** before starting the session (`NostrConnectDeepLinkActivity`).
 - **nostrconnect:// URI input**: Paste a `nostrconnect://` URI provided by the client app.
 - **Connect**: Starts a session with the specified client.
-- **Scan QR**: Scans a QR code containing a `nostrconnect://` URI and automatically connects.
+- **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
 - **Client list**: Shows active nostrconnect sessions. Tap a client name to edit its label; tap ✕ to disconnect.
 - The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
@@ -214,12 +214,12 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 - **ディープリンク**: 他アプリから `nostrconnect://` を開くと Bunker タブに URI が入り、**接続確認ダイアログ**（Connect / Cancel）が表示されます。
 - **nostrconnect:// URI 入力欄**: クライアントアプリから提供された `nostrconnect://` URI を貼り付けます。
 - **Connect**: 指定したクライアントとのセッションを開始します。
-- **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、自動的に接続します。
+- **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
 - **クライアントリスト**: アクティブな nostrconnect セッションを表示します。名前をタップしてラベルを編集、✕ で切断できます。
 - URI にリレーが指定されていない場合、以下の固定フォールバックリレーが使用されます:
   `wss://nostr.oxtr.dev/`, `wss://theforest.nostr1.com/`, `wss://relay.primal.net/`, `wss://ephemeral.snowflare.cc/`
 
-**対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`
+**対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`
 
 **対応 NIP-55 メソッド**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event`（`nostrsigner:` および ContentProvider 経由）
 

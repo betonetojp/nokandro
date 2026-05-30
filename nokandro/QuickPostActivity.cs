@@ -17,7 +17,6 @@ namespace nokandro
         private Button? _cancelBtn;
         private ProgressBar? _progress;
         private string? _relay;
-        private string? _nsec;
         private byte[]? _privKey;
         private static readonly string Bech32Chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
