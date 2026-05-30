@@ -1,5 +1,5 @@
-# Global excludesfile may ignore paths with */ — un-ignore C# sources in this project
-!*.cs
+# Override global excludesfile */
+!*/
 
 # Ignore keystore and local secrets
 secrets.props
@@ -26,6 +26,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Backup files
+*.bak
 
 # Resharper
 _ReSharper*/
