@@ -1,6 +1,8 @@
+using Android.App;
 using Android.Content;
 using Android.OS;
 using Android.Views;
+using AndroidX.AppCompat.App;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text;
@@ -9,8 +11,8 @@ using System.Text.RegularExpressions;
 
 namespace nokandro
 {
-    [Activity(Label = "Quick Post", Theme = "@android:style/Theme.DeviceDefault.Dialog", ExcludeFromRecents = true, NoHistory = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTask, Exported = false)]
-    public class QuickPostActivity : Activity
+    [Activity(Label = "Quick Post", Theme = "@style/AppTheme.Dialog", ExcludeFromRecents = true, NoHistory = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTask, Exported = false)]
+    public class QuickPostActivity : AppCompatActivity
     {
         private EditText? _input;
         private Button? _sendBtn;

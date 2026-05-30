@@ -7,7 +7,7 @@ using AndroidUri = Android.Net.Uri;
 
 namespace nokandro
 {
-    [Activity(Label = "Nostr Signer", Exported = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop, Theme = "@android:style/Theme.Material.Light.Dialog")]
+    [Activity(Label = "Nostr Signer", Exported = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop, Theme = "@style/AppTheme.Dialog")]
     [IntentFilter([Intent.ActionView], Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable], DataScheme = "nostrsigner")]
     public sealed class NostrSignerActivity : Activity
     {
@@ -118,13 +118,7 @@ namespace nokandro
                 })
                 .Create();
             dlg.Show();
-            try
-            {
-                dlg.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                dlg.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-            }
-            catch { }
-
+            DialogHelper.ApplyThemeColors(dlg, this);
         }
 
         private void ExecuteAndDeliver()

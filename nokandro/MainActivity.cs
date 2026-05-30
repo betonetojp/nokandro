@@ -2,6 +2,9 @@
 using Android.OS;
 using Android.Speech.Tts;
 using Android.Views;
+using AndroidX.AppCompat.App;
+using Google.Android.Material.AppBar;
+using Google.Android.Material.Tabs;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.WebSockets;
@@ -12,7 +15,7 @@ using System.Text.Json;
 namespace nokandro
 {
     [Activity(Label = "@string/app_name", MainLauncher = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop)]
-    public partial class MainActivity : Activity
+    public partial class MainActivity : AppCompatActivity
     {
         const string PREFS_NAME = "nokandro_prefs";
         const string PREF_VOICE_FOLLOWED = "pref_voice_followed";
@@ -72,6 +75,22 @@ namespace nokandro
         private string[] _lastNcUris = [];
         private string? _pendingNostrConnectDeepLinkUri;
 
+        private void SwitchToTab(int index)
+        {
+            var mainSelected = index == 0;
+            var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
+            var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+            if (tabMainContent != null) tabMainContent.Visibility = mainSelected ? ViewStates.Visible : ViewStates.Gone;
+            if (tabBunkerContent != null) tabBunkerContent.Visibility = mainSelected ? ViewStates.Gone : ViewStates.Visible;
+            try
+            {
+                var tabLayout = FindViewById<TabLayout>(Resource.Id.tabLayout);
+                var tab = tabLayout?.GetTabAt(index);
+                if (tab != null && !tab.IsSelected) tab.Select();
+            }
+            catch { }
+        }
+
         private void setControlEnabled(View? v, bool enabled)
         {
             if (v == null) return;
@@ -84,7 +103,7 @@ namespace nokandro
                     try { et.Focusable = enabled; } catch { }
                     try { et.FocusableInTouchMode = enabled; } catch { }
                     et.Clickable = enabled;
-                    try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                    try { et.SetTextColor(enabled ? DialogHelper.OnSurfaceColor(this) : DialogHelper.OnSurfaceVariantColor(this)); } catch { }
                 }
             }
             catch { }
@@ -98,55 +117,48 @@ namespace nokandro
             // Set our view from the "main" layout resource
             SetContentView(Resource.Layout.activity_main);
 
-            // Use custom action bar layout to display app title with right-aligned small version
+            // Toolbar with app title and version link
+            var versionName = "v0.0.0";
             try
             {
-                var inflater = LayoutInflater.From(this);
-                var custom = inflater.Inflate(Resource.Layout.actionbar_title_with_version, null);
-                var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
-                var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
-                titleTv?.Text = GetString(Resource.String.app_name);
-                var versionName = "v0.0.0";
-                try
-                {
-                    var pkg = PackageManager.GetPackageInfo(PackageName, 0);
-                    versionName = "v" + (pkg?.VersionName ?? "0.0.0");
-                }
-                catch { }
-                verTv?.Text = versionName;
-                if (verTv != null)
-                {
-                    verTv.Clickable = true;
-                    // Add underline to indicate link
-                    verTv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                    verTv.Click += (s, e) =>
-                    {
-                        try
-                        {
-                            var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse("https://github.com/betonetojp/nokandro/releases/latest"));
-                            StartActivity(intent);
-                        }
-                        catch { }
-                    };
-                    _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0");
-                }
+                var pkg = PackageManager.GetPackageInfo(PackageName, 0);
+                versionName = "v" + (pkg?.VersionName ?? "0.0.0");
+            }
+            catch { }
 
-                try
+            try
+            {
+                var toolbar = FindViewById<MaterialToolbar>(Resource.Id.toolbar);
+                if (toolbar != null)
                 {
-                    if (ActionBar != null)
+                    SetSupportActionBar(toolbar);
+                    SupportActionBar?.SetDisplayShowTitleEnabled(false);
+                    var custom = LayoutInflater.From(this)!.Inflate(Resource.Layout.actionbar_title_with_version, toolbar, false);
+                    toolbar.AddView(custom, new Toolbar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+                    var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
+                    var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
+                    titleTv?.Text = GetString(Resource.String.app_name);
+                    verTv?.Text = versionName;
+                    if (verTv != null)
                     {
-                        ActionBar.SetDisplayShowCustomEnabled(true);
-                        ActionBar.SetDisplayShowTitleEnabled(false);
-                        var layoutParams = new ActionBar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
-                        ActionBar.SetCustomView(custom, layoutParams);
-                    }
-                    else
-                    {
-                        // fallback: set Activity title with version appended
-                        this.Title = GetString(Resource.String.app_name) + " " + versionName;
+                        verTv.Clickable = true;
+                        verTv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                        verTv.Click += (s, e) =>
+                        {
+                            try
+                            {
+                                var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse("https://github.com/betonetojp/nokandro/releases/latest"));
+                                StartActivity(intent);
+                            }
+                            catch { }
+                        };
+                        _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0");
                     }
                 }
-                catch { }
+                else
+                {
+                    Title = GetString(Resource.String.app_name) + " " + versionName;
+                }
             }
             catch { }
 
@@ -177,56 +189,41 @@ namespace nokandro
             }
 
             // --- Tab switching ---
-            var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
-            var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
-            var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
-            var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
+            var tabLayout = FindViewById<TabLayout>(Resource.Id.tabLayout);
             EditText? ncUriEdit = null;
 
-            void SelectTab(bool mainSelected)
+            if (tabLayout != null)
             {
-                if (tabMainContent != null) tabMainContent.Visibility = mainSelected ? ViewStates.Visible : ViewStates.Gone;
-                if (tabBunkerContent != null) tabBunkerContent.Visibility = mainSelected ? ViewStates.Gone : ViewStates.Visible;
-                if (tabMainBtn != null)
-                {
-                    tabMainBtn.Alpha = mainSelected ? 1.0f : 0.5f;
-                    tabMainBtn.PaintFlags = mainSelected
-                        ? tabMainBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText
-                        : tabMainBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText;
-                }
-                if (tabBunkerBtn != null)
-                {
-                    tabBunkerBtn.Alpha = mainSelected ? 0.5f : 1.0f;
-                    tabBunkerBtn.PaintFlags = mainSelected
-                        ? tabBunkerBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText
-                        : tabBunkerBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText;
-                }
+                tabLayout.AddTab(tabLayout.NewTab().SetText("Main"));
+                tabLayout.AddTab(tabLayout.NewTab().SetText("Bunker"));
             }
+
+            tabLayout?.AddOnTabSelectedListener(new SimpleTabSelectedListener(tab =>
+            {
+                if (tab != null) SwitchToTab(tab.Position);
+            }));
 
             // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け（接続確認はUI構築後）
             var nostrconnectUri = Intent?.GetStringExtra("nostrconnect_uri");
             if (!string.IsNullOrEmpty(nostrconnectUri))
             {
                 _pendingNostrConnectDeepLinkUri = nostrconnectUri;
-                SelectTab(false);
+                SwitchToTab(1);
                 ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
                 if (ncUriEdit != null) ncUriEdit.Text = nostrconnectUri;
             }
             else
             {
-                SelectTab(true);
+                SwitchToTab(0);
             }
 
             // If launched from Bunker notification, switch to Bunker tab
             try
             {
                 if (Intent?.GetStringExtra("openTab") == "bunker")
-                    SelectTab(false);
+                    SwitchToTab(1);
             }
             catch { }
-
-            if (tabMainBtn != null) tabMainBtn.Click += (s, e) => SelectTab(true);
-            if (tabBunkerBtn != null) tabBunkerBtn.Click += (s, e) => SelectTab(false);
 
             // Find views
             var relayEdit = FindViewById<EditText>(Resource.Id.relayEdit);
@@ -363,7 +360,7 @@ namespace nokandro
                         try { et.Focusable = enabled; } catch { }
                         try { et.FocusableInTouchMode = enabled; } catch { }
                         et.Clickable = enabled;
-                        try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                        try { et.SetTextColor(enabled ? DialogHelper.OnSurfaceColor(this) : DialogHelper.OnSurfaceVariantColor(this)); } catch { }
                     }
                 }
                 catch { }
@@ -1071,12 +1068,7 @@ namespace nokandro
                              .Create();
 
                         resetDialog.Show();
-                        try
-                        {
-                            resetDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                            resetDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-                        }
-                        catch { }
+                        DialogHelper.ApplyThemeColors(resetDialog, this);
                     }
                     catch { }
                 };
@@ -1359,12 +1351,7 @@ namespace nokandro
                                     })
                                     .SetNegativeButton("Cancel", (sender, args) => { })
                                     .Show();
-                                try
-                                {
-                                    dlg.GetButton((int)Android.Content.DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                                    dlg.GetButton((int)Android.Content.DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-                                }
-                                catch { }
+                                DialogHelper.ApplyThemeColors(dlg, this);
                             }
                             catch { }
                             return;
@@ -1768,7 +1755,7 @@ namespace nokandro
                         try { et.Focusable = enabled; } catch { }
                         try { et.FocusableInTouchMode = enabled; } catch { }
                         et.Clickable = enabled;
-                        try { et.SetTextColor(enabled ? Android.Graphics.Color.Black : Android.Graphics.Color.DarkGray); } catch { }
+                        try { et.SetTextColor(enabled ? DialogHelper.OnSurfaceColor(this) : DialogHelper.OnSurfaceVariantColor(this)); } catch { }
                     }
                 }
                 catch { }
@@ -1927,22 +1914,7 @@ namespace nokandro
                 var ncUri = intent?.GetStringExtra("nostrconnect_uri");
                 if (!string.IsNullOrEmpty(ncUri))
                 {
-                    // Bunkerタブを表示
-                    var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
-                    var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
-                    var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
-                    var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
-                    if (tabMainContent != null) tabMainContent.Visibility = ViewStates.Gone;
-                    if (tabBunkerContent != null) tabBunkerContent.Visibility = ViewStates.Visible;
-                    if (tabMainBtn != null) {
-                        tabMainBtn.Alpha = 0.5f;
-                        tabMainBtn.PaintFlags &= ~Android.Graphics.PaintFlags.UnderlineText;
-                    }
-                    if (tabBunkerBtn != null) {
-                        tabBunkerBtn.Alpha = 1.0f;
-                        tabBunkerBtn.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                    }
-                    // 入力欄に貼り付け
+                    SwitchToTab(1);
                     var ncUriEditLocal = FindViewById<EditText>(Resource.Id.ncUriEdit);
                     if (ncUriEditLocal != null)
                         ncUriEditLocal.Text = ncUri;
@@ -1951,31 +1923,10 @@ namespace nokandro
                     RunOnUiThread(() => PromptNostrConnectIfValid(ncUri, nsecEdit));
                 }
                 var openTab = intent?.GetStringExtra("openTab");
-                if (openTab == "bunker" || openTab == "main")
-                {
-                    bool mainSelected = openTab == "main";
-                    var tabMainBtn = FindViewById<Button>(Resource.Id.tabMainBtn);
-                    var tabBunkerBtn = FindViewById<Button>(Resource.Id.tabBunkerBtn);
-                    var tabMainContent = FindViewById<View>(Resource.Id.tabMainContent);
-                    var tabBunkerContent = FindViewById<View>(Resource.Id.tabBunkerContent);
-
-                    if (tabMainContent != null) tabMainContent.Visibility = mainSelected ? ViewStates.Visible : ViewStates.Gone;
-                    if (tabBunkerContent != null) tabBunkerContent.Visibility = mainSelected ? ViewStates.Gone : ViewStates.Visible;
-                    if (tabMainBtn != null)
-                    {
-                        tabMainBtn.Alpha = mainSelected ? 1.0f : 0.5f;
-                        tabMainBtn.PaintFlags = mainSelected
-                            ? tabMainBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText
-                            : tabMainBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText;
-                    }
-                    if (tabBunkerBtn != null)
-                    {
-                        tabBunkerBtn.Alpha = mainSelected ? 0.5f : 1.0f;
-                        tabBunkerBtn.PaintFlags = mainSelected
-                            ? tabBunkerBtn.PaintFlags & ~Android.Graphics.PaintFlags.UnderlineText
-                            : tabBunkerBtn.PaintFlags | Android.Graphics.PaintFlags.UnderlineText;
-                    }
-                }
+                if (openTab == "bunker")
+                    SwitchToTab(1);
+                else if (openTab == "main")
+                    SwitchToTab(0);
             }
             catch { }
         }
@@ -2168,55 +2119,49 @@ namespace nokandro
 
                     foreach (var pk in items.Distinct())
                     {
-                        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-                        row.SetPadding(4, 4, 4, 4);
+                        var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, list, false);
 
                         var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
                         var displayName = ResolveBunkerClientDisplayName(pk, store);
-                        var tv = new TextView(this);
-                        tv.Text = !string.IsNullOrEmpty(displayName) ? $"{displayName} ({shortPk})" : shortPk;
-                        tv.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
-                        tv.SetTextColor(Android.Graphics.Color.Black);
-                        tv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                        var clientPk = pk;
-                        var currentName = displayName;
-                        tv.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
-
-                        var btn = new Button(this) { Text = "Remove" };
-                        btn.SetMinimumWidth(0);
-                        btn.SetMinimumHeight(0);
-                        btn.SetPadding(16, 0, 16, 0);
-                        btn.Click += (s, e) =>
+                        var tv = row.FindViewById<TextView>(Resource.Id.clientNameText);
+                        if (tv != null)
                         {
-                            var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
-                            var removeDialog = new Android.App.AlertDialog.Builder(this)
-                                .SetTitle("Remove client")
-                                .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI secret will change (shown URI and copy update). Other paired clients can reconnect without the new URI.")
-                                .SetPositiveButton("Remove", (sender, args) =>
-                                {
-                                    try
-                                    {
-                                        var intent = new Intent(this, typeof(BunkerService));
-                                        intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
-                                        intent.PutExtra("clientPubkey", pk);
-                                        StartService(intent);
-                                        RefreshBunkerAuthorizedList();
-                                    }
-                                    catch { }
-                                })
-                                .SetNegativeButton("Cancel", (sender, args) => { })
-                                .Create();
-                            removeDialog.Show();
-                            try
-                            {
-                                removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                                removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-                            }
-                            catch { }
-                        };
+                            tv.Text = !string.IsNullOrEmpty(displayName) ? $"{displayName} ({shortPk})" : shortPk;
+                            tv.SetTextColor(DialogHelper.OnSurfaceColor(this));
+                            tv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                            var clientPk = pk;
+                            var currentName = displayName;
+                            tv.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+                        }
 
-                        row.AddView(tv);
-                        row.AddView(btn);
+                        var btn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
+                        if (btn != null)
+                        {
+                            btn.Click += (s, e) =>
+                            {
+                                var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
+                                var removeDialog = new Android.App.AlertDialog.Builder(this)
+                                    .SetTitle("Remove client")
+                                    .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI secret will change (shown URI and copy update). Other paired clients can reconnect without the new URI.")
+                                    .SetPositiveButton("Remove", (sender, args) =>
+                                    {
+                                        try
+                                        {
+                                            var intent = new Intent(this, typeof(BunkerService));
+                                            intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
+                                            intent.PutExtra("clientPubkey", pk);
+                                            StartService(intent);
+                                            RefreshBunkerAuthorizedList();
+                                        }
+                                        catch { }
+                                    })
+                                    .SetNegativeButton("Cancel", (sender, args) => { })
+                                    .Create();
+                                removeDialog.Show();
+                                DialogHelper.ApplyThemeColors(removeDialog, this);
+                            };
+                        }
+
                         list.AddView(row);
                     }
                 }
@@ -2257,12 +2202,7 @@ namespace nokandro
                 .Create();
 
             dialog.Show();
-            try
-            {
-                dialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                dialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-            }
-            catch { }
+            DialogHelper.ApplyThemeColors(dialog, this);
         }
 
         private void StartNostrConnectSession(string connectUri, EditText? nsec, bool preAuthenticated = false)
@@ -2458,58 +2398,41 @@ namespace nokandro
                     ? $"{displayName} ({pk[..Math.Min(12, pk.Length)]}...)"
                     : $"{pk[..Math.Min(12, pk.Length)]}...";
 
-                var row = new LinearLayout(this)
-                {
-                    Orientation = Orientation.Horizontal
-                };
-                row.SetPadding(0, 4, 0, 4);
-
-                var label = new TextView(this)
-                {
-                    Text = labelText
-                };
-                label.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                var lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-                lp.Gravity = GravityFlags.CenterVertical;
-                label.LayoutParameters = lp;
-
-                // Tap label to edit client name
                 var clientPk = pk;
                 var currentName = displayName ?? "";
-                label.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
 
-                var removeBtn = new Button(this)
-                {
-                    Text = "Remove"
-                };
-                removeBtn.SetMinimumWidth(0);
-                removeBtn.SetMinimumHeight(0);
-                removeBtn.SetPadding(16, 0, 16, 0);
-                removeBtn.Click += (s, e) =>
-                {
-                    var name = GetNcClientDisplayName(clientPk);
-                    var removeDialog = new Android.App.AlertDialog.Builder(this)
-                        .SetTitle("Remove client")
-                        .SetMessage($"Disconnect and remove {name}?")
-                        .SetPositiveButton("Remove", (sender, args) =>
-                        {
-                            RemoveNcClientName(clientPk);
-                            StopNostrConnectSession(clientPk);
-                        })
-                        .SetNegativeButton("Cancel", (sender, args) => { })
-                        .Create();
+                var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, _ncClientList, false);
 
-                    removeDialog.Show();
-                    try
+                var label = row.FindViewById<TextView>(Resource.Id.clientNameText);
+                if (label != null)
+                {
+                    label.Text = labelText;
+                    label.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
+                    label.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+                }
+
+                var removeBtn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
+                if (removeBtn != null)
+                {
+                    removeBtn.Click += (s, e) =>
                     {
-                        removeDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                        removeDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-                    }
-                    catch { }
-                };
+                        var name = GetNcClientDisplayName(clientPk);
+                        var removeDialog = new Android.App.AlertDialog.Builder(this)
+                            .SetTitle("Remove client")
+                            .SetMessage($"Disconnect and remove {name}?")
+                            .SetPositiveButton("Remove", (sender, args) =>
+                            {
+                                RemoveNcClientName(clientPk);
+                                StopNostrConnectSession(clientPk);
+                            })
+                            .SetNegativeButton("Cancel", (sender, args) => { })
+                            .Create();
 
-                row.AddView(label);
-                row.AddView(removeBtn);
+                        removeDialog.Show();
+                        DialogHelper.ApplyThemeColors(removeDialog, this);
+                    };
+                }
+
                 _ncClientList.AddView(row);
             }
         }
@@ -2539,12 +2462,7 @@ namespace nokandro
                  .Create();
 
             editDialog.Show();
-            try
-            {
-                editDialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
-                editDialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
-            }
-            catch { }
+            DialogHelper.ApplyThemeColors(editDialog, this);
         }
 
         private string GetNcClientDisplayName(string clientPubkey)
@@ -3280,7 +3198,7 @@ namespace nokandro
                              try 
                              { 
                                  verTv.Text = $"{currentVer} -> {latestTag}";
-                                 verTv.SetTextColor(Android.Graphics.Color.ParseColor("#4A001F"));
+                                 verTv.SetTextColor(new Android.Graphics.Color(GetColor(Resource.Color.update_available)));
                                  verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
                              } catch { }
                          });
@@ -3302,6 +3220,16 @@ namespace nokandro
             var s = v.TrimStart('v', 'V');
             if (Version.TryParse(s, out var ver)) return ver;
             return new Version(0,0,0);
+        }
+
+        // TabLayout listener helper
+        sealed class SimpleTabSelectedListener : Java.Lang.Object, TabLayout.IOnTabSelectedListener
+        {
+            private readonly Action<TabLayout.Tab?> _onSelected;
+            public SimpleTabSelectedListener(Action<TabLayout.Tab?> onSelected) => _onSelected = onSelected;
+            public void OnTabSelected(TabLayout.Tab? tab) => _onSelected(tab);
+            public void OnTabUnselected(TabLayout.Tab? tab) { }
+            public void OnTabReselected(TabLayout.Tab? tab) { }
         }
 
         // local broadcast receiver wrapper

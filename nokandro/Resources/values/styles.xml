@@ -1,52 +1,129 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <style name="AppTheme" parent="@android:style/Theme.Material.Light.DarkActionBar">
+  <style name="AppTheme" parent="Theme.Material3.Light.NoActionBar">
+    <item name="colorPrimary">@color/primary</item>
+    <item name="colorPrimaryDark">@color/primary_dark</item>
+    <item name="colorAccent">@color/primary_light</item>
+    <item name="colorOnPrimary">@color/on_primary</item>
+    <item name="colorPrimaryContainer">@color/primary_container</item>
+    <item name="colorOnPrimaryContainer">@color/primary</item>
+    <item name="colorSurface">@color/surface</item>
+    <item name="colorOnSurface">@color/on_surface</item>
+    <item name="colorOutline">@color/outline</item>
+    <item name="android:windowBackground">@color/background</item>
+    <item name="android:colorBackground">@color/background</item>
+    <item name="android:statusBarColor">@color/primary_dark</item>
     <item name="android:fontFamily">sans-serif</item>
-    <item name="android:windowBackground">#FDF2F8</item>
-    <item name="android:colorBackground">#FDF2F8</item>
-    <item name="android:colorPrimary">#FF4081</item>
-    <item name="android:colorPrimaryDark">#C2185B</item>
-    <item name="android:colorAccent">#E91E63</item>
     <item name="android:textViewStyle">@style/AppTextView</item>
     <item name="android:editTextStyle">@style/AppEditText</item>
-    <item name="android:buttonStyle">@style/AppButton</item>
+    <item name="materialButtonStyle">@style/AppButtonPrimary</item>
+    <item name="tabStyle">@style/AppTabLayout</item>
+  </style>
+
+  <style name="AppTheme.Dialog" parent="Theme.Material3.Light.Dialog">
+    <item name="colorPrimary">@color/primary</item>
+    <item name="colorOnPrimary">@color/on_primary</item>
+    <item name="colorSurface">@color/surface</item>
+    <item name="colorOnSurface">@color/on_surface</item>
   </style>
 
   <style name="AppTextView">
     <item name="android:fontFamily">sans-serif</item>
     <item name="android:textSize">14sp</item>
     <item name="android:textStyle">normal</item>
-    <item name="android:textColor">#1F2937</item>
+    <item name="android:textColor">@color/on_surface</item>
   </style>
 
-  <style name="AppEditText" parent="@android:style/Widget.Material.EditText">
+  <style name="AppEditText" parent="Widget.AppCompat.EditText">
     <item name="android:fontFamily">sans-serif</item>
     <item name="android:textSize">14sp</item>
-    <item name="android:textStyle">normal</item>
-    <item name="android:textColor">#111827</item>
-    <item name="android:textColorHint">#6B7280</item>
+    <item name="android:textColor">@color/on_surface</item>
+    <item name="android:textColorHint">@color/on_surface_variant</item>
   </style>
 
-  <style name="AppButton" parent="@android:style/Widget.Material.Button">
+  <style name="AppButtonPrimary" parent="Widget.Material3.Button">
+    <item name="android:fontFamily">sans-serif-medium</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:textAllCaps">false</item>
+    <item name="backgroundTint">@color/primary</item>
+    <item name="android:textColor">@color/on_primary</item>
+    <item name="cornerRadius">@dimen/corner_sm</item>
+    <item name="android:minHeight">@dimen/row_min_height</item>
+  </style>
+
+  <style name="AppButtonOutlined" parent="Widget.Material3.Button.OutlinedButton">
+    <item name="android:fontFamily">sans-serif-medium</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:textAllCaps">false</item>
+    <item name="strokeColor">@color/error</item>
+    <item name="android:textColor">@color/error</item>
+    <item name="cornerRadius">@dimen/corner_sm</item>
+    <item name="android:minHeight">@dimen/row_min_height</item>
+  </style>
+
+  <style name="AppButtonText" parent="Widget.Material3.Button.TextButton">
+    <item name="android:fontFamily">sans-serif-medium</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:textAllCaps">false</item>
+    <item name="android:textColor">@color/primary</item>
+    <item name="android:minHeight">@dimen/row_min_height</item>
+  </style>
+
+  <style name="AppButtonSecondary" parent="Widget.Material3.Button.OutlinedButton">
     <item name="android:fontFamily">sans-serif-medium</item>
     <item name="android:textSize">13sp</item>
-    <item name="android:textStyle">normal</item>
     <item name="android:textAllCaps">false</item>
-    <item name="android:textColor">#FFFFFF</item>
-    <item name="android:background">@drawable/button_primary</item>
+    <item name="strokeColor">@color/outline</item>
+    <item name="android:textColor">@color/on_surface</item>
+    <item name="cornerRadius">@dimen/corner_sm</item>
     <item name="android:minHeight">36dp</item>
-    <item name="android:paddingStart">10dp</item>
-    <item name="android:paddingEnd">10dp</item>
   </style>
 
   <style name="SectionCard">
-    <item name="android:background">@drawable/panel_card</item>
-    <item name="android:padding">14dp</item>
+    <item name="android:background">@drawable/bg_section_card</item>
+    <item name="android:padding">@dimen/spacing_lg</item>
   </style>
 
   <style name="SectionTitle">
     <item name="android:fontFamily">sans-serif-medium</item>
     <item name="android:textSize">15sp</item>
-    <item name="android:textColor">#111827</item>
+    <item name="android:textColor">@color/on_surface</item>
+  </style>
+
+  <style name="SectionHeaderLabel">
+    <item name="android:fontFamily">sans-serif-medium</item>
+    <item name="android:textSize">@dimen/section_header_text</item>
+    <item name="android:textColor">@color/on_surface_variant</item>
+    <item name="android:textAllCaps">true</item>
+    <item name="android:letterSpacing">0.05</item>
+    <item name="android:paddingStart">@dimen/spacing_xs</item>
+    <item name="android:paddingEnd">@dimen/spacing_xs</item>
+    <item name="android:paddingTop">@dimen/spacing_md</item>
+    <item name="android:paddingBottom">@dimen/spacing_xs</item>
+  </style>
+
+  <style name="HintText">
+    <item name="android:textSize">12sp</item>
+    <item name="android:textColor">@color/on_surface_variant</item>
+  </style>
+
+  <style name="LiveNoteCard">
+    <item name="android:background">@drawable/bg_live_note</item>
+    <item name="android:padding">@dimen/spacing_md</item>
+    <item name="android:textColor">@color/on_surface</item>
+    <item name="android:textSize">14sp</item>
+  </style>
+
+  <style name="AppTabLayout" parent="Widget.Material3.TabLayout">
+    <item name="tabIndicatorColor">@color/primary</item>
+    <item name="tabSelectedTextColor">@color/primary</item>
+    <item name="tabTextColor">@color/on_surface_variant</item>
+    <item name="tabIndicatorFullWidth">true</item>
+    <item name="tabMode">fixed</item>
+  </style>
+
+  <style name="AppTextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+    <item name="boxStrokeColor">@color/primary</item>
+    <item name="hintTextColor">@color/on_surface_variant</item>
   </style>
 </resources>

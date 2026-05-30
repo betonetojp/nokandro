@@ -7,9 +7,9 @@
 
     <ImageView
         android:id="@+id/appTitleIcon"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_marginEnd="8dp"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="@dimen/spacing_sm"
         android:src="@mipmap/ic_launcher"
         android:contentDescription="@string/app_name" />
 
@@ -18,7 +18,9 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="@android:color/white"
+        android:textColor="@color/on_primary"
+        android:textSize="18sp"
+        android:fontFamily="sans-serif-medium"
         android:ellipsize="end"
         android:singleLine="true" />
 
@@ -26,8 +28,9 @@
         android:id="@+id/versionText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="@android:color/white"
+        android:textColor="@color/on_primary"
+        android:textSize="12sp"
         android:gravity="end"
-        android:paddingStart="8dp" />
+        android:paddingStart="@dimen/spacing_sm" />
 
 </LinearLayout>

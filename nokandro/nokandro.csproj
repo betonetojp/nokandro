@@ -20,6 +20,7 @@
     <AndroidLinkDescription Include="linker.xml" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Xamarin.Google.Android.Material" Version="1.14.0" />
     <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.15" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
