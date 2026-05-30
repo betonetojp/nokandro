@@ -71,6 +71,7 @@ namespace nokandro
         private BroadcastReceiver? _ncReceiver;
         private string[] _lastNcPubkeys = [];
         private string[] _lastNcUris = [];
+        private string? _pendingNostrConnectDeepLinkUri;
 
         private void setControlEnabled(View? v, bool enabled)
         {
@@ -203,10 +204,11 @@ namespace nokandro
                 }
             }
 
-            // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け
+            // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け（接続確認はUI構築後）
             var nostrconnectUri = Intent?.GetStringExtra("nostrconnect_uri");
             if (!string.IsNullOrEmpty(nostrconnectUri))
             {
+                _pendingNostrConnectDeepLinkUri = nostrconnectUri;
                 SelectTab(false);
                 ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
                 if (ncUriEdit != null) ncUriEdit.Text = nostrconnectUri;
@@ -1190,6 +1192,13 @@ namespace nokandro
             // Restore persisted nostrconnect clients and show them in the list
             RestoreNostrConnectClients(nsec);
 
+            if (!string.IsNullOrEmpty(_pendingNostrConnectDeepLinkUri))
+            {
+                var pendingUri = _pendingNostrConnectDeepLinkUri;
+                _pendingNostrConnectDeepLinkUri = null;
+                PromptNostrConnectIfValid(pendingUri, nsec);
+            }
+
             // save truncate length when edit loses focus
             if (truncate != null)
             {
@@ -1939,11 +1948,12 @@ namespace nokandro
                         tabBunkerBtn.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
                     }
                     // 入力欄に貼り付け
-                    var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
-                    if (ncUriEdit != null)
-                    {
-                        ncUriEdit.Text = ncUri;
-                    }
+                    var ncUriEditLocal = FindViewById<EditText>(Resource.Id.ncUriEdit);
+                    if (ncUriEditLocal != null)
+                        ncUriEditLocal.Text = ncUri;
+
+                    var nsecEdit = FindViewById<EditText>(Resource.Id.nsecEdit);
+                    RunOnUiThread(() => PromptNostrConnectIfValid(ncUri, nsecEdit));
                 }
                 var openTab = intent?.GetStringExtra("openTab");
                 if (openTab == "bunker" || openTab == "main")
@@ -2193,6 +2203,45 @@ namespace nokandro
                 }
 
                 bunkerContainer.AddView(list);
+            }
+            catch { }
+        }
+
+        private void PromptNostrConnectIfValid(string uriText, EditText? nsecEdit)
+        {
+            if (!NostrConnectUri.TryParse(uriText, out var parsed) || parsed == null)
+            {
+                Toast.MakeText(this, "Invalid nostrconnect:// URI (relay and secret required)", ToastLength.Short)?.Show();
+                return;
+            }
+
+            var shortPk = $"{parsed.ClientPubkey[..12]}...";
+            var displayName = parsed.GetClientName();
+            var relayPreview = parsed.Relays.Length > 0 ? parsed.Relays[0] : "";
+            if (relayPreview.Length > 56)
+                relayPreview = relayPreview[..56] + "...";
+
+            var message = string.IsNullOrEmpty(displayName)
+                ? $"Client: {shortPk}\nRelay: {relayPreview}\n\nAllow this app to connect as a remote signer?"
+                : $"Client: {displayName}\n({shortPk})\nRelay: {relayPreview}\n\nAllow this app to connect as a remote signer?";
+
+            var dialog = new Android.App.AlertDialog.Builder(this)
+                .SetTitle("NostrConnect request")
+                .SetMessage(message)
+                .SetPositiveButton("Connect", (sender, args) =>
+                {
+                    StartNostrConnectSession(parsed.RawUri, nsecEdit);
+                    var edit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+                    if (edit != null) edit.Text = "";
+                })
+                .SetNegativeButton("Cancel", (sender, args) => { })
+                .Create();
+
+            dialog.Show();
+            try
+            {
+                dialog.GetButton((int)DialogButtonType.Positive)?.SetTextColor(Android.Graphics.Color.ParseColor("#C2185B"));
+                dialog.GetButton((int)DialogButtonType.Negative)?.SetTextColor(Android.Graphics.Color.ParseColor("#6B7280"));
             }
             catch { }
         }

@@ -31,7 +31,9 @@ namespace nokandro
                 return;
             }
 
-            _callerPackage = CallingActivity?.PackageName ?? Referrer?.Host;
+            _callerPackage = Intent.GetStringExtra("caller_package")
+                ?? CallingActivity?.PackageName
+                ?? Referrer?.Host;
             _requestType = GetRequestType(Intent) ?? "";
             _requestId = Intent.GetStringExtra("id") ?? GetQueryParameterFromDataString(Intent.DataString, "id") ?? Guid.NewGuid().ToString("N");
             _callbackUrl = GetCallbackUrl(Intent);

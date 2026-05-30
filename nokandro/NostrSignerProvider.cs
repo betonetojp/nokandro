@@ -18,8 +18,11 @@ namespace nokandro
             if (Nip55PermissionStore.IsAlwaysRejected(Context!, package, method))
                 return RejectedCursor();
 
-            if (method != "get_public_key" && !Nip55PermissionStore.HasPermission(Context!, package, method, ExtractEventKind(method, projection)))
+            if (!Nip55PermissionStore.HasPermission(Context!, package, method, ExtractEventKind(method, projection)))
+            {
+                NostrSignerProviderPrompt.TryStartApproval(Context!, method, projection, package);
                 return null;
+            }
 
             try
             {

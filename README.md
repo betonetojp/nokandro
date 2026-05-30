@@ -72,7 +72,7 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 
 ### nostrconnect:// (Client-initiated)
 
-- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Bunker tab, and fills the URI field (`NostrConnectAutoApproveActivity`).
+- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Bunker tab, fills the URI field, and shows a **confirmation dialog** before starting the session (`NostrConnectAutoApproveActivity`).
 - **nostrconnect:// URI input**: Paste a `nostrconnect://` URI provided by the client app.
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI and automatically connects.
@@ -82,6 +82,8 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`.
 
 **Supported NIP-55 methods**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` (via `nostrsigner:` and content providers).
+
+For **ContentProvider** calls (`content://com.nokakoi.nokandro.*`): if the calling app is not yet authorized, nokandro opens the same approval dialog as the `nostrsigner:` intent path (Allow / Deny / Remember) and returns **null** for that query (retry after granting). Permanent denial returns a cursor with a `rejected` column per NIP-55.
 
 > **Note**: Enter your `nsec` in the Main tab before using the Bunker or nostrconnect features.
 > 
@@ -209,6 +211,7 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 
 ### nostrconnect://（クライアント起点）
 
+- **ディープリンク**: 他アプリから `nostrconnect://` を開くと Bunker タブに URI が入り、**接続確認ダイアログ**（Connect / Cancel）が表示されます。
 - **nostrconnect:// URI 入力欄**: クライアントアプリから提供された `nostrconnect://` URI を貼り付けます。
 - **Connect**: 指定したクライアントとのセッションを開始します。
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、自動的に接続します。
@@ -219,6 +222,8 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 **対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `ping`
 
 **対応 NIP-55 メソッド**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event`（`nostrsigner:` および ContentProvider 経由）
+
+**ContentProvider**（`content://com.nokakoi.nokandro.*`）: 呼び出し元アプリが未許可の場合、`nostrsigner:` 経路と同様の承認ダイアログ（許可 / 拒否 / 記憶）を表示し、当該 `query` は **null** を返します（許可後に再 `query` してください）。恒常拒否時は NIP-55 どおり `rejected` 列付きカーソルを返します。
 
 > **注意**: Bunker や nostrconnect を使用するには Main タブで `nsec` を入力してください。
 > 

@@ -239,29 +239,21 @@ namespace nokandro
 
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)
         {
-            var isKnown = IsKnownClient(senderPubkey);
             var normalizedPubkey = senderPubkey.Trim().ToLowerInvariant();
-            if (!_clientSecrets.TryGetValue(normalizedPubkey, out var clientSecret) || string.IsNullOrEmpty(clientSecret))
+            var isNew = !IsKnownClient(senderPubkey);
+
+            if (isNew)
             {
-                // 新規クライアント: paramsArrのsecretがグローバルsecretと一致すれば許可
                 if (!ParamsContainSecret(paramsArr, _secret))
                     throw new UnauthorizedAccessException("invalid secret");
-                // 許可: _clientSecrets/_authorizedClientsに追加し、永続化
                 _clientSecrets[normalizedPubkey] = _secret;
-                _authorizedClients.Add(senderPubkey);
-                _options?.OnClientPaired?.Invoke(senderPubkey, PermsToString(paramsArr), true);
                 Log($"New client auto-authorized: {senderPubkey[..12]}...");
-                clientSecret = _secret;
-            }
-
-            if (!isKnown)
-            {
-                if (!ParamsContainSecret(paramsArr, clientSecret))
-                    throw new UnauthorizedAccessException("invalid secret");
             }
             else
             {
                 Log($"Known client reconnecting: {senderPubkey[..12]}... (secret check skipped)");
+                if (!_clientSecrets.ContainsKey(normalizedPubkey))
+                    _clientSecrets[normalizedPubkey] = _secret;
             }
 
             var connectPerms = Nip46Permissions.FromConnectParams(paramsArr);
@@ -273,19 +265,22 @@ namespace nokandro
                 _options?.SavePermissions?.Invoke(senderPubkey, permsStr);
             }
             _handler.SetPermissions(senderPubkey, perms ?? storedPerms);
-            _handler.MarkConnected(senderPubkey);
-            _connectedCount++;
 
-            var isNew = _authorizedClients.Add(senderPubkey);
+            if (!_handler.IsClientConnected(senderPubkey))
+                _connectedCount++;
+            _handler.MarkConnected(senderPubkey);
+            _authorizedClients.Add(senderPubkey);
+
+            var permsStrForPair = PermsToString(paramsArr);
             if (isNew)
             {
                 Log($"New client paired: {senderPubkey[..12]}...");
-                _options?.OnClientPaired?.Invoke(senderPubkey, PermsToString(paramsArr), true);
+                _options?.OnClientPaired?.Invoke(senderPubkey, permsStrForPair, true);
                 OnClientAuthorized?.Invoke(senderPubkey);
             }
             else
             {
-                _options?.OnClientPaired?.Invoke(senderPubkey, PermsToString(paramsArr), false);
+                _options?.OnClientPaired?.Invoke(senderPubkey, permsStrForPair, false);
                 OnClientReconnected?.Invoke(senderPubkey);
             }
 
