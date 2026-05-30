@@ -103,6 +103,15 @@
 					android:hint="Your nsec (Archive for posting)"
 					android:inputType="textPassword" />
 
+				<TextView
+					android:id="@+id/nsecBunkerHint"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Required for Bunker tab (NIP-46: bunker:// and nostrconnect://)."
+					android:textColor="#888888"
+					android:textSize="12sp"
+					android:layout_marginBottom="4dp" />
+
 				<EditText
 					android:id="@+id/npubEdit"
 					android:layout_width="match_parent"
@@ -391,6 +400,18 @@
 				android:focusableInTouchMode="true">
 
 				<TextView
+					android:id="@+id/bunkerNsecBanner"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="Enter your nsec on the Main tab to use NIP-46 signing (bunker:// and nostrconnect://)."
+					android:textColor="#C2185B"
+					android:textSize="13sp"
+					android:padding="8dp"
+					android:background="#FFF0F5"
+					android:layout_marginBottom="8dp"
+					android:visibility="gone" />
+
+				<TextView
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
 					android:text="Bunker relay"
@@ -467,13 +488,6 @@
 						android:textColor="@color/status_message_color"
 						android:layout_marginTop="2dp" />
 				</LinearLayout>
-
-				<TextView
-					android:layout_width="match_parent"
-					android:layout_height="wrap_content"
-					android:text="* Enter nsec in Main tab to use Bunker."
-					android:textColor="#888888"
-					android:layout_marginTop="8dp" />
 
 				<!-- nostrconnect:// section -->
 				<View

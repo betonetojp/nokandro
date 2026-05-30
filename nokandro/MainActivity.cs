@@ -520,6 +520,8 @@ namespace nokandro
                          // Update musicSwitch enabled state
                          SetControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid());
 
+                         UpdateNsecBunkerHints();
+
                          var t = nsec.Text?.Trim() ?? "";
                          if (t.StartsWith("nsec1"))
                          {
@@ -1045,11 +1047,10 @@ namespace nokandro
                             return;
                         }
 
-                        var preview = saved.Length > 8 ? saved[..8] + "..." : saved;
                         var resetDialog = new Android.App.AlertDialog.Builder(this)
                              .SetTitle("Reset Bunker Secret")
-                             .SetMessage($"Delete saved secret ({preview})?\nBunker will be stopped and a new URI will be generated on next start.")
-                             .SetPositiveButton("Delete", (sender, args) =>
+                             .SetMessage("Reset the bunker secret and remove all paired clients?\nThe bunker will stop. After you turn it on again, share the new bunker URI with every client.")
+                             .SetPositiveButton("Reset", (sender, args) =>
                              {
                                  try
                                  {
@@ -1188,6 +1189,8 @@ namespace nokandro
                 _pendingNostrConnectDeepLinkUri = null;
                 PromptNostrConnectIfValid(pendingUri, nsec);
             }
+
+            UpdateNsecBunkerHints();
 
             // save truncate length when edit loses focus
             if (truncate != null)
@@ -1833,6 +1836,8 @@ namespace nokandro
                 try { SetControlEnabled(offTimerMinutesEdit, !running && (offTimerSwitch?.Checked ?? false)); } catch { }
             }
 
+            UpdateNsecBunkerHints();
+
                 // Request current list status from service (to recover from activity restart)
                 var listReq = new Intent("nokandro.ACTION_REQUEST_LIST_STATUS");
                 LocalBroadcast.SendBroadcast(this, listReq);
@@ -2023,6 +2028,31 @@ namespace nokandro
             catch { }
         }
 
+        private static bool IsNsecValid(EditText? nsecEdit)
+        {
+            if (nsecEdit == null) return false;
+            var t = nsecEdit.Text?.Trim() ?? "";
+            if (!t.StartsWith("nsec1")) return false;
+            try
+            {
+                var (hrp, data) = Bech32Decode(t);
+                return hrp == "nsec" && data != null;
+            }
+            catch { return false; }
+        }
+
+        private void UpdateNsecBunkerHints()
+        {
+            try
+            {
+                var nsec = FindViewById<EditText>(Resource.Id.nsecEdit);
+                var banner = FindViewById<TextView>(Resource.Id.bunkerNsecBanner);
+                if (banner != null)
+                    banner.Visibility = IsNsecValid(nsec) ? ViewStates.Gone : ViewStates.Visible;
+            }
+            catch { }
+        }
+
         private void StartBunkerService(EditText? bunkerRelayEdit, EditText? nsec)
         {
             try
@@ -2161,12 +2191,11 @@ namespace nokandro
                             var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
                             var removeDialog = new Android.App.AlertDialog.Builder(this)
                                 .SetTitle("Remove client")
-                                .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI stays the same; other clients are unaffected.")
+                                .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI secret will change (shown URI and copy update). Other paired clients can reconnect without the new URI.")
                                 .SetPositiveButton("Remove", (sender, args) =>
                                 {
                                     try
                                     {
-                                        store.Revoke(pk);
                                         var intent = new Intent(this, typeof(BunkerService));
                                         intent.SetAction("nokandro.ACTION_BUNKER_REVOKE_CLIENT");
                                         intent.PutExtra("clientPubkey", pk);

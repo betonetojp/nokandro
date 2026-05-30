@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace nokandro
 {
     /// <summary>
-    /// Persists bunker:// paired clients (names, permissions, per-client secrets).
+    /// Persists bunker:// paired clients (names, permissions).
     /// Amber-style long-lived pairing.
     /// </summary>
     public sealed class BunkerClientStore
@@ -42,26 +42,14 @@ namespace nokandro
 
         public IReadOnlyCollection<string> GetAuthorized() => GetAuthorizedSet();
 
-        public void Authorize(string pubkey, string? perms = null, string? name = null, string? secret = null)
+        public void Authorize(string pubkey, string? perms = null, string? name = null)
         {
             pubkey = Normalize(pubkey);
             var set = GetAuthorizedSet();
             set.Add(pubkey);
             SaveAuthorizedSet(set);
 
-            UpdateClientRecordWithSecret(pubkey, name, perms, secret);
-        }
-
-        private void UpdateClientRecordWithSecret(string pubkey, string? name, string? perms, string? secret)
-        {
-            var data = LoadClientsRoot();
-            if (!data.Clients.TryGetValue(pubkey, out var rec))
-                rec = new ClientRecord();
-            if (name != null) rec.Name = name;
-            if (perms != null) rec.Perms = perms;
-            if (secret != null) rec.Secret = secret;
-            data.Clients[pubkey] = rec;
-            SaveClientsRoot(data);
+            UpdateClientRecord(pubkey, name, perms);
         }
 
         public void Revoke(string pubkey)
@@ -133,18 +121,6 @@ namespace nokandro
             return data.Clients.TryGetValue(pubkey, out var rec) ? rec : null;
         }
 
-        /// <summary>
-        /// 全クライアントのpubkey→secretマッピングを返す
-        /// </summary>
-        public Dictionary<string, string?> GetAllClientSecrets()
-        {
-            var data = LoadClientsRoot();
-            return data.Clients.ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Secret,
-                StringComparer.OrdinalIgnoreCase);
-        }
-
         private ClientsRoot LoadClientsRoot()
         {
             try
@@ -186,7 +162,6 @@ namespace nokandro
         {
             public string? Name { get; set; }
             public string? Perms { get; set; }
-            public string? Secret { get; set; }
         }
     }
 }

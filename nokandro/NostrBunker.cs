@@ -41,18 +41,27 @@ namespace nokandro
         {
             if (string.IsNullOrEmpty(pubkey)) return;
             _authorizedClients.Remove(pubkey);
-            _clientSecrets.Remove(pubkey.Trim().ToLowerInvariant());
             if (_handler.DisconnectClient(pubkey))
                 _connectedCount = Math.Max(0, _connectedCount - 1);
             Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
         }
 
-        public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null, Dictionary<string, string?>? clientSecrets = null)
-            : this(privKey, [relay], secret, authorizedClients, options, clientSecrets)
+        /// <summary>Rotates the global bunker secret; returns the new secret.</summary>
+        public string RotateGlobalSecret()
+        {
+            _secret = GenerateSecret();
+            Log("Bunker global secret rotated");
+            return _secret;
+        }
+
+        public static string GenerateBunkerSecret() => GenerateSecret();
+
+        public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
+            : this(privKey, [relay], secret, authorizedClients, options)
         {
         }
 
-        public NostrBunker(byte[] privKey, string[] relays, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null, Dictionary<string, string?>? clientSecrets = null)
+        public NostrBunker(byte[] privKey, string[] relays, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
         {
             _privKey = privKey;
             _options = options;
@@ -70,10 +79,6 @@ namespace nokandro
             _secret = !string.IsNullOrEmpty(secret) ? secret : GenerateSecret();
             _handler = new Nip46Handler(_privKey, _pubkeyHex, _relays);
 
-            _clientSecrets = clientSecrets != null
-                ? new Dictionary<string, string?>(clientSecrets, StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, string?>();
-
             foreach (var pk in _authorizedClients)
             {
                 var perms = _options?.GetPermissions?.Invoke(pk);
@@ -81,8 +86,6 @@ namespace nokandro
                     _handler.SetPermissions(pk, perms);
             }
         }
-
-        private readonly Dictionary<string, string?> _clientSecrets;
 
         private static string GenerateSecret()
         {
@@ -239,21 +242,17 @@ namespace nokandro
 
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)
         {
-            var normalizedPubkey = senderPubkey.Trim().ToLowerInvariant();
             var isNew = !IsKnownClient(senderPubkey);
 
             if (isNew)
             {
                 if (!ParamsContainSecret(paramsArr, _secret))
                     throw new UnauthorizedAccessException("invalid secret");
-                _clientSecrets[normalizedPubkey] = _secret;
                 Log($"New client auto-authorized: {senderPubkey[..12]}...");
             }
             else
             {
                 Log($"Known client reconnecting: {senderPubkey[..12]}... (secret check skipped)");
-                if (!_clientSecrets.ContainsKey(normalizedPubkey))
-                    _clientSecrets[normalizedPubkey] = _secret;
             }
 
             var connectPerms = Nip46Permissions.FromConnectParams(paramsArr);

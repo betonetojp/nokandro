@@ -43,10 +43,7 @@ namespace nokandro
                 {
                     try
                     {
-                        AppLog.D(TAG, $"Revoking bunker client: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
-                        new BunkerClientStore(this).Revoke(clientPubkey);
-                        _bunker?.RemoveAuthorizedClient(clientPubkey);
-                        BroadcastBunkerClientsChanged();
+                        HandleRevokeBunkerClient(clientPubkey);
                     }
                     catch { }
                 }
@@ -99,8 +96,7 @@ namespace nokandro
 
             var bunkerOptions = CreateBunkerOptions(store);
             var savedClients = store.GetAuthorized();
-            var clientSecrets = store.GetAllClientSecrets();
-            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions, clientSecrets);
+            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
             CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
             {
@@ -488,12 +484,56 @@ namespace nokandro
             OnClientPaired = (pk, perms, isNew) =>
             {
                 if (isNew)
-                    store.Authorize(pk, perms, secret: _bunker?.CurrentSecret);
+                {
+                    store.Authorize(pk, perms);
+                    PersistRotatedBunkerSecret();
+                    AppLog.D(TAG, $"New client paired; bunker secret rotated: {pk[..Math.Min(12, pk.Length)]}...");
+                }
                 else if (!string.IsNullOrEmpty(perms))
                     store.SetPermissions(pk, perms);
                 BroadcastBunkerClientsChanged();
             }
         };
+
+        private void HandleRevokeBunkerClient(string clientPubkey)
+        {
+            AppLog.D(TAG, $"Revoking bunker client: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
+            new BunkerClientStore(this).Revoke(clientPubkey);
+            _bunker?.RemoveAuthorizedClient(clientPubkey);
+            PersistRotatedBunkerSecret();
+            BroadcastBunkerClientsChanged();
+        }
+
+        /// <summary>Rotate global bunker secret, persist to prefs, and broadcast URI change when bunker is running.</summary>
+        private void PersistRotatedBunkerSecret()
+        {
+            string newSecret;
+            if (_bunker != null)
+            {
+                newSecret = _bunker.RotateGlobalSecret();
+                LastBunkerUri = _bunker.BunkerUri;
+                BroadcastBunkerUriChanged(_bunker.BunkerUri);
+            }
+            else
+            {
+                newSecret = NostrBunker.GenerateBunkerSecret();
+                LastBunkerUri = null;
+            }
+
+            var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+            prefs?.Edit()?.PutString("pref_bunker_secret", newSecret)?.Apply();
+        }
+
+        private void BroadcastBunkerUriChanged(string bunkerUri)
+        {
+            try
+            {
+                var b = new Intent("nokandro.ACTION_BUNKER_URI_CHANGED");
+                b.PutExtra("bunkerUri", bunkerUri);
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch { }
+        }
 
         private void BroadcastBunkerClientsChanged()
         {
