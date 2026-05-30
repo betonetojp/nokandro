@@ -3,6 +3,8 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+!*/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -361,7 +363,3 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-
-# Global excludesfile (core.excludesFile) often uses */ — re-include the app project
-!nokandro/
-!nokandro/**

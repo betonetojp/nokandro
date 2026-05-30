@@ -1,6 +1,3 @@
-# Override global excludesfile */
-!*/
-
 # Ignore keystore and local secrets
 secrets.props
 **/myrelease.jks
@@ -26,9 +23,6 @@ Thumbs.db
 
 # Logs
 *.log
-
-# Backup files
-*.bak
 
 # Resharper
 _ReSharper*/
