@@ -887,6 +887,7 @@ namespace nokandro
                         if (bunkerUriText != null) bunkerUriText.Text = uri;
                         if (intent.Action == "nokandro.ACTION_BUNKER_STARTED" && _bunkerStatusText != null)
                             _bunkerStatusText.Text = "Bunker: starting...";
+                        UpdateNostrConnectUIState(true);
                     });
                     if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
                     {
@@ -895,6 +896,11 @@ namespace nokandro
                             var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                             var edit = prefs?.Edit();
                             if (edit != null) { edit.PutBoolean(PREF_BUNKER_ENABLED, true); edit.Apply(); }
+                        }
+                        catch { }
+                        try
+                        {
+                            RestoreNostrConnectClients(nsec);
                         }
                         catch { }
                     }
@@ -918,6 +924,7 @@ namespace nokandro
                         try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
                         // re-enable relay edit
                         try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = true; bunkerRelayEdit.Alpha = 1.0f; } } catch { }
+                        UpdateNostrConnectUIState(false);
                     });
                     // Persist desired bunker disabled state
                     try
@@ -1010,6 +1017,8 @@ namespace nokandro
                     }
                     catch { }
 
+                    UpdateNostrConnectUIState(e.IsChecked);
+
                     if (e.IsChecked && !BunkerService.IsBunkerActive)
                     {
                         StartBunkerService(bunkerRelayEdit, nsec);
@@ -1024,6 +1033,7 @@ namespace nokandro
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                     var want = prefs?.GetBoolean(PREF_BUNKER_ENABLED, false) ?? false;
+                    UpdateNostrConnectUIState(BunkerService.IsBunkerActive || want);
                     var autoStart = want || (nsec != null && IsNsecValid() && !string.IsNullOrWhiteSpace(bunkerRelayEdit?.Text));
                     if (autoStart && !BunkerService.IsBunkerActive)
                     {
@@ -2339,6 +2349,29 @@ namespace nokandro
             catch { }
         }
 
+        private void UpdateNostrConnectUIState(bool bunkerEnabled)
+        {
+            var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
+            var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
+            var ncScanQrBtn = FindViewById<Button>(Resource.Id.ncScanQrBtn);
+            var ncDisabledHint = FindViewById<TextView>(Resource.Id.ncDisabledHint);
+            var ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
+
+            setControlEnabled(ncUriEdit, bunkerEnabled);
+            setControlEnabled(ncConnectBtn, bunkerEnabled);
+            setControlEnabled(ncScanQrBtn, bunkerEnabled);
+
+            if (ncDisabledHint != null)
+            {
+                ncDisabledHint.Visibility = bunkerEnabled ? ViewStates.Gone : ViewStates.Visible;
+            }
+
+            if (ncStatusText != null)
+            {
+                ncStatusText.Visibility = bunkerEnabled ? ViewStates.Visible : ViewStates.Gone;
+            }
+        }
+
         private void RestoreNostrConnectClients(EditText? nsec)
         {
             try
@@ -2388,6 +2421,13 @@ namespace nokandro
 
             if (_ncStatusText != null)
                 _ncStatusText.Text = $"nostrconnect: {pubkeys.Length} session(s)";
+
+            // Add active sessions header label
+            var activeHeader = new TextView(this) { Text = "Active sessions" };
+            activeHeader.SetPadding(8, 12, 8, 4);
+            activeHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+            try { activeHeader.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+            _ncClientList.AddView(activeHeader);
 
             // Load custom names
             var customNames = LoadNcClientNames();
