@@ -1,4 +1,4 @@
-﻿using Android.Content;
+using Android.Content;
 using Android.OS;
 using Android.Speech.Tts;
 using Android.Views;
@@ -74,6 +74,8 @@ namespace nokandro
         private string[] _lastNcPubkeys = [];
         private string[] _lastNcUris = [];
         private string? _pendingNostrConnectDeepLinkUri;
+        private SettingsRepository _settingsRepo = null!;
+        private BunkerSessionController _bunkerController = null!;
 
         private void SwitchToTab(int index)
         {
@@ -113,6 +115,8 @@ namespace nokandro
         {
 #pragma warning disable CS8600,CS8601,CS8602
             base.OnCreate(savedInstanceState);
+            _settingsRepo = new SettingsRepository(this);
+            _bunkerController = new BunkerSessionController(this, _settingsRepo);
 
             // Set our view from the "main" layout resource
             SetContentView(Resource.Layout.activity_main);
@@ -397,7 +401,7 @@ namespace nokandro
                 if (!t.StartsWith("nsec1")) return false;
                 try
                 {
-                    var (hrp, data) = Bech32Decode(t);
+                    var (hrp, data) = NostrKeyDecoder.Bech32Decode(t);
                     return hrp == "nsec" && data != null;
                 }
                 catch { return false; }
@@ -410,7 +414,7 @@ namespace nokandro
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                 relay.Text = prefs.GetString(PREF_RELAY, "wss://relay-jp.nostr.wirednet.jp/");
                 npub.Text = prefs.GetString(PREF_NPUB, string.Empty);
-                if (nsec != null) nsec.Text = prefs.GetString(PREF_NSEC, string.Empty);
+                if (nsec != null) nsec.Text = SecurePreferences.GetNsec(this);
                 var savedLen = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
                 truncate.Text = savedLen.ToString();
                 
@@ -522,24 +526,19 @@ namespace nokandro
                          var t = nsec.Text?.Trim() ?? "";
                          if (t.StartsWith("nsec1"))
                          {
-                             var (hrp, data) = Bech32Decode(t);
+                             var (hrp, data) = NostrKeyDecoder.Bech32Decode(t);
                              if (hrp == "nsec" && data != null)
                              {
-                                 var priv = ConvertBits(data, 5, 8, false);
+                                 var priv = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
                                  if (priv != null && priv.Length == 32)
                                  {
                                      var pub = NostrCrypto.GetPublicKey(priv);
-                                     var pub5 = ConvertBits(pub, 8, 5, true);
-                                     var npubStr = Bech32Encode("npub", pub5);
+                                     var pub5 = NostrKeyDecoder.ConvertBits(pub, 8, 5, true);
+                                     var npubStr = NostrKeyDecoder.Bech32Encode("npub", pub5);
                                      RunOnUiThread(() => npub.Text = npubStr);
                                      
                                      // Save nsec
-                                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                                     var edit = prefs?.Edit();
-                                     if(edit != null) {
-                                         edit.PutString(PREF_NSEC, t);
-                                         edit.Apply();
-                                     }
+                                     SecurePreferences.SaveNsec(this, t);
                                  }
                              }
                          }
@@ -1418,7 +1417,7 @@ namespace nokandro
                     edit.PutString(PREF_VOICE_OTHER, otherVoice);
                     edit.PutString(PREF_RELAY, relay.Text ?? "wss://relay-jp.nostr.wirednet.jp/");
                     edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
-                    edit.PutString(PREF_NSEC, nsec != null ? nsec.Text ?? string.Empty : string.Empty);
+                    SecurePreferences.SaveNsec(this, nsec != null ? nsec.Text ?? string.Empty : string.Empty);
                     edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
                     // persist speech rate as mapped value (0.50..1.50)
@@ -1708,7 +1707,7 @@ namespace nokandro
                 {
                     if (relay != null) edit.PutString(PREF_RELAY, relay.Text ?? string.Empty);
                     if (npub != null) edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
-                    if (nsec != null) edit.PutString(PREF_NSEC, nsec.Text ?? string.Empty);
+                    if (nsec != null) SecurePreferences.SaveNsec(this, nsec.Text ?? string.Empty);
                     edit.Apply();
                 }
             }
@@ -1792,7 +1791,7 @@ namespace nokandro
                 if (!t.StartsWith("nsec1")) return false;
                 try
                 {
-                    var (hrp, data) = Bech32Decode(t);
+                    var (hrp, data) = NostrKeyDecoder.Bech32Decode(t);
                     return hrp == "nsec" && data != null;
                 }
                 catch { return false; }
@@ -1986,7 +1985,7 @@ namespace nokandro
             if (!t.StartsWith("nsec1")) return false;
             try
             {
-                var (hrp, data) = Bech32Decode(t);
+                var (hrp, data) = NostrKeyDecoder.Bech32Decode(t);
                 return hrp == "nsec" && data != null;
             }
             catch { return false; }
@@ -2015,43 +2014,29 @@ namespace nokandro
                     return;
                 }
 
-                var (hrp, data) = Bech32Decode(nsecText);
+                var (hrp, data) = NostrKeyDecoder.Bech32Decode(nsecText);
                 if (hrp != "nsec" || data == null)
                 {
                     Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
                     return;
                 }
 
-                var privKey = ConvertBits(data, 5, 8, false);
+                var privKey = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
                 if (privKey == null || privKey.Length != 32)
                 {
                     Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
                     return;
                 }
 
-                var relayUrl = bunkerRelayEdit?.Text?.Trim();
-                if (string.IsNullOrEmpty(relayUrl)) relayUrl = "wss://ephemeral.snowflare.cc/";
-
-                // Convert privKey to hex string for Intent transport
                 var nsecHex = BitConverter.ToString(privKey).Replace("-", "").ToLowerInvariant();
 
-                var intent = new Intent(this, typeof(BunkerService));
-                intent.PutExtra("nsecHex", nsecHex);
-                intent.PutExtra("relay", relayUrl);
-
-                try
+                var relayUrl = bunkerRelayEdit?.Text?.Trim();
+                if (!string.IsNullOrEmpty(relayUrl))
                 {
-                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                    var savedSecret = prefs?.GetString(PREF_BUNKER_SECRET, null);
-                    if (!string.IsNullOrEmpty(savedSecret))
-                        intent.PutExtra("secret", savedSecret);
+                    _settingsRepo.BunkerRelay = relayUrl;
                 }
-                catch { }
 
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-                    StartForegroundService(intent);
-                else
-                    StartService(intent);
+                _bunkerController.StartBunker(nsecHex);
             }
             catch (Exception ex)
             {
@@ -2063,9 +2048,7 @@ namespace nokandro
         {
             try
             {
-                var intent = new Intent(this, typeof(BunkerService));
-                intent.SetAction("STOP");
-                StartService(intent);
+                _bunkerController.StopBunker();
             }
             catch { }
         }
@@ -2216,14 +2199,14 @@ namespace nokandro
                     return;
                 }
 
-                var (hrp, data) = Bech32Decode(nsecText);
+                var (hrp, data) = NostrKeyDecoder.Bech32Decode(nsecText);
                 if (hrp != "nsec" || data == null)
                 {
                     Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
                     return;
                 }
 
-                var privKey = ConvertBits(data, 5, 8, false);
+                var privKey = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
                 if (privKey == null || privKey.Length != 32)
                 {
                     Toast.MakeText(this, "Invalid nsec", ToastLength.Short)?.Show();
@@ -2551,121 +2534,7 @@ namespace nokandro
             if (edit != null) { edit.PutString(PREF_NC_NAMES, sb.ToString()); edit.Apply(); }
         }
 
-        private static (string? hrp, byte[]? data) Bech32Decode(string bech)
-        {
-            if (string.IsNullOrEmpty(bech)) return (null, null);
-            bech = bech.ToLowerInvariant();
-            var pos = bech.LastIndexOf('1');
-            if (pos < 1 || pos + 7 > bech.Length) return (null, null); 
-            var hrp = bech[..pos];
-            var dataPart = bech[(pos + 1)..];
-            var data = new byte[dataPart.Length];
-            for (int i = 0; i < dataPart.Length; i++)
-            {
-                var idx = Bech32Chars.IndexOf(dataPart[i]);
-                if (idx == -1) return (null, null);
-                data[i] = (byte)idx;
-            }
 
-            // verify checksum
-            var hrpExpanded = HrpExpand(hrp);
-            var values = new List<byte>();
-            values.AddRange(hrpExpanded);
-            values.AddRange(data);
-            if (Polymod([.. values]) != 1) return (null, null);
-
-            var payload = new byte[data.Length - 6];
-            Array.Copy(data, 0, payload, 0, payload.Length);
-            return (hrp, payload);
-        }
-
-        private static byte[] HexToBytes(string hex)
-        {
-            if (hex.Length % 2 != 0) throw new ArgumentException("Invalid hex length");
-            var bytes = new byte[hex.Length / 2];
-            for (int i = 0; i < bytes.Length; i++) bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
-            return bytes;
-        }
-
-        // convertbits from BIP173 reference
-        private static byte[] ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
-        {
-            var acc = 0;
-            var bits = 0;
-            var maxv = (1 << toBits) - 1;
-            var result = new List<byte>();
-            foreach (var value in data)
-            {
-                acc = (acc << fromBits) | (value & ((1 << fromBits) - 1));
-                bits += fromBits;
-                while (bits >= toBits)
-                {
-                    bits -= toBits;
-                    result.Add((byte)((acc >> bits) & maxv));
-                }
-            }
-            if (pad)
-            {
-                if (bits > 0) result.Add((byte)((acc << (toBits - bits)) & maxv));
-            }
-            else
-            {
-                if (bits >= fromBits) throw new ArgumentException("Illegal zero padding");
-                if (((acc << (toBits - bits)) & maxv) != 0) throw new ArgumentException("Non-zero padding");
-            }
-            return [.. result];
-        }
-
-        private static readonly string Bech32Chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-
-        private static int Polymod(byte[] values)
-        {
-            var chk = 1;
-            var generators = new int[] { 0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3 };
-            foreach (var v in values)
-            {
-                var top = chk >> 25;
-                chk = ((chk & 0x1ffffff) << 5) ^ v;
-                for (int i = 0; i < 5; i++) if (((top >> i) & 1) != 0) chk ^= generators[i];
-            }
-            return chk;
-        }
-
-        private static byte[] HrpExpand(string hrp)
-        {
-            var hrpBytes = Encoding.ASCII.GetBytes(hrp);
-            var expand = new List<byte>();
-            foreach (var b in hrpBytes) expand.Add((byte)(b >> 5));
-            expand.Add(0);
-            foreach (var b in hrpBytes) expand.Add((byte)(b & 31));
-            return [.. expand];
-        }
-
-        private static string Bech32Encode(string hrp, byte[] data)
-        {
-            var combined = new List<byte>();
-            combined.AddRange(data);
-            // create checksum
-            var checksum = CreateChecksum(hrp, data);
-            combined.AddRange(checksum);
-            var sb = new StringBuilder();
-            sb.Append(hrp);
-            sb.Append('1');
-            foreach (var b in combined) sb.Append(Bech32Chars[b]);
-            return sb.ToString();
-        }
-
-        private static byte[] CreateChecksum(string hrp, byte[] data)
-        {
-            var values = new List<byte>();
-            values.AddRange(HrpExpand(hrp));
-            values.AddRange(data);
-            values.AddRange(new byte[6]);
-            var polymod = Polymod([.. values]) ^ 1;
-            var ret = new byte[6];
-            for (int i = 0; i < 6; ++i) ret[i] = (byte)((polymod >> (5 * (5 - i))) & 31);
-            return ret;
-        }
 
         private string ShortenUrls(string input)
         {
@@ -3052,10 +2921,10 @@ namespace nokandro
             {
                 try
                 {
-                   var (hrp, data) = Bech32Decode(npub);
+                   var (hrp, data) = NostrKeyDecoder.Bech32Decode(npub);
                    if (hrp == "npub" && data != null)
                    {
-                       var bytes = ConvertBits(data, 5, 8, false);
+                       var bytes = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
                        if (bytes != null && bytes.Length == 32)
                        {
                            pubkeyHex = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();

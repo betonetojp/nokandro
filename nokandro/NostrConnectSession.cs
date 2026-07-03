@@ -140,8 +140,7 @@ namespace nokandro
         private readonly NostrConnectUri _connectUri;
         private readonly Nip46Handler _handler;
         private CancellationTokenSource? _cts;
-        private readonly List<ClientWebSocket> _sockets = [];
-        private readonly SemaphoreSlim _wsLock = new(1, 1);
+        private readonly List<NostrWebSocketClient> _wsClients = [];
         private bool _clientAuthenticated;
         private bool _connectAckSent;
 
@@ -176,10 +175,46 @@ namespace nokandro
             if (IsRunning) return;
             IsRunning = true;
             _cts = new CancellationTokenSource();
-            foreach (var relay in _connectUri.Relays)
+
+            lock (_wsClients)
             {
-                var r = relay;
-                Task.Run(() => RunRelayAsync(r, _cts.Token));
+                _wsClients.Clear();
+                foreach (var relay in _connectUri.Relays)
+                {
+                    var client = new NostrWebSocketClient(relay, $"NostrConnectSession_{relay.GetHashCode():x}");
+                    _wsClients.Add(client);
+
+                    var r = relay;
+                    var cToken = _cts.Token;
+
+                    client.OnMessageReceived += async msg =>
+                    {
+                        try { await HandleRawMessage(client, msg, cToken); }
+                        catch (System.OperationCanceledException) { }
+                        catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
+                    };
+
+                    client.OnStateChanged += async state =>
+                    {
+                        if (state == WebSocketState.Open)
+                        {
+                            Log($"Connected to {r}");
+                            var subId = "nc_" + r.GetHashCode().ToString("x");
+                            var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+                            var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"authors\":[\"{_connectUri.ClientPubkey}\"],\"#p\":[\"{_signerPubkeyHex}\"],\"since\":{since}}}]";
+                            await SendTextAsync(client, reqJson, cToken);
+
+                            if (!_connectAckSent)
+                            {
+                                _connectAckSent = true;
+                                await SendConnectResponseAsync(client, requestId: Guid.NewGuid().ToString("N")[..16], cToken);
+                            }
+                        }
+                    };
+
+                    client.OnLog += msg => Log(msg);
+                    client.Start();
+                }
             }
         }
 
@@ -187,98 +222,26 @@ namespace nokandro
         {
             IsRunning = false;
             try { _cts?.Cancel(); } catch { }
-            lock (_sockets)
+            lock (_wsClients)
             {
-                foreach (var ws in _sockets)
+                foreach (var client in _wsClients)
                 {
-                    try { ws.Abort(); ws.Dispose(); } catch { }
+                    try { client.Stop(); client.Dispose(); } catch { }
                 }
-                _sockets.Clear();
+                _wsClients.Clear();
             }
             _handler.DisconnectAll();
             _clientAuthenticated = false;
             _connectAckSent = false;
         }
 
-        private async Task RunRelayAsync(string relay, CancellationToken ct)
-        {
-            Log($"Connecting to {relay}...");
-
-            while (!ct.IsCancellationRequested)
-            {
-                ClientWebSocket? ws = null;
-                try
-                {
-                    ws = new ClientWebSocket();
-                    lock (_sockets) { _sockets.Add(ws); }
-
-                    await ws.ConnectAsync(new Uri(relay), ct);
-                    Log($"Connected to {relay}");
-
-                    var subId = "nc_" + relay.GetHashCode().ToString("x");
-                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
-                    var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"authors\":[\"{_connectUri.ClientPubkey}\"],\"#p\":[\"{_signerPubkeyHex}\"],\"since\":{since}}}]";
-                    await SendTextAsync(ws, reqJson, ct);
-
-                    if (!_connectAckSent)
-                    {
-                        _connectAckSent = true;
-                        await SendConnectResponseAsync(ws, requestId: Guid.NewGuid().ToString("N")[..16], ct);
-                    }
-
-                    var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
-                    var sb = new StringBuilder();
-
-                    while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
-                    {
-                        sb.Clear();
-                        WebSocketReceiveResult? result;
-                        do
-                        {
-                            result = await ws.ReceiveAsync(buffer, ct);
-                            if (result.MessageType == WebSocketMessageType.Close)
-                            {
-                                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
-                                break;
-                            }
-                            sb.Append(Encoding.UTF8.GetString(buffer.Array!, 0, result.Count));
-                        } while (!result.EndOfMessage);
-
-                        if (ws.State != WebSocketState.Open) break;
-
-                        var msg = sb.ToString();
-                        if (!string.IsNullOrEmpty(msg))
-                        {
-                            try { await HandleRawMessage(ws, msg, ct); }
-                            catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
-                        }
-                    }
-                }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex) { Log($"Connection error ({relay}): {ex.Message}"); }
-                finally
-                {
-                    if (ws != null)
-                    {
-                        lock (_sockets) { _sockets.Remove(ws); }
-                        try { ws.Dispose(); } catch { }
-                    }
-                }
-
-                if (ct.IsCancellationRequested) break;
-                try { await Task.Delay(5000, ct); } catch { break; }
-            }
-
-            Log($"Relay loop ended: {relay}");
-        }
-
         /// <summary>NIP-46: connect response result MUST be the URI secret.</summary>
-        private async Task SendConnectResponseAsync(ClientWebSocket ws, string requestId, CancellationToken ct)
+        private async Task SendConnectResponseAsync(NostrWebSocketClient client, string requestId, CancellationToken ct)
         {
             try
             {
                 var signedEvent = _handler.BuildConnectResponseForClient(requestId, _connectUri.Secret, _connectUri.ClientPubkey);
-                await SendTextAsync(ws, $"[\"EVENT\",{signedEvent}]", ct);
+                await SendTextAsync(client, $"[\"EVENT\",{signedEvent}]", ct);
                 _clientAuthenticated = true;
                 _handler.MarkConnected(_connectUri.ClientPubkey);
                 var perms = Nip46Permissions.Parse(_connectUri.Perms);
@@ -293,7 +256,7 @@ namespace nokandro
             }
         }
 
-        private async Task HandleRawMessage(ClientWebSocket ws, string data, CancellationToken ct)
+        private async Task HandleRawMessage(NostrWebSocketClient client, string data, CancellationToken ct)
         {
             using var doc = JsonDocument.Parse(data);
             var root = doc.RootElement;
@@ -320,7 +283,7 @@ namespace nokandro
                 var (sent, method, ok, err) = await _handler.ProcessRequestAsync(
                     senderPubkey,
                     encryptedContent,
-                    (text, token) => SendTextAsync(ws, text, token),
+                    (text, token) => SendTextAsync(client, text, token),
                     ct,
                     HandleConnect);
 
@@ -368,25 +331,9 @@ namespace nokandro
             return _connectUri.Secret;
         }
 
-        private async Task<bool> SendTextAsync(ClientWebSocket ws, string text, CancellationToken ct)
+        private async Task<bool> SendTextAsync(NostrWebSocketClient client, string text, CancellationToken ct)
         {
-            if (ws.State != WebSocketState.Open) return false;
-            var bytes = Encoding.UTF8.GetBytes(text);
-            try
-            {
-                await _wsLock.WaitAsync(ct);
-                try
-                {
-                    if (ws.State == WebSocketState.Open)
-                    {
-                        await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
-                        return true;
-                    }
-                }
-                finally { _wsLock.Release(); }
-            }
-            catch (Exception ex) { AppLog.W(TAG, "SendTextAsync: " + ex.Message); }
-            return false;
+            return await client.SendTextAsync(text, ct);
         }
 
         private void Log(string msg)

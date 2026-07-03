@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-android</TargetFramework>
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.nokakoi.nokandro</ApplicationId>
-    <ApplicationVersion>37</ApplicationVersion>
-    <ApplicationDisplayVersion>0.19.0</ApplicationDisplayVersion>
+    <ApplicationVersion>38</ApplicationVersion>
+    <ApplicationDisplayVersion>0.20.0</ApplicationDisplayVersion>
     <!--
       Use conservative trimming to avoid runtime removal of APIs needed by JSON parsing and TTS.
       'link' is a valid TrimMode for publishing; setting 'none' caused ILLink errors.
@@ -22,6 +22,8 @@
   <ItemGroup>
     <PackageReference Include="Xamarin.Google.Android.Material" Version="1.14.0" />
     <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.15" />
+    <PackageReference Include="Xamarin.AndroidX.Security.SecurityCrypto" Version="1.1.0.1" />
+    <PackageReference Include="NBitcoin.Secp256k1" Version="3.0.2" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>

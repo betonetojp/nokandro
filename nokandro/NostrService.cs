@@ -29,12 +29,11 @@ namespace nokandro
         public static bool IsRunning { get; private set; } = false;
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
-        private ClientWebSocket? _ws;
+        private NostrWebSocketClient? _wsClient;
         private string _relay = "wss://relay-jp.nostr.wirednet.jp/";
         private string _npub = string.Empty;
         private bool _allowOthers = false;
         private readonly CancellationTokenSource _cts = new();
-        private readonly SemaphoreSlim _wsLock = new(1, 1); // WebSocket send lock
         private HashSet<string> _followed = []; // store hex pubkeys (lowercase, 64 chars)
         private Dictionary<string, string> _petnames = [];
         private HashSet<string> _muted = []; // store muted hex pubkeys (public mute lists)
@@ -180,7 +179,7 @@ namespace nokandro
 
                 // Stop requested from notification action or UI
                 // If music status is enabled, try to clear it before stopping
-                if (_enableMusicStatus && _ws != null && _ws.State == WebSocketState.Open)
+                if (_enableMusicStatus && _wsClient != null && _wsClient.State == WebSocketState.Open)
                 {
                     Task.Run(async () =>
                     {
@@ -217,10 +216,10 @@ namespace nokandro
                 {
                     try
                     {
-                        var (hrp, data) = Bech32Decode(nsec);
+                        var (hrp, data) = NostrKeyDecoder.Bech32Decode(nsec);
                         if (hrp == "nsec" && data != null)
                         {
-                            _privKey = ConvertBits(data, 5, 8, false);
+                            _privKey = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
                         }
                     }
                     catch { }
@@ -454,8 +453,9 @@ namespace nokandro
             _cts.Cancel();
             try
             {
-                _ws?.Abort();
-                _ws?.Dispose();
+                _wsClient?.Stop();
+                _wsClient?.Dispose();
+                _wsClient = null;
             }
             catch (Exception ex) { AppLog.W(TAG, "Ws cleanup failed: " + ex.Message); }
             if (_tts != null)
@@ -468,167 +468,113 @@ namespace nokandro
 
         public override IBinder? OnBind(Intent? intent) => null;
 
+        private string NormalizeAuthorFilter()
+        {
+            var authorFilter = (_npub ?? string.Empty).Trim();
+            try
+            {
+                var m = PlainNpubRegex.Match(authorFilter);
+                if (!m.Success)
+                {
+                    var m2 = PlainNpubRegex.Match(authorFilter);
+                    if (m2.Success) m = m2;
+                    else
+                    {
+                        var m3 = NpubNprofileRegex().Match(authorFilter);
+                        if (m3.Success)
+                        {
+                            var inner = PlainNpubRegex.Match(m3.Value);
+                            if (inner.Success) m = inner;
+                        }
+                    }
+                }
+                if (m.Success) authorFilter = m.Value;
+
+                if (authorFilter.StartsWith("npub", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dec = NostrKeyDecoder.DecodeBech32Npub(authorFilter);
+                    if (!string.IsNullOrEmpty(dec)) authorFilter = dec;
+                }
+                else
+                {
+                    var norm = NostrKeyDecoder.NormalizeHexPubkey(authorFilter);
+                    if (!string.IsNullOrEmpty(norm)) authorFilter = norm;
+                }
+            }
+            catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); }
+            return authorFilter;
+        }
+
         private async Task RunAsync(CancellationToken ct)
         {
             AppLog.D(TAG, $"RunAsync start npub={_npub} relay={_relay}");
             if (string.IsNullOrEmpty(_npub))
                 return;
 
-            // Retry loop
-            while (!ct.IsCancellationRequested)
+            _wsClient = new NostrWebSocketClient(_relay, TAG);
+            _wsClient.OnMessageReceived += msg => HandleRawMessage(msg);
+            _wsClient.OnStateChanged += async state =>
             {
-                try
+                if (state == WebSocketState.Open)
                 {
-                    // Create new WebSocket instance for each connection attempt
-                    _ws = new ClientWebSocket();
-                    AppLog.D(TAG, "Connecting websocket...");
-                    await _ws.ConnectAsync(new Uri(_relay), ct);
-                    AppLog.D(TAG, "Websocket connected: state=" + _ws.State);
-
-                    var subId = "sub1";
-
-                    // only request events occurring from now onwards (no past history)
-                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-                    // ensure author filter uses hex pubkey
-                    var authorFilter = (_npub ?? string.Empty).Trim();
                     try
                     {
-                        var m = PlainNpubRegex.Match(authorFilter);
-                        if (!m.Success)
-                        {
-                            var m2 = PlainNpubRegex.Match(authorFilter);
-                            if (m2.Success) m = m2;
-                            else
-                            {
-                                var m3 = NpubNprofileRegex().Match(authorFilter);
-                                if (m3.Success)
-                                {
-                                    var inner = PlainNpubRegex.Match(m3.Value);
-                                    if (inner.Success) m = inner;
-                                }
-                            }
-                        }
-                        if (m.Success) authorFilter = m.Value;
+                        var subId = "sub1";
+                        var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        var authorFilter = NormalizeAuthorFilter();
 
-                        if (authorFilter.StartsWith("npub", StringComparison.OrdinalIgnoreCase))
+                        // Construct JSON subscriptions
+                        var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
+                        var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
+                        var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
+
+                        AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
+                        await SendTextAsync(reqFollowJson, ct);
+                        AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
+                        await SendTextAsync(reqMuteJson, ct);
+                        if (_enableTts)
                         {
-                            var dec = DecodeBech32Npub(authorFilter);
-                            if (!string.IsNullOrEmpty(dec)) authorFilter = dec;
+                            AppLog.D(TAG, "Sending events request: " + reqEventsJson);
+                            await SendTextAsync(reqEventsJson, ct);
                         }
-                        else
+
+                        if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
                         {
-                            var norm = NormalizeHexPubkey(authorFilter);
-                            if (!string.IsNullOrEmpty(norm)) authorFilter = norm;
+                            AppLog.D(TAG, "Sending initial music status after connection");
+                            _ = HandleMusicUpdateAsync(_currentArtist, _currentTitle, true);
                         }
                     }
-                    catch (Exception ex) { AppLog.W(TAG, "Author filter normalization failed: " + ex.Message); }
-
-                    // Construct JSON subscriptions
-                    var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
-                    var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
-                    var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
-
-                    AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
-                    await SendTextAsync(reqFollowJson, ct);
-                    AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
-                    await SendTextAsync(reqMuteJson, ct);
-                    if (_enableTts)
+                    catch (Exception ex)
                     {
-                        AppLog.D(TAG, "Sending events request: " + reqEventsJson);
-                        await SendTextAsync(reqEventsJson, ct);
-                    }
-
-                    if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
-                    {
-                        AppLog.D(TAG, "Sending initial music status after connection");
-                        _ = HandleMusicUpdateAsync(_currentArtist, _currentTitle, true);
-                    }
-
-                    var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
-                    var sb = new System.Text.StringBuilder();
-
-                    while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
-                    {
-                        sb.Clear();
-                        WebSocketReceiveResult? result = null;
-                        do
-                        {
-                            result = await _ws.ReceiveAsync(buffer, ct);
-                            if (result.MessageType == WebSocketMessageType.Close)
-                            {
-                                AppLog.D(TAG, "Websocket closed by server");
-                                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
-                                break;
-                            }
-
-                            var chunk = SysText.Encoding.UTF8.GetString(buffer.Array!, 0, result.Count);
-                            sb.Append(chunk);
-                        }
-                        while (!result.EndOfMessage);
-
-                        if (_ws.State != WebSocketState.Open) break;
-
-                        var message = sb.ToString();
-                        var preview = message != null && message.Length > 0 ? message[..Math.Min(200, message.Length)] : "(empty)";
-                        // AppLog.D(TAG, "Received message: " + preview);
-                        if (!string.IsNullOrEmpty(message))
-                        {
-                            HandleRawMessage(message);
-                        }
+                        AppLog.E(TAG, "Error sending initial requests: " + ex.Message);
                     }
                 }
-                catch (System.OperationCanceledException)
-                {
-                    AppLog.D(TAG, "RunAsync cancelled");
-                    break; 
-                }
-                catch (Exception ex)
-                {
-                    AppLog.E(TAG, "Connection lost or failed: " + ex.Message);
-                }
-                finally
-                {
-                    // Clean up current connection before retrying
-                    try { _ws?.Dispose(); } catch { }
-                    _ws = null;
-                }
+            };
 
-                // If cancelled (service stop), exit loop
-                if (ct.IsCancellationRequested) break;
+            _wsClient.Start();
 
-                // Wait before reconnecting
-                AppLog.D(TAG, "Reconnecting in 5 seconds...");
-                try { await Task.Delay(5000, ct); } catch { break; }
+            // Wait until cancelled
+            try
+            {
+                await Task.Delay(-1, ct);
+            }
+            catch (System.OperationCanceledException)
+            {
+                AppLog.D(TAG, "RunAsync cancelled");
+            }
+            finally
+            {
+                _wsClient.Stop();
+                _wsClient.Dispose();
+                _wsClient = null;
             }
         }
 
         private async Task<bool> SendTextAsync(string text, CancellationToken ct)
         {
-            if (_ws == null) { AppLog.W(TAG, "SendTextAsync called but _ws is null"); return false; }
-            var bytes = SysText.Encoding.UTF8.GetBytes(text);
-            var seg = new ArraySegment<byte>(bytes);
-            try
-            {
-                await _wsLock.WaitAsync(ct);
-                try
-                {
-                    if (_ws.State == WebSocketState.Open)
-                    {
-                        await _ws.SendAsync(seg, WebSocketMessageType.Text, true, ct);
-                        return true;
-                    }
-                }
-                finally
-                {
-                    _wsLock.Release();
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLog.W(TAG, "SendTextAsync failed: " + ex.Message);
-            }
-            return false;
+            var client = _wsClient;
+            if (client == null) { AppLog.W(TAG, "SendTextAsync called but _wsClient is null"); return false; }
+            return await client.SendTextAsync(text, ct);
         }
 
         private void HandleRawMessage(string data)
@@ -684,12 +630,12 @@ namespace nokandro
                             var hex = pub;
                             if (pub.StartsWith("npub"))
                             {
-                                var decoded = DecodeBech32Npub(pub);
+                                var decoded = NostrKeyDecoder.DecodeBech32Npub(pub);
                                 if (!string.IsNullOrEmpty(decoded)) hex = decoded;
                                 else continue;
                             }
 
-                            hex = NormalizeHexPubkey(hex);
+                            hex = NostrKeyDecoder.NormalizeHexPubkey(hex);
                             if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                         }
                     }
@@ -715,10 +661,10 @@ namespace nokandro
                                     var hex = candidate;
                                     if (candidate.StartsWith("npub"))
                                     {
-                                        var decoded = DecodeBech32Npub(candidate);
+                                        var decoded = NostrKeyDecoder.DecodeBech32Npub(candidate);
                                         if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
                                     }
-                                    hex = NormalizeHexPubkey(hex);
+                                    hex = NostrKeyDecoder.NormalizeHexPubkey(hex);
                                     if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                 }
                             }
@@ -733,12 +679,12 @@ namespace nokandro
                                 if (string.IsNullOrEmpty(t)) continue;
                                 if (t.StartsWith("npub"))
                                 {
-                                    var decoded = DecodeBech32Npub(t);
+                                    var decoded = NostrKeyDecoder.DecodeBech32Npub(t);
                                     if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
                                 }
                                 else
                                 {
-                                    var hex = NormalizeHexPubkey(t);
+                                    var hex = NostrKeyDecoder.NormalizeHexPubkey(t);
                                     if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                 }
                             }
@@ -755,12 +701,12 @@ namespace nokandro
                             if (string.IsNullOrEmpty(t)) continue;
                             if (t.StartsWith("npub"))
                             {
-                                var decoded = DecodeBech32Npub(t);
+                                var decoded = NostrKeyDecoder.DecodeBech32Npub(t);
                                 if (!string.IsNullOrEmpty(decoded)) newSet.Add(decoded);
                             }
                             else
                             {
-                                var hex = NormalizeHexPubkey(t);
+                                var hex = NostrKeyDecoder.NormalizeHexPubkey(t);
                                 if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                             }
                         }
@@ -790,10 +736,10 @@ namespace nokandro
                                     var hex = pub;
                                     if (pub.StartsWith("npub"))
                                     {
-                                        var decoded = DecodeBech32Npub(pub);
+                                        var decoded = NostrKeyDecoder.DecodeBech32Npub(pub);
                                         if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
                                     }
-                                    hex = NormalizeHexPubkey(hex);
+                                    hex = NostrKeyDecoder.NormalizeHexPubkey(hex);
                                     if (string.IsNullOrEmpty(hex)) continue;
 
                                     // Only accept petname if tag array has 4 elements and index 3 is non-empty.
@@ -860,11 +806,11 @@ namespace nokandro
                             var hex = pub;
                             if (pub.StartsWith("npub"))
                             {
-                                var decoded = DecodeBech32Npub(pub);
+                                var decoded = NostrKeyDecoder.DecodeBech32Npub(pub);
                                 if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
                             }
 
-                            hex = NormalizeHexPubkey(hex);
+                            hex = NostrKeyDecoder.NormalizeHexPubkey(hex);
                             if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                         }
                         else if (tagType == "word")
@@ -891,7 +837,7 @@ namespace nokandro
                         var pk = pkEl.GetString();
                         if (!string.IsNullOrEmpty(pk))
                         {
-                            pk = NormalizeHexPubkey(pk);
+                            pk = NostrKeyDecoder.NormalizeHexPubkey(pk);
                             if (!string.IsNullOrEmpty(pk))
                             {
                                 var plain = NostrCrypto.Decrypt(content, pk, _privKey);
@@ -922,10 +868,10 @@ namespace nokandro
                                         var hex = candidate;
                                         if (candidate.StartsWith("npub"))
                                         {
-                                            var decoded = DecodeBech32Npub(candidate);
+                                            var decoded = NostrKeyDecoder.DecodeBech32Npub(candidate);
                                             if (!string.IsNullOrEmpty(decoded)) hex = decoded; else continue;
                                         }
-                                        hex = NormalizeHexPubkey(hex);
+                                        hex = NostrKeyDecoder.NormalizeHexPubkey(hex);
                                         if (!string.IsNullOrEmpty(hex)) newSet.Add(hex);
                                     }
                                     else if (tagType == "word")
@@ -971,14 +917,7 @@ namespace nokandro
             catch { }
         }
 
-        private static string? NormalizeHexPubkey(string hex)
-        {
-            if (string.IsNullOrEmpty(hex)) return null;
-            hex = hex.Trim();
-            if (hex.StartsWith("0x")) hex = hex[2..];
-            if (hex.Length == 64 && hex.All(c => Uri.IsHexDigit(c))) return hex.ToLowerInvariant();
-            return null;
-        }
+
 
         private void HandleNoteEvent(JsonElement eventObj)
         {
@@ -1230,153 +1169,7 @@ namespace nokandro
             return replaced;
         }
 
-        // --- Bech32 helpers for npub <-> hex pubkey ---
 
-        private static string? DecodeBech32Npub(string bech)
-        {
-            try
-            {
-                var (hrp, data) = Bech32Decode(bech);
-                if (hrp == null || data == null) return null;
-                if (hrp != "npub") return null;
-                var bytes = ConvertBits(data, 5, 8, false);
-                if (bytes == null) return null;
-                if (bytes.Length != 32) return null;
-                return BytesToHex(bytes);
-            }
-            catch (Exception ex)
-            {
-                AppLog.W(TAG, "DecodeBech32Npub failed: " + ex.Message);
-                return null;
-            }
-        }
-
-        private static string EncodeHexToNpub(string hex)
-        {
-            // input hex 64 chars
-            var bytes = HexStringToBytes(hex);
-            var data = ConvertBits(bytes, 8, 5, true) ?? throw new ArgumentException("Invalid hex");
-            var combined = Bech32Encode("npub", data);
-            return combined;
-        }
-
-        private static (string? hrp, byte[]? data) Bech32Decode(string bech)
-        {
-            if (string.IsNullOrEmpty(bech)) return (null, null);
-            bech = bech.ToLowerInvariant();
-            var pos = bech.LastIndexOf('1');
-            if (pos < 1 || pos + 7 > bech.Length) return (null, null); // need at least 6 checksum chars
-            var hrp = bech[..pos];
-            var dataPart = bech[(pos + 1)..];
-            var data = new byte[dataPart.Length];
-            for (int i = 0; i < dataPart.Length; i++)
-            {
-                var idx = BECH32_CHARSET.IndexOf(dataPart[i]);
-                if (idx == -1) return (null, null);
-                data[i] = (byte)idx;
-            }
-
-            // verify checksum
-            var hrpExpanded = HrpExpand(hrp);
-            var values = new List<uint>();
-            foreach (var v in hrpExpanded) values.Add(v);
-            foreach (var d in data) values.Add(d);
-            if (Bech32Polymod([.. values]) != 1u) return (null, null);
-
-            // strip checksum (last 6)
-            var payload = new byte[data.Length - 6];
-            Array.Copy(data, 0, payload, 0, payload.Length);
-            return (hrp, payload);
-        }
-
-        private static string Bech32Encode(string hrp, byte[] data)
-        {
-            var combined = new List<byte>(data);
-            var checksum = CreateChecksum(hrp, data);
-            combined.AddRange(checksum);
-            var sb = new System.Text.StringBuilder();
-            sb.Append(hrp);
-            sb.Append('1');
-            foreach (var b in combined)
-            {
-                sb.Append(BECH32_CHARSET[b]);
-            }
-            return sb.ToString();
-        }
-
-        private static byte[] CreateChecksum(string hrp, byte[] data)
-        {
-            var hrpExp = HrpExpand(hrp);
-            var values = new List<uint>();
-            foreach (var v in hrpExp) values.Add(v);
-            foreach (var d in data) values.Add(d);
-            for (int i = 0; i < 6; i++) values.Add(0);
-            var polymod = Bech32Polymod([.. values]) ^ 1u;
-            var checksum = new byte[6];
-            for (int i = 0; i < 6; i++) checksum[i] = (byte)((polymod >> (5 * (5 - i))) & 0x1fu);
-            return checksum;
-        }
-
-        private static uint[] HrpExpand(string hrp)
-        {
-            var exp = new List<uint>();
-            foreach (var c in hrp) exp.Add((uint)(c >> 5));
-            exp.Add(0);
-            foreach (var c in hrp) exp.Add((uint)(c & 31));
-            return [.. exp];
-        }
-
-        private static uint Bech32Polymod(uint[] values)
-        {
-            uint chk = 1;
-            foreach (var v in values)
-            {
-                var top = chk >> 25;
-                chk = ((chk & 0x1ffffffu) << 5) ^ v;
-                for (int i = 0; i < 5; i++)
-                {
-                    if (((top >> i) & 1) == 1) chk ^= BECH32_GENERATOR[i];
-                }
-            }
-            return chk;
-        }
-
-        private static byte[]? ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
-        {
-            int acc = 0;
-            int bits = 0;
-            var maxv = (1 << toBits) - 1;
-            var result = new List<byte>();
-            foreach (var value in data)
-            {
-                if ((value >> fromBits) != 0) return null;
-                acc = (acc << fromBits) | value;
-                bits += fromBits;
-                while (bits >= toBits)
-                {
-                    bits -= toBits;
-                    result.Add((byte)((acc >> bits) & maxv));
-                }
-            }
-            if (pad)
-            {
-                if (bits > 0)
-                {
-                    result.Add((byte)((acc << (toBits - bits)) & maxv));
-                }
-            }
-            else
-            {
-                if (bits >= fromBits) return null;
-                if (((acc << (toBits - bits)) & maxv) != 0) return null;
-            }
-            return [.. result];
-        }
-
-        private static byte[]? ConvertBits(IEnumerable<byte> data, int fromBits, int toBits, bool pad)
-        {
-            return ConvertBits([.. data], fromBits, toBits, pad);
-        }
 
         private static byte[] HexStringToBytes(string hex)
         {
@@ -1529,7 +1322,7 @@ namespace nokandro
                     BroadcastMusicPostStatus("Test failed: No npub");
                     return;
                 }
-                var pubkey = _npub.StartsWith("npub") ? DecodeBech32Npub(_npub) : NormalizeHexPubkey(_npub);
+                var pubkey = _npub.StartsWith("npub") ? NostrKeyDecoder.DecodeBech32Npub(_npub) : NostrKeyDecoder.NormalizeHexPubkey(_npub);
                 if (string.IsNullOrEmpty(pubkey))
                 {
                     BroadcastMusicPostStatus("Test failed: Invalid val");
@@ -1629,7 +1422,7 @@ namespace nokandro
                     BroadcastMusicPostStatus("No npub");
                     return;
                 }
-                var pubkey = _npub.StartsWith("npub") ? DecodeBech32Npub(_npub) : NormalizeHexPubkey(_npub);
+                var pubkey = _npub.StartsWith("npub") ? NostrKeyDecoder.DecodeBech32Npub(_npub) : NostrKeyDecoder.NormalizeHexPubkey(_npub);
                 if (string.IsNullOrEmpty(pubkey))
                 {
                     BroadcastMusicPostStatus("Invalid pubkey");
@@ -1779,7 +1572,7 @@ namespace nokandro
                         if (_npub.StartsWith("npub")) selectionArg = _npub;
                         else
                         {
-                            var np = EncodeHexToNpub(_npub);
+                            var np = NostrKeyDecoder.EncodeHexToNpub(_npub);
                             if (!string.IsNullOrEmpty(np)) selectionArg = np;
                         }
                     }

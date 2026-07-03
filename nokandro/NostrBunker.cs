@@ -11,13 +11,12 @@ namespace nokandro
     public sealed class NostrBunker
     {
         private const string TAG = "NostrBunker";
-        private ClientWebSocket? _ws;
+        private NostrWebSocketClient? _wsClient;
         private CancellationTokenSource? _cts;
         private readonly byte[] _privKey;
         private readonly string _pubkeyHex;
         private readonly string[] _relays;
         private string _secret;
-        private readonly SemaphoreSlim _wsLock = new(1, 1);
         private readonly Nip46Handler _handler;
         private readonly HashSet<string> _authorizedClients;
         private readonly BunkerOptions? _options;
@@ -106,8 +105,8 @@ namespace nokandro
         {
             IsRunning = false;
             try { _cts?.Cancel(); } catch { }
-            try { _ws?.Abort(); _ws?.Dispose(); } catch { }
-            _ws = null;
+            try { _wsClient?.Stop(); _wsClient?.Dispose(); } catch { }
+            _wsClient = null;
             _handler.DisconnectAll();
             _connectedCount = 0;
         }
@@ -117,58 +116,38 @@ namespace nokandro
             Log("Bunker starting...");
             var relay = _relays[0];
 
-            while (!ct.IsCancellationRequested)
+            _wsClient = new NostrWebSocketClient(relay, "NostrBunker");
+            _wsClient.OnMessageReceived += async msg =>
             {
-                try
+                try { await HandleRawMessage(msg, ct); }
+                catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
+            };
+            _wsClient.OnStateChanged += async state =>
+            {
+                if (state == WebSocketState.Open)
                 {
-                    _ws = new ClientWebSocket();
-                    await _ws.ConnectAsync(new Uri(relay), ct);
                     Log("Connected to relay");
-
                     var subId = "bunker";
                     var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
                     var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"#p\":[\"{_pubkeyHex}\"],\"since\":{since}}}]";
                     await SendTextAsync(reqJson, ct);
                     Log("Subscribed (kind:24133)");
-
-                    var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
-                    var sb = new StringBuilder();
-
-                    while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
-                    {
-                        sb.Clear();
-                        WebSocketReceiveResult? result;
-                        do
-                        {
-                            result = await _ws.ReceiveAsync(buffer, ct);
-                            if (result.MessageType == WebSocketMessageType.Close)
-                            {
-                                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, ct);
-                                break;
-                            }
-                            sb.Append(Encoding.UTF8.GetString(buffer.Array!, 0, result.Count));
-                        } while (!result.EndOfMessage);
-
-                        if (_ws.State != WebSocketState.Open) break;
-
-                        var msg = sb.ToString();
-                        if (!string.IsNullOrEmpty(msg))
-                        {
-                            try { await HandleRawMessage(msg, ct); }
-                            catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
-                        }
-                    }
                 }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex) { Log("Connection error: " + ex.Message); }
-                finally
-                {
-                    try { _ws?.Dispose(); } catch { }
-                    _ws = null;
-                }
+            };
+            _wsClient.OnLog += msg => Log(msg);
 
-                if (ct.IsCancellationRequested) break;
-                try { await Task.Delay(5000, ct); } catch { break; }
+            _wsClient.Start();
+
+            try
+            {
+                await Task.Delay(-1, ct);
+            }
+            catch (System.OperationCanceledException) { }
+            finally
+            {
+                _wsClient.Stop();
+                _wsClient.Dispose();
+                _wsClient = null;
             }
 
             IsRunning = false;
@@ -320,23 +299,9 @@ namespace nokandro
 
         private async Task<bool> SendTextAsync(string text, CancellationToken ct)
         {
-            if (_ws == null || _ws.State != WebSocketState.Open) return false;
-            var bytes = Encoding.UTF8.GetBytes(text);
-            try
-            {
-                await _wsLock.WaitAsync(ct);
-                try
-                {
-                    if (_ws.State == WebSocketState.Open)
-                    {
-                        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
-                        return true;
-                    }
-                }
-                finally { _wsLock.Release(); }
-            }
-            catch (Exception ex) { AppLog.W(TAG, "SendTextAsync: " + ex.Message); }
-            return false;
+            var client = _wsClient;
+            if (client == null) return false;
+            return await client.SendTextAsync(text, ct);
         }
 
         public void DisconnectAllClients()
