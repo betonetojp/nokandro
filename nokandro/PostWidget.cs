@@ -42,7 +42,7 @@ namespace nokandro
                     {
                         var relay = prefs.GetString("pref_relay", "wss://relay-jp.nostr.wirednet.jp/");
                         var npub = prefs.GetString("pref_npub", "");
-                        var nsec = prefs.GetString("pref_nsec", "");
+                        var nsec = SecurePreferences.GetNsec(context);
                         var allowOthers = prefs.GetBoolean("pref_allow_others", false);
                         var voiceFollowed = prefs.GetString("pref_voice_followed", null);
                         var voiceOther = prefs.GetString("pref_voice_other", null);

@@ -53,7 +53,7 @@ namespace nokandro
                 serviceIntent.PutExtra("relay", relay);
                 serviceIntent.PutExtra("npub", npub);
 
-                var nsec = prefs.GetString("pref_nsec", string.Empty) ?? string.Empty;
+                var nsec = SecurePreferences.GetNsec(context);
                 if (!string.IsNullOrEmpty(nsec)) serviceIntent.PutExtra("nsec", nsec);
 
                 serviceIntent.PutExtra("allowOthers", prefs.GetBoolean("pref_allow_others", false));
