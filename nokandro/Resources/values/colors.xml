@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <color name="surface">#FFFFFF</color>
-  <color name="background">#F5F5F5</color>
-  <color name="on_surface">#1C1B1F</color>
-  <color name="on_surface_variant">#49454F</color>
-  <color name="primary">#C2185B</color>
-  <color name="primary_dark">#9E1449</color>
-  <color name="primary_light">#EC4899</color>
-  <color name="primary_container">#FCE4EC</color>
+  <color name="background">#FFFAFA</color> <!-- ライトピンクを帯びたスノーホワイト -->
+  <color name="on_surface">#0F172A</color>
+  <color name="on_surface_variant">#8B8592</color>
+  <color name="primary">#FF5CAD</color>
+  <color name="primary_dark">#E04C94</color>
+  <color name="primary_light">#FF7EBC</color>
+  <color name="primary_container">#FFEAF5</color>
   <color name="on_primary">#FFFFFF</color>
   <color name="error">#B3261E</color>
-  <color name="outline">#E0E0E0</color>
-  <color name="status_message_color">#BE185D</color>
-  <color name="button_disabled">#FBCFE8</color>
-  <color name="update_available">#4A001F</color>
+  <color name="outline">#FFEAF5</color>
+  <color name="status_message_color">#FF5CAD</color>
+  <color name="button_disabled">#FFD3E8</color>
+  <color name="update_available">#FF5CAD</color>
 </resources>

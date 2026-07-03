@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
+    <item name="colorPrimary">@color/primary</item>
+    <item name="colorPrimaryDark">@color/primary_dark</item>
+    <item name="colorAccent">@color/primary_light</item>
+    <item name="colorOnPrimary">@color/on_primary</item>
+    <item name="colorPrimaryContainer">@color/primary_container</item>
+    <item name="colorOnPrimaryContainer">@color/primary</item>
+    <item name="colorSurface">@color/surface</item>
+    <item name="colorOnSurface">@color/on_surface</item>
+    <item name="colorOutline">@color/outline</item>
+    <item name="android:windowBackground">@color/background</item>
+    <item name="android:colorBackground">@color/background</item>
+    <item name="android:statusBarColor">@color/background</item>
+    <item name="android:fontFamily">sans-serif</item>
+    <item name="android:textViewStyle">@style/AppTextView</item>
+    <item name="android:editTextStyle">@style/AppEditText</item>
+    <item name="materialButtonStyle">@style/AppButtonPrimary</item>
+    <item name="tabStyle">@style/AppTabLayout</item>
+  </style>
+
+  <style name="AppTheme.Dialog" parent="Theme.Material3.Dark.Dialog">
+    <item name="colorPrimary">@color/primary</item>
+    <item name="colorOnPrimary">@color/on_primary</item>
+    <item name="colorSurface">@color/surface</item>
+    <item name="colorOnSurface">@color/on_surface</item>
+  </style>
+</resources>

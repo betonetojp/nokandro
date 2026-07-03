@@ -284,6 +284,8 @@ namespace nokandro
             // New views
             var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
             var ttsSettingsContainer = FindViewById<LinearLayout>(Resource.Id.ttsSettingsContainer); // Added container
+            var ttsAdvancedToggleBtn = FindViewById<Button>(Resource.Id.ttsAdvancedToggleBtn);
+            var ttsAdvancedSettingsContainer = FindViewById<LinearLayout>(Resource.Id.ttsAdvancedSettingsContainer);
             var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
             var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
             var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
@@ -627,6 +629,23 @@ namespace nokandro
                          }
                      }
                      catch { }
+                };
+            }
+
+            if (ttsAdvancedToggleBtn != null && ttsAdvancedSettingsContainer != null)
+            {
+                ttsAdvancedToggleBtn.Click += (s, e) =>
+                {
+                    if (ttsAdvancedSettingsContainer.Visibility == ViewStates.Gone)
+                    {
+                        ttsAdvancedSettingsContainer.Visibility = ViewStates.Visible;
+                        ttsAdvancedToggleBtn.Text = "Hide Advanced Settings ▲";
+                    }
+                    else
+                    {
+                        ttsAdvancedSettingsContainer.Visibility = ViewStates.Gone;
+                        ttsAdvancedToggleBtn.Text = "Show Advanced Settings ▼";
+                    }
                 };
             }
 

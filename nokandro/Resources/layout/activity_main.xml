@@ -59,7 +59,7 @@
 					android:orientation="vertical"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="@dimen/spacing_sm"
+					android:layout_marginBottom="@dimen/spacing_md"
 					android:elevation="@dimen/card_elevation">
 
 					<TextView
@@ -166,7 +166,7 @@
 					android:orientation="vertical"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="@dimen/spacing_sm"
+					android:layout_marginBottom="@dimen/spacing_md"
 					android:elevation="@dimen/card_elevation">
 
 					<LinearLayout
@@ -193,131 +193,7 @@
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
 
-						<LinearLayout
-							android:orientation="horizontal"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:gravity="center_vertical"
-							android:layout_marginBottom="@dimen/spacing_xs">
-							<TextView
-								android:layout_width="wrap_content"
-								android:layout_height="wrap_content"
-								android:text="Max characters:" />
-							<EditText
-								android:id="@+id/truncateEdit"
-								android:layout_width="80dp"
-								android:layout_height="wrap_content"
-								android:inputType="number"
-								android:hint="50"
-								android:layout_marginStart="@dimen/spacing_sm" />
-						</LinearLayout>
-
-						<LinearLayout
-							android:orientation="horizontal"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:gravity="center_vertical"
-							android:layout_marginBottom="@dimen/spacing_xs">
-							<TextView
-								android:layout_width="wrap_content"
-								android:layout_height="wrap_content"
-								android:text="Ellipsis:" />
-							<EditText
-								android:id="@+id/truncateEllipsisEdit"
-								android:layout_width="120dp"
-								android:layout_height="wrap_content"
-								android:hint=" ..."
-								android:layout_marginStart="@dimen/spacing_sm" />
-						</LinearLayout>
-
-						<LinearLayout
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:orientation="horizontal"
-							android:gravity="center_vertical"
-							android:minHeight="@dimen/row_min_height">
-							<TextView
-								android:layout_width="0dp"
-								android:layout_height="wrap_content"
-								android:layout_weight="1"
-								android:text="Speak petname" />
-							<Switch
-								android:id="@+id/speakPetnameSwitch"
-								android:layout_width="wrap_content"
-								android:layout_height="wrap_content" />
-						</LinearLayout>
-
-						<LinearLayout
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:orientation="horizontal"
-							android:gravity="center_vertical"
-							android:minHeight="@dimen/row_min_height">
-							<TextView
-								android:layout_width="0dp"
-								android:layout_height="wrap_content"
-								android:layout_weight="1"
-								android:text="Skip content-warning" />
-							<Switch
-								android:id="@+id/skipContentWarningSwitch"
-								android:layout_width="wrap_content"
-								android:layout_height="wrap_content" />
-						</LinearLayout>
-
-						<TextView
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="TTS language"
-							android:layout_marginTop="@dimen/spacing_xs" />
-						<Spinner
-							android:id="@+id/voiceLangSpinner"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:layout_marginBottom="@dimen/spacing_sm"/>
-
-						<TextView
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Voice for followed users" />
-						<Spinner
-							android:id="@+id/voiceFollowedSpinner"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content" />
-
-						<LinearLayout
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:orientation="horizontal"
-							android:gravity="center_vertical"
-							android:minHeight="@dimen/row_min_height">
-							<TextView
-								android:layout_width="0dp"
-								android:layout_height="wrap_content"
-								android:layout_weight="1"
-								android:text="Allow non-followed posts" />
-							<Switch
-								android:id="@+id/allowOthersSwitch"
-								android:layout_width="wrap_content"
-								android:layout_height="wrap_content" />
-						</LinearLayout>
-
-						<TextView
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Voice for non-followed users" />
-						<Spinner
-							android:id="@+id/voiceOtherSpinner"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content" />
-
-						<com.google.android.material.button.MaterialButton
-							android:id="@+id/refreshVoicesBtn"
-							style="@style/AppButtonSecondary"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Refresh Voices"
-							android:layout_marginTop="@dimen/spacing_xs" />
-
+						<!-- Speech rate (Move to top of settings for easy access) -->
 						<LinearLayout
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
@@ -343,7 +219,150 @@
 							android:layout_height="wrap_content"
 							android:max="200"
 							android:progress="100"
+							android:layout_marginBottom="@dimen/spacing_sm" />
+
+						<!-- Toggle Button for Advanced Settings -->
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/ttsAdvancedToggleBtn"
+							style="@style/AppButtonText"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:text="Show Advanced Settings ▼"
 							android:layout_marginBottom="@dimen/spacing_xs" />
+
+						<!-- Collapsible Advanced Settings Container -->
+						<LinearLayout
+							android:id="@+id/ttsAdvancedSettingsContainer"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:orientation="vertical"
+							android:visibility="gone">
+
+							<LinearLayout
+								android:orientation="horizontal"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:layout_marginBottom="@dimen/spacing_xs">
+								<TextView
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Max characters:" />
+								<EditText
+									android:id="@+id/truncateEdit"
+									android:layout_width="80dp"
+									android:layout_height="wrap_content"
+									android:inputType="number"
+									android:hint="50"
+									android:layout_marginStart="@dimen/spacing_sm" />
+							</LinearLayout>
+
+							<LinearLayout
+								android:orientation="horizontal"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:layout_marginBottom="@dimen/spacing_xs">
+								<TextView
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Ellipsis:" />
+								<EditText
+									android:id="@+id/truncateEllipsisEdit"
+									android:layout_width="120dp"
+									android:layout_height="wrap_content"
+									android:hint=" ..."
+									android:layout_marginStart="@dimen/spacing_sm" />
+							</LinearLayout>
+
+							<LinearLayout
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:orientation="horizontal"
+								android:gravity="center_vertical"
+								android:minHeight="@dimen/row_min_height">
+								<TextView
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:layout_weight="1"
+									android:text="Speak petname" />
+								<Switch
+									android:id="@+id/speakPetnameSwitch"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content" />
+							</LinearLayout>
+
+							<LinearLayout
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:orientation="horizontal"
+								android:gravity="center_vertical"
+								android:minHeight="@dimen/row_min_height">
+								<TextView
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:layout_weight="1"
+									android:text="Skip content-warning" />
+								<Switch
+									android:id="@+id/skipContentWarningSwitch"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content" />
+							</LinearLayout>
+
+							<TextView
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="TTS language"
+								android:layout_marginTop="@dimen/spacing_xs" />
+							<Spinner
+								android:id="@+id/voiceLangSpinner"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="@dimen/spacing_sm"/>
+
+							<TextView
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Voice for followed users" />
+							<Spinner
+								android:id="@+id/voiceFollowedSpinner"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content" />
+
+							<LinearLayout
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:orientation="horizontal"
+								android:gravity="center_vertical"
+								android:minHeight="@dimen/row_min_height">
+								<TextView
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:layout_weight="1"
+									android:text="Allow non-followed posts" />
+								<Switch
+									android:id="@+id/allowOthersSwitch"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content" />
+							</LinearLayout>
+
+							<TextView
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Voice for non-followed users" />
+							<Spinner
+								android:id="@+id/voiceOtherSpinner"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content" />
+
+							<com.google.android.material.button.MaterialButton
+								android:id="@+id/refreshVoicesBtn"
+								style="@style/AppButtonSecondary"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:text="Refresh Voices"
+								android:layout_marginTop="@dimen/spacing_xs" />
+						</LinearLayout>
 					</LinearLayout>
 				</LinearLayout>
 
@@ -359,7 +378,7 @@
 					android:orientation="vertical"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="@dimen/spacing_sm"
+					android:layout_marginBottom="@dimen/spacing_md"
 					android:elevation="@dimen/card_elevation">
 
 					<LinearLayout
@@ -485,7 +504,7 @@
 					style="@style/LiveNoteCard"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="@dimen/spacing_sm"
+					android:layout_marginBottom="@dimen/spacing_md"
 					android:text="(no note yet)"
 					android:maxLines="6"
 					android:ellipsize="end" />
@@ -518,7 +537,7 @@
 					android:orientation="vertical"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="@dimen/spacing_sm"
+					android:layout_marginBottom="@dimen/spacing_md"
 					android:elevation="@dimen/card_elevation"
 					android:focusable="true"
 					android:focusableInTouchMode="true">
@@ -637,20 +656,21 @@
 							android:textColor="@color/status_message_color"
 							android:layout_marginTop="@dimen/spacing_xs" />
 					</LinearLayout>
+				</LinearLayout>
 
-					<View
-						android:layout_width="match_parent"
-						android:layout_height="1dp"
-						android:background="@color/outline"
-						android:layout_marginTop="@dimen/spacing_lg"
-						android:layout_marginBottom="@dimen/spacing_sm" />
+				<TextView
+					style="@style/SectionHeaderLabel"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="nostrconnect://" />
 
-					<TextView
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:text="nostrconnect://"
-						style="@style/SectionTitle"
-						android:layout_marginBottom="@dimen/spacing_sm" />
+				<LinearLayout
+					style="@style/SectionCard"
+					android:orientation="vertical"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginBottom="@dimen/spacing_md"
+					android:elevation="@dimen/card_elevation">
 
 					<com.google.android.material.textfield.TextInputLayout
 						style="@style/AppTextInputLayout"

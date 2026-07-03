@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="surface">#151820</color> <!-- ダークネイビー -->
+  <color name="background">#0B0C10</color> <!-- 深い青黒 -->
+  <color name="on_surface">#E5E7EB</color>
+  <color name="on_surface_variant">#9CA3AF</color>
+  <color name="primary">#7C93FF</color>
+  <color name="primary_dark">#5E74E6</color>
+  <color name="primary_light">#9BB0FF</color>
+  <color name="primary_container">#232633</color>
+  <color name="on_primary">#0B0C10</color>
+  <color name="error">#CF6679</color>
+  <color name="outline">#232633</color>
+  <color name="status_message_color">#7C93FF</color>
+  <color name="button_disabled">#1E2230</color>
+  <color name="update_available">#7C93FF</color>
+</resources>
