@@ -126,12 +126,12 @@ namespace nokandro
                 if (sharedSecret == null) return null;
 
                 using var aes = Aes.Create();
-                using var decryptor = aes.CreateDecryptor();
                 aes.Key = sharedSecret;
                 aes.IV = Convert.FromBase64String(ivBase64);
                 aes.Mode = CipherMode.CBC;
                 aes.Padding = PaddingMode.PKCS7;
 
+                using var decryptor = aes.CreateDecryptor();
                 var cipherBytes = Convert.FromBase64String(ciphertext);
                 var plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
                 return Encoding.UTF8.GetString(plainBytes);
