@@ -77,6 +77,10 @@ namespace nokandro
         private SettingsRepository _settingsRepo = null!;
         private BunkerSessionController _bunkerController = null!;
 
+        // Swipe gesture switching
+        private GestureDetector? _gestureDetector;
+        private bool _isSwipeIgnored;
+
         private void SwitchToTab(int index)
         {
             var mainSelected = index == 0;
@@ -206,6 +210,22 @@ namespace nokandro
             {
                 if (tab != null) SwitchToTab(tab.Position);
             }));
+
+            // --- Swipe gesture switching ---
+            try
+            {
+                var vc = ViewConfiguration.Get(this);
+                var swipeThreshold = vc != null ? vc.ScaledTouchSlop * 2 : 100;
+                var swipeVelocityThreshold = vc != null ? vc.ScaledMinimumFlingVelocity : 100;
+
+                _gestureDetector = new GestureDetector(this, new SimpleGestureListener(
+                    onSwipeLeft: () => SwitchToTab(1),
+                    onSwipeRight: () => SwitchToTab(0),
+                    swipeThreshold,
+                    swipeVelocityThreshold
+                ));
+            }
+            catch { }
 
             // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け（接続確認はUI構築後）
             var nostrconnectUri = Intent?.GetStringExtra("nostrconnect_uri");
@@ -3096,6 +3116,104 @@ namespace nokandro
             public void OnTabSelected(TabLayout.Tab? tab) => _onSelected(tab);
             public void OnTabUnselected(TabLayout.Tab? tab) { }
             public void OnTabReselected(TabLayout.Tab? tab) { }
+        }
+
+        // SimpleGestureListener for swipe gestures
+        sealed class SimpleGestureListener : GestureDetector.SimpleOnGestureListener
+        {
+            private readonly Action _onSwipeLeft;
+            private readonly Action _onSwipeRight;
+            private readonly int _swipeThreshold;
+            private readonly int _swipeVelocityThreshold;
+
+            public SimpleGestureListener(Action onSwipeLeft, Action onSwipeRight, int swipeThreshold, int swipeVelocityThreshold)
+            {
+                _onSwipeLeft = onSwipeLeft;
+                _onSwipeRight = onSwipeRight;
+                _swipeThreshold = swipeThreshold;
+                _swipeVelocityThreshold = swipeVelocityThreshold;
+            }
+
+            public override bool OnFling(MotionEvent? e1, MotionEvent? e2, float velocityX, float velocityY)
+            {
+                if (e1 == null || e2 == null) return false;
+
+                float diffY = e2.RawY - e1.RawY;
+                float diffX = e2.RawX - e1.RawX;
+
+                // Horizontal movement must be larger than vertical movement, and meet thresholds
+                if (Math.Abs(diffX) > Math.Abs(diffY) * 1.5)
+                {
+                    if (Math.Abs(diffX) > _swipeThreshold && Math.Abs(velocityX) > _swipeVelocityThreshold)
+                    {
+                        if (diffX > 0)
+                        {
+                            _onSwipeRight(); // Swipe right -> Go to left tab (Main)
+                        }
+                        else
+                        {
+                            _onSwipeLeft(); // Swipe left -> Go to right tab (Bunker)
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        public override bool DispatchTouchEvent(MotionEvent? ev)
+        {
+            if (ev != null)
+            {
+                if (ev.Action == MotionEventActions.Down)
+                {
+                    _isSwipeIgnored = CheckIfSwipeShouldBeIgnored(ev);
+                }
+
+                if (!_isSwipeIgnored && _gestureDetector != null && _gestureDetector.OnTouchEvent(ev))
+                {
+                    // Swiped successfully, consume touch event
+                    return true;
+                }
+            }
+            return base.DispatchTouchEvent(ev);
+        }
+
+        private bool CheckIfSwipeShouldBeIgnored(MotionEvent ev)
+        {
+            int[] ignoreViewIds =
+            [
+                Resource.Id.relayEdit,
+                Resource.Id.nsecEdit,
+                Resource.Id.npubEdit,
+                Resource.Id.truncateEdit,
+                Resource.Id.truncateEllipsisEdit,
+                Resource.Id.offTimerMinutesEdit,
+                Resource.Id.bunkerRelayEdit,
+                Resource.Id.ncUriEdit,
+                Resource.Id.speechRateSeekBar,
+                Resource.Id.voiceLangSpinner,
+                Resource.Id.voiceFollowedSpinner,
+                Resource.Id.voiceOtherSpinner
+            ];
+
+            foreach (int id in ignoreViewIds)
+            {
+                var view = FindViewById<View>(id);
+                if (view != null && view.Visibility == ViewStates.Visible)
+                {
+                    int[] location = new int[2];
+                    view.GetLocationOnScreen(location);
+                    int x = (int)ev.RawX;
+                    int y = (int)ev.RawY;
+                    if (x >= location[0] && x <= location[0] + view.Width &&
+                        y >= location[1] && y <= location[1] + view.Height)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         // local broadcast receiver wrapper
