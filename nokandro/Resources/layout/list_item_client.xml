@@ -5,9 +5,19 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:minHeight="@dimen/row_min_height"
-    android:paddingTop="@dimen/spacing_xs"
-    android:paddingBottom="@dimen/spacing_xs">
+    android:minHeight="56dp"
+    android:paddingStart="@dimen/spacing_sm"
+    android:paddingEnd="@dimen/spacing_sm"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/bg_code_box">
+
+    <!-- App icon indicator -->
+    <ImageView
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginEnd="@dimen/spacing_md"
+        android:src="@android:drawable/ic_menu_info_details"
+        app:tint="@color/primary" />
 
     <TextView
         android:id="@+id/clientNameText"
@@ -16,8 +26,9 @@
         android:layout_weight="1"
         android:textColor="@color/on_surface"
         android:textSize="14sp"
+        android:fontFamily="sans-serif-medium"
         android:ellipsize="end"
-        android:maxLines="2" />
+        android:maxLines="1" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/clientRemoveBtn"
@@ -25,6 +36,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Remove"
+        android:textColor="@color/error"
         android:minWidth="0dp"
         android:minHeight="36dp"
         app:rippleColor="@color/primary_container" />

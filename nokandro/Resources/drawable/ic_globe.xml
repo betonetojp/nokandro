@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 外円 -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.5"
+        android:pathData="M12,2A10,10 0,1 0,22 12,10,10 0,0 0,12 2Z"/>
+    <!-- 縦線（子午線） -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.5"
+        android:pathData="M12,2A10,10 0,0 0,12 22M12,2A4,10 0,0 0,12 22M12,2A4,10 0,0 1,12 22"/>
+    <!-- 横線（赤道・緯線） -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.5"
+        android:pathData="M2,12L22,12M3.5,8L20.5,8M3.5,16L20.5,16"/>
+</vector>

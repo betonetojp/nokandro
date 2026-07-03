@@ -62,26 +62,39 @@
 					android:layout_marginBottom="@dimen/spacing_md"
 					android:elevation="@dimen/card_elevation">
 
-					<TextView
-						android:id="@+id/followStatusText"
-						android:layout_width="wrap_content"
+					<LinearLayout
+						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:text="Follow list: not loaded"
-						android:layout_marginBottom="@dimen/spacing_xs" />
+						android:orientation="horizontal"
+						android:gravity="center"
+						android:layout_marginBottom="@dimen/spacing_md">
 
-					<TextView
-						android:id="@+id/muteStatusText"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:text="Muted user: not loaded"
-						android:layout_marginBottom="@dimen/spacing_xs" />
+						<TextView
+							android:id="@+id/followStatusText"
+							style="@style/StatusChipText"
+							android:layout_width="0dp"
+							android:layout_height="wrap_content"
+							android:layout_weight="1"
+							android:text="Follow list: not loaded"
+							android:layout_marginEnd="@dimen/spacing_xs" />
 
-					<TextView
-						android:id="@+id/mutedWordsStatusText"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:text="Muted words: not loaded"
-						android:layout_marginBottom="@dimen/spacing_md" />
+						<TextView
+							android:id="@+id/muteStatusText"
+							style="@style/StatusChipText"
+							android:layout_width="0dp"
+							android:layout_height="wrap_content"
+							android:layout_weight="1"
+							android:text="Mute list: not loaded"
+							android:layout_marginEnd="@dimen/spacing_xs" />
+
+						<TextView
+							android:id="@+id/mutedWordsStatusText"
+							style="@style/StatusChipText"
+							android:layout_width="0dp"
+							android:layout_height="wrap_content"
+							android:layout_weight="1"
+							android:text="Mute words: not loaded" />
+					</LinearLayout>
 
 					<LinearLayout
 						android:layout_width="match_parent"
@@ -93,7 +106,8 @@
 							android:layout_width="0dp"
 							android:layout_height="wrap_content"
 							android:layout_weight="1"
-							android:hint="Relay (wss://...)">
+							android:hint="Relay (wss://...)"
+							app:startIconDrawable="@drawable/ic_globe">
 							<com.google.android.material.textfield.TextInputEditText
 								android:id="@+id/relayEdit"
 								android:layout_width="match_parent"
@@ -116,7 +130,8 @@
 						android:layout_height="wrap_content"
 						android:layout_marginTop="@dimen/spacing_xs"
 						android:hint="Your nsec (Archive for posting)"
-						app:endIconMode="password_toggle">
+						app:endIconMode="password_toggle"
+						app:startIconDrawable="@drawable/ic_lock">
 						<com.google.android.material.textfield.TextInputEditText
 							android:id="@+id/nsecEdit"
 							android:layout_width="match_parent"
@@ -136,7 +151,8 @@
 						style="@style/AppTextInputLayout"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:hint="Your npub (derived from nsec or manual)">
+						android:hint="Your npub (derived from nsec or manual)"
+						app:startIconDrawable="@drawable/ic_user">
 						<com.google.android.material.textfield.TextInputEditText
 							android:id="@+id/npubEdit"
 							android:layout_width="match_parent"
@@ -418,11 +434,12 @@
 
 					<TextView
 						android:id="@+id/musicStatusDebugText"
+						style="@style/NowPlayingBar"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:text="Music: (waiting)"
-						android:textColor="@color/status_message_color"
-						android:layout_marginBottom="@dimen/spacing_xs" />
+						android:layout_marginTop="@dimen/spacing_xs"
+						android:layout_marginBottom="@dimen/spacing_md" />
 
 					<com.google.android.material.button.MaterialButton
 						android:id="@+id/testPostBtn"
@@ -565,7 +582,8 @@
 						style="@style/AppTextInputLayout"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:hint="Bunker relay">
+						android:hint="Bunker relay"
+						app:startIconDrawable="@drawable/ic_globe">
 						<com.google.android.material.textfield.TextInputEditText
 							android:id="@+id/bunkerRelayEdit"
 							android:layout_width="match_parent"
@@ -618,13 +636,24 @@
 						android:visibility="gone"
 						android:layout_marginTop="@dimen/spacing_xs">
 
-						<TextView
-							android:id="@+id/bunkerUriText"
+						<com.google.android.material.textfield.TextInputLayout
+							style="@style/AppTextInputLayout"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textIsSelectable="true"
-							android:maxLines="3"
-							android:ellipsize="end" />
+							android:layout_marginBottom="@dimen/spacing_sm"
+							android:hint="Bunker URI"
+							app:endIconMode="password_toggle"
+							app:startIconDrawable="@drawable/ic_lock">
+							<com.google.android.material.textfield.TextInputEditText
+								android:id="@+id/bunkerUriText"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:inputType="textPassword"
+								android:focusable="false"
+								android:clickable="true"
+								android:longClickable="true"
+								android:textSize="13sp" />
+						</com.google.android.material.textfield.TextInputLayout>
 
 						<LinearLayout
 							android:layout_width="match_parent"
@@ -662,7 +691,7 @@
 					style="@style/SectionHeaderLabel"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:text="nostrconnect://" />
+					android:text="nostrconnect" />
 
 				<LinearLayout
 					style="@style/SectionCard"
@@ -675,7 +704,8 @@
 					<com.google.android.material.textfield.TextInputLayout
 						style="@style/AppTextInputLayout"
 						android:layout_width="match_parent"
-						android:layout_height="wrap_content">
+						android:layout_height="wrap_content"
+						app:startIconDrawable="@drawable/ic_globe">
 						<com.google.android.material.textfield.TextInputEditText
 							android:id="@+id/ncUriEdit"
 							android:layout_width="match_parent"
