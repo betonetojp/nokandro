@@ -13,5 +13,5 @@
   <color name="outline">#232633</color>
   <color name="status_message_color">#7C93FF</color>
   <color name="button_disabled">#1E2230</color>
-  <color name="update_available">#7C93FF</color>
+  <color name="update_available">#FFD700</color>
 </resources>
