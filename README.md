@@ -77,15 +77,20 @@ The Bunker tab provides a NIP-46 remote signer that lets external Nostr clients 
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
 - **Client list**: Shows active nostrconnect sessions. Tap a client name to edit its label; use **Remove** to disconnect.
-- The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
-- If the URI has no relay, these fixed fallback relays are used:
-  `wss://nostr.oxtr.dev/`, `wss://theforest.nostr1.com/`, `wss://relay.primal.net/`, `wss://ephemeral.snowflare.cc/`
+- The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate. If no relay is specified, parsing will fail.
 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`.
 
 **Supported NIP-55 methods**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` (via `nostrsigner:` and content providers).
 
 For **ContentProvider** calls (`content://com.nokakoi.nokandro.*`): if the calling app is not yet authorized, nokandro opens the same approval dialog as the `nostrsigner:` intent path (Approve / Deny / Remember my choice) and returns **null** for that query (retry after granting). Permanent denial returns a cursor with a `rejected` column per NIP-55.
+
+### NIP-55 Signer Permissions
+
+Saved permissions (both granted and rejected choices when "Remember my choice" is checked) are listed at the bottom of the Bunker tab.
+- You can view the list of caller applications, request types (like `get_public_key`, `sign_event` with event kinds), and their status (Allowed/Rejected).
+- You can revoke/remove any individual permission by tapping the **Remove** button.
+
 
 > **Note**: Enter your `nsec` in the Main tab before using the Bunker or nostrconnect features.
 > 
@@ -227,14 +232,20 @@ Bunker タブは NIP-46 リモート署名機能を提供します。外部の N
 - **Connect**: 指定したクライアントとのセッションを開始します。
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
 - **クライアントリスト**: アクティブな nostrconnect セッションを表示します。名前をタップしてラベルを編集、**Remove** で切断できます。
-- URI にリレーが指定されていない場合、以下の固定フォールバックリレーが使用されます:
-  `wss://nostr.oxtr.dev/`, `wss://theforest.nostr1.com/`, `wss://relay.primal.net/`, `wss://ephemeral.snowflare.cc/`
+- NIP-46に従い、URIには少なくとも1つ以上の `relay` と `secret` パラメータが必須です（実装上、リレーが指定されていない場合は接続エラーになります）。
 
 **対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`
 
 **対応 NIP-55 メソッド**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event`（`nostrsigner:` および ContentProvider 経由）
 
 **ContentProvider**（`content://com.nokakoi.nokandro.*`）: 呼び出し元アプリが未許可の場合、`nostrsigner:` 経路と同様の承認ダイアログ（Approve / Deny / Remember my choice）を表示し、当該 `query` は **null** を返します（許可後に再 `query` してください）。恒常拒否時は NIP-55 どおり `rejected` 列付きカーソルを返します。
+
+### NIP-55 署名権限の管理
+
+「Remember my choice」にチェックを入れて保存された権限（許可または拒否）の一覧が、Bunkerタブの最下部に表示されます。
+- 呼び出し元アプリのパッケージ名、要求の種類（`get_public_key`、`sign_event`（event kind含む）など）、およびステータス（Allowed/Rejected）を確認できます。
+- 不要になった権限は、右側の **Remove** ボタンを押すことで個別に削除・破棄できます。
+
 
 > **注意**: Bunker や nostrconnect を使用するには Main タブで `nsec` を入力してください。
 > 

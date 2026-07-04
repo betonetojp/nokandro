@@ -70,6 +70,7 @@ namespace nokandro
         private const string PREF_NC_NAMES = "pref_nc_names";
         private TextView? _ncStatusText;
         private LinearLayout? _ncClientList;
+        private LinearLayout? _nip55ClientList;
         private BroadcastReceiver? _ncReceiver;
         private string[] _lastNcPubkeys = [];
         private string[] _lastNcUris = [];
@@ -1127,6 +1128,8 @@ namespace nokandro
             var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
             _ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
             _ncClientList = FindViewById<LinearLayout>(Resource.Id.ncClientList);
+            _nip55ClientList = FindViewById<LinearLayout>(Resource.Id.nip55ClientList);
+            try { RefreshNip55PermissionList(); } catch { }
 
             if (ncConnectBtn != null)
             {
@@ -1949,6 +1952,7 @@ namespace nokandro
                     }
                 }
                 catch { }
+                try { RefreshNip55PermissionList(); } catch { }
             }
             catch { }
         }
@@ -2493,6 +2497,69 @@ namespace nokandro
                 }
 
                 _ncClientList.AddView(row);
+            }
+        }
+
+        private void RefreshNip55PermissionList()
+        {
+            if (_nip55ClientList == null) return;
+            _nip55ClientList.RemoveAllViews();
+
+            var permissions = Nip55PermissionStore.GetAllPermissions(this);
+
+            if (permissions.Count == 0)
+            {
+                var emptyTv = new TextView(this) { Text = "No signer permissions saved" };
+                emptyTv.SetPadding(8, 8, 8, 8);
+                try { emptyTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+                _nip55ClientList.AddView(emptyTv);
+                return;
+            }
+
+            foreach (var perm in permissions)
+            {
+                var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, _nip55ClientList, false);
+
+                var label = row.FindViewById<TextView>(Resource.Id.clientNameText);
+                if (label != null)
+                {
+                    var status = perm.IsGranted ? "Allowed" : "Rejected";
+                    var detail = perm.EventKind.HasValue 
+                        ? $"{perm.RequestType} (kind {perm.EventKind.Value})" 
+                        : perm.RequestType;
+                    
+                    label.Text = $"{perm.PackageName}\n{detail}: {status}";
+                    label.SetMaxLines(2);
+                    label.SetSingleLine(false);
+                    try { label.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+                }
+
+                var removeBtn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
+                if (removeBtn != null)
+                {
+                    removeBtn.Click += (s, e) =>
+                    {
+                        var confirmDialog = new Android.App.AlertDialog.Builder(this)
+                            .SetTitle("Remove permission")
+                            .SetMessage($"Remove saved permission for\n{perm.PackageName}?")
+                            .SetPositiveButton("Remove", (sender, args) =>
+                            {
+                                try
+                                {
+                                    Nip55PermissionStore.DeletePermission(this, perm.RawKey);
+                                    RefreshNip55PermissionList();
+                                }
+                                catch { }
+                            })
+                            .SetNegativeButton("Cancel", (sender, args) => { })
+                            .Create();
+
+                        confirmDialog.Show();
+                        DialogHelper.ApplyThemeColors(confirmDialog, this);
+                    };
+                }
+
+                _nip55ClientList.AddView(row);
             }
         }
 

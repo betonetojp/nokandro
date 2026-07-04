@@ -1,4 +1,5 @@
 using Android.Content;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace nokandro
@@ -71,5 +72,81 @@ namespace nokandro
 
         private static ISharedPreferences? prefs(Context context) =>
             context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+
+        public static List<PermissionEntry> GetAllPermissions(Context context)
+        {
+            var list = new List<PermissionEntry>();
+            var p = prefs(context);
+            if (p == null) return list;
+            var all = p.All;
+            if (all == null) return list;
+
+            foreach (var kvp in all)
+            {
+                var key = kvp.Key;
+                if (kvp.Value is bool val && val)
+                {
+                    if (key.StartsWith(PrefixGrant))
+                    {
+                        var rem = key[PrefixGrant.Length..];
+                        ParseKey(key, rem, true, list);
+                    }
+                    else if (key.StartsWith(PrefixReject))
+                    {
+                        var rem = key[PrefixReject.Length..];
+                        ParseKey(key, rem, false, list);
+                    }
+                }
+            }
+            return list;
+        }
+
+        private static void ParseKey(string rawKey, string rem, bool isGranted, List<PermissionEntry> list)
+        {
+            var firstColon = rem.IndexOf(':');
+            if (firstColon < 0) return;
+
+            var pkg = rem[..firstColon];
+            var actionPart = rem[(firstColon + 1)..];
+
+            var entry = new PermissionEntry
+            {
+                RawKey = rawKey,
+                PackageName = pkg,
+                IsGranted = isGranted
+            };
+
+            var secondColon = actionPart.IndexOf(':');
+            if (secondColon >= 0)
+            {
+                var type = actionPart[..secondColon];
+                var kindStr = actionPart[(secondColon + 1)..];
+                entry.RequestType = type;
+                if (int.TryParse(kindStr, out var kind))
+                {
+                    entry.EventKind = kind;
+                }
+            }
+            else
+            {
+                entry.RequestType = actionPart;
+            }
+
+            list.Add(entry);
+        }
+
+        public static void DeletePermission(Context context, string rawKey)
+        {
+            prefs(context)?.Edit()?.Remove(rawKey)?.Apply();
+        }
+    }
+
+    internal class PermissionEntry
+    {
+        public string RawKey { get; set; } = "";
+        public string PackageName { get; set; } = "";
+        public string RequestType { get; set; } = "";
+        public int? EventKind { get; set; }
+        public bool IsGranted { get; set; }
     }
 }

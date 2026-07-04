@@ -765,6 +765,28 @@
 						android:orientation="vertical" />
 
 				</LinearLayout>
+
+				<TextView
+					style="@style/SectionHeaderLabel"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:text="NIP-55 Signer Permissions" />
+
+				<LinearLayout
+					style="@style/SectionCard"
+					android:orientation="vertical"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginBottom="@dimen/spacing_md"
+					android:elevation="@dimen/card_elevation">
+
+					<LinearLayout
+						android:id="@+id/nip55ClientList"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:orientation="vertical" />
+
+				</LinearLayout>
 			</LinearLayout>
 		</ScrollView>
 
