@@ -95,7 +95,7 @@ namespace nokandro
                     var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     
                     var contentJson = EscapeJsonString(text);
-                    var tagsJson = "[[\"client\",\"nokandro\",\"31990:21ac29561b5de90cdc21995fc0707525cd78c8a52d87721ab681d3d609d1e2df:1763998625847\",\"wss://relay.nostr.band\"]]";
+                    var tagsJson = "[[\"client\",\"nokandro\",\"31990:21ac29561b5de90cdc21995fc0707525cd78c8a52d87721ab681d3d609d1e2df:1763998625847\",\"wss://yabu.me/\"]]";
                     var rawEvent = $"[0,\"{pubkeyHex}\",{createdAt},1,{tagsJson},{contentJson}]";
                     
                     using var sha = SHA256.Create();
