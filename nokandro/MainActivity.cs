@@ -63,6 +63,7 @@ namespace nokandro
 
         // NIP-46 Bunker
         private TextView? _bunkerStatusText;
+        private Android.Widget.Button? _bunkerBatteryOptBtn;
         private BroadcastReceiver? _bunkerReceiver;
 
         // nostrconnect://
@@ -833,6 +834,7 @@ namespace nokandro
             var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
             var bunkerResetSecretBtn = FindViewById<Button>(Resource.Id.bunkerResetSecretBtn);
             _bunkerStatusText = FindViewById<TextView>(Resource.Id.bunkerStatusText);
+            _bunkerBatteryOptBtn = FindViewById<Button>(Resource.Id.bunkerBatteryOptBtn);
 
             // restore bunker relay from prefs
             if (bunkerRelayEdit != null)
@@ -889,9 +891,11 @@ namespace nokandro
                         if (intent.Action == "nokandro.ACTION_BUNKER_STARTED" && _bunkerStatusText != null)
                             _bunkerStatusText.Text = "Bunker: starting...";
                         UpdateNostrConnectUIState(true);
+                        UpdateBatteryOptimizationButton();
                     });
                     if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
                     {
+                        try { _bunkerController.UpdateStartedState(true); } catch { }
                         try
                         {
                             var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
@@ -917,6 +921,7 @@ namespace nokandro
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_STOPPED")
                 {
+                    try { _bunkerController.UpdateStartedState(false); } catch { }
                     RunOnUiThread(() =>
                     {
                         if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: stopped";
@@ -926,6 +931,7 @@ namespace nokandro
                         // re-enable relay edit
                         try { if (bunkerRelayEdit != null) { bunkerRelayEdit.Enabled = true; bunkerRelayEdit.Alpha = 1.0f; } } catch { }
                         UpdateNostrConnectUIState(false);
+                        UpdateBatteryOptimizationButton();
                     });
                     // Persist desired bunker disabled state
                     try
@@ -984,6 +990,12 @@ namespace nokandro
                 };
             }
 
+            if (_bunkerBatteryOptBtn != null)
+            {
+                UpdateBatteryOptimizationButton();
+                _bunkerBatteryOptBtn.Click += (s, e) => RequestIgnoreBatteryOptimizations();
+            }
+
 
             if (bunkerSwitch != null)
             {
@@ -1023,6 +1035,7 @@ namespace nokandro
                     if (e.IsChecked && !BunkerService.IsBunkerActive)
                     {
                         StartBunkerService(bunkerRelayEdit, nsec);
+                        MaybePromptBatteryOptimization();
                     }
                     else if (!e.IsChecked && BunkerService.IsBunkerActive)
                     {
@@ -1469,7 +1482,9 @@ namespace nokandro
                     edit.PutString(PREF_VOICE_OTHER, otherVoice);
                     edit.PutString(PREF_RELAY, relay.Text ?? "wss://relay-jp.nostr.wirednet.jp/");
                     edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
-                    SecurePreferences.SaveNsec(this, nsec != null ? nsec.Text ?? string.Empty : string.Empty);
+                    var nsecToSave = nsec?.Text?.Trim() ?? string.Empty;
+                    if (nsecToSave.StartsWith("nsec1", StringComparison.Ordinal))
+                        SecurePreferences.SaveNsec(this, nsecToSave);
                     edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
                     // persist speech rate as mapped value (0.50..1.50)
@@ -1759,7 +1774,10 @@ namespace nokandro
                 {
                     if (relay != null) edit.PutString(PREF_RELAY, relay.Text ?? string.Empty);
                     if (npub != null) edit.PutString(PREF_NPUB, npub.Text ?? string.Empty);
-                    if (nsec != null) SecurePreferences.SaveNsec(this, nsec.Text ?? string.Empty);
+                    // Only persist nsec when the field still has a valid key — never wipe storage with "".
+                    var nsecText = nsec?.Text?.Trim() ?? string.Empty;
+                    if (nsecText.StartsWith("nsec1", StringComparison.Ordinal))
+                        SecurePreferences.SaveNsec(this, nsecText);
                     edit.Apply();
                 }
             }
@@ -1949,6 +1967,7 @@ namespace nokandro
                                 StartBunkerService(bunkerRelayEdit, nsec);
                             }
                         }
+                        UpdateBatteryOptimizationButton();
                     }
                 }
                 catch { }
@@ -2102,6 +2121,79 @@ namespace nokandro
             try
             {
                 _bunkerController.StopBunker();
+            }
+            catch { }
+        }
+
+        private bool IsIgnoringBatteryOptimizations()
+        {
+            try
+            {
+                if (Build.VERSION.SdkInt < BuildVersionCodes.M) return true;
+                var pm = GetSystemService(PowerService) as PowerManager;
+                return pm?.IsIgnoringBatteryOptimizations(PackageName) == true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void UpdateBatteryOptimizationButton()
+        {
+            try
+            {
+                if (_bunkerBatteryOptBtn == null) return;
+                var excluded = IsIgnoringBatteryOptimizations();
+                _bunkerBatteryOptBtn.Text = excluded ? "Battery optimization: excluded" : "Exclude from battery optimization";
+                _bunkerBatteryOptBtn.Enabled = !excluded;
+            }
+            catch { }
+        }
+
+        private void RequestIgnoreBatteryOptimizations()
+        {
+            try
+            {
+                if (IsIgnoringBatteryOptimizations())
+                {
+                    UpdateBatteryOptimizationButton();
+                    return;
+                }
+
+                if (Build.VERSION.SdkInt < BuildVersionCodes.M) return;
+
+                var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations);
+                intent.SetData(Android.Net.Uri.Parse("package:" + PackageName));
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    StartActivity(new Intent(Android.Provider.Settings.ActionIgnoreBatteryOptimizationSettings));
+                }
+                catch
+                {
+                    Toast.MakeText(this, "Cannot open battery settings: " + ex.Message, ToastLength.Short)?.Show();
+                }
+            }
+        }
+
+        private void MaybePromptBatteryOptimization()
+        {
+            try
+            {
+                if (IsIgnoringBatteryOptimizations()) return;
+                if (_settingsRepo.BunkerBatteryPromptShown) return;
+
+                _settingsRepo.BunkerBatteryPromptShown = true;
+                new Android.App.AlertDialog.Builder(this)
+                    .SetTitle("Keep Bunker running")
+                    .SetMessage("Android may stop Bunker after the app sits unused. Exclude nokandro from battery optimization so the signer stays connected.")
+                    .SetPositiveButton("Exclude", (s, e) => RequestIgnoreBatteryOptimizations())
+                    .SetNegativeButton("Later", (s, e) => { })
+                    .Show();
             }
             catch { }
         }

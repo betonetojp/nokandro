@@ -13,6 +13,7 @@ namespace nokandro
         public const string PREF_BUNKER_RELAY = "pref_bunker_relay";
         public const string PREF_BUNKER_SECRET = "pref_bunker_secret";
         public const string PREF_BUNKER_AUTOSTART_BOOT = "pref_bunker_autostart_boot";
+        public const string PREF_BUNKER_BATTERY_PROMPT_SHOWN = "pref_bunker_battery_prompt_shown";
         public const string PREF_SKIP_CW = "pref_skip_cw";
         public const string PREF_TRUNCATE_LEN = "pref_truncate_len";
         public const string PREF_SPEECH_RATE = "pref_speech_rate";
@@ -62,6 +63,12 @@ namespace nokandro
         {
             get => _prefs.GetBoolean(PREF_BUNKER_AUTOSTART_BOOT, false);
             set => _prefs.Edit()?.PutBoolean(PREF_BUNKER_AUTOSTART_BOOT, value).Apply();
+        }
+
+        public bool BunkerBatteryPromptShown
+        {
+            get => _prefs.GetBoolean(PREF_BUNKER_BATTERY_PROMPT_SHOWN, false);
+            set => _prefs.Edit()?.PutBoolean(PREF_BUNKER_BATTERY_PROMPT_SHOWN, value).Apply();
         }
 
         public bool SkipContentWarning

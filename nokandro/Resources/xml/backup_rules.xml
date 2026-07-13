@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+  <!-- EncryptedSharedPreferences must not be backed up: restore breaks the Keystore master key. -->
+  <exclude domain="sharedpref" path="nokandro_secure_prefs.xml" />
+  <exclude domain="sharedpref" path="_androidx_security_master_key_.xml" />
+</full-backup-content>

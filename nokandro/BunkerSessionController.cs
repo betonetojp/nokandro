@@ -9,7 +9,7 @@ namespace nokandro
         private readonly SettingsRepository _settings;
         private bool _bunkerStarted;
 
-        public bool IsBunkerStarted => _bunkerStarted;
+        public bool IsBunkerStarted => _bunkerStarted || BunkerService.IsBunkerActive;
 
         public BunkerSessionController(Context context, SettingsRepository settings)
         {
@@ -19,7 +19,8 @@ namespace nokandro
 
         public void StartBunker(string nsecHex)
         {
-            if (_bunkerStarted) return;
+            // Prefer live service state so we can restart after sticky death while Activity still holds this controller.
+            if (BunkerService.IsBunkerActive) return;
 
             var relay = _settings.BunkerRelay;
             var secret = _settings.BunkerSecret;

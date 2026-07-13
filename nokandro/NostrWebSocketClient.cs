@@ -6,6 +6,11 @@ namespace nokandro
 {
     public class NostrWebSocketClient : IDisposable
     {
+        private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(30);
+        // Fallback only: protocol keep-alives do not surface as ReceiveAsync messages.
+        // Idle bunker can go long stretches with no kind 24133 traffic.
+        private static readonly TimeSpan ReceiveIdleTimeout = TimeSpan.FromMinutes(10);
+
         private readonly string _url;
         private readonly string _tag;
         private ClientWebSocket? _ws;
@@ -52,6 +57,7 @@ namespace nokandro
                 try
                 {
                     _ws = new ClientWebSocket();
+                    _ws.Options.KeepAliveInterval = KeepAliveInterval;
                     Log($"Connecting to {_url}...");
                     OnStateChanged?.Invoke(WebSocketState.Connecting);
 
@@ -103,6 +109,7 @@ namespace nokandro
             var rawBuffer = pool.Rent(16 * 1024);
             var buffer = new ArraySegment<byte>(rawBuffer);
             var sb = new StringBuilder();
+            var lastActivityUtc = DateTime.UtcNow;
 
             try
             {
@@ -112,7 +119,23 @@ namespace nokandro
                     WebSocketReceiveResult? result;
                     do
                     {
-                        result = await ws.ReceiveAsync(buffer, ct);
+                        using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        idleCts.CancelAfter(ReceiveIdleTimeout);
+                        try
+                        {
+                            result = await ws.ReceiveAsync(buffer, idleCts.Token);
+                        }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                        {
+                            var idleFor = DateTime.UtcNow - lastActivityUtc;
+                            Log($"Receive idle timeout after {idleFor.TotalSeconds:F0}s — aborting for reconnect");
+                            try { ws.Abort(); } catch { }
+                            OnStateChanged?.Invoke(WebSocketState.Closed);
+                            return;
+                        }
+
+                        lastActivityUtc = DateTime.UtcNow;
+
                         if (result.MessageType == WebSocketMessageType.Close)
                         {
                             Log("Websocket closed by server");

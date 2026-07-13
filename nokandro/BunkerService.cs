@@ -65,20 +65,31 @@ namespace nokandro
 
             var nsecHex = intent?.GetStringExtra("nsecHex");
             var relay = intent?.GetStringExtra("relay");
+            var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
 
+            // Sticky restart often delivers a null Intent (no extras). Reload from prefs when enabled.
             if (string.IsNullOrEmpty(nsecHex) || nsecHex!.Length != 64)
             {
-                AppLog.W(TAG, "Invalid nsecHex — stopping");
-                // Must call StartForeground before StopSelf on Android 12+ if started via StartForegroundService
-                try { StartForegroundNotification(); } catch { }
-                StopSelf();
-                return StartCommandResult.NotSticky;
+                if (TryRestoreBunkerCredentials(prefs, out nsecHex, out var restoredRelay, out _))
+                {
+                    AppLog.D(TAG, "Restored bunker credentials from prefs (sticky / null Intent)");
+                    if (string.IsNullOrEmpty(relay))
+                        relay = restoredRelay;
+                }
+                else
+                {
+                    AppLog.W(TAG, "Invalid nsecHex and prefs restore failed — stopping");
+                    // Must call StartForeground before StopSelf on Android 12+ if started via StartForegroundService
+                    try { StartForegroundNotification(); } catch { }
+                    StopSelf();
+                    return StartCommandResult.NotSticky;
+                }
             }
 
             // Convert hex to bytes
             var privKey = new byte[32];
             for (int i = 0; i < 32; i++)
-                privKey[i] = Convert.ToByte(nsecHex.Substring(i * 2, 2), 16);
+                privKey[i] = Convert.ToByte(nsecHex!.Substring(i * 2, 2), 16);
 
             if (string.IsNullOrEmpty(relay))
                 relay = "wss://ephemeral.snowflare.cc/";
@@ -91,7 +102,6 @@ namespace nokandro
             _bunker = null;
 
             var store = new BunkerClientStore(this);
-            var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
             var secret = intent?.GetStringExtra("secret") ?? prefs?.GetString("pref_bunker_secret", null);
 
             var bunkerOptions = CreateBunkerOptions(store);
@@ -536,6 +546,32 @@ namespace nokandro
                 LocalBroadcast.SendBroadcast(this, b);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Reload nsec/relay/secret when Sticky restart delivers a null Intent (no extras).
+        /// Only succeeds when the user still wants bunker enabled and a valid nsec is stored.
+        /// </summary>
+        private bool TryRestoreBunkerCredentials(
+            ISharedPreferences? prefs,
+            out string? nsecHex,
+            out string? relay,
+            out string? secret)
+        {
+            nsecHex = null;
+            relay = null;
+            secret = null;
+
+            if (prefs == null) return false;
+            if (!prefs.GetBoolean("pref_bunker_enabled", false)) return false;
+
+            var nsec = SecurePreferences.GetNsec(this);
+            if (!NostrKeyDecoder.TryDecodeNsecToHex(nsec, out nsecHex) || string.IsNullOrEmpty(nsecHex) || nsecHex.Length != 64)
+                return false;
+
+            relay = prefs.GetString("pref_bunker_relay", "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+            secret = prefs.GetString("pref_bunker_secret", null);
+            return true;
         }
     }
 }
