@@ -10,16 +10,22 @@
 	<com.google.android.material.appbar.MaterialToolbar
 		android:id="@+id/toolbar"
 		android:layout_width="match_parent"
-		android:layout_height="?attr/actionBarSize"
-		android:background="@color/primary"
-		app:titleTextColor="@color/on_primary"
+		android:layout_height="44dp"
+		android:background="@color/background"
+		android:elevation="0dp"
+		app:elevation="0dp"
+		app:contentInsetStart="16dp"
+		app:contentInsetEnd="16dp"
 		app:contentInsetStartWithNavigation="0dp" />
 
 	<com.google.android.material.tabs.TabLayout
 		android:id="@+id/tabLayout"
 		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:background="@color/surface"
+		android:layout_height="40dp"
+		android:background="@color/background"
+		android:elevation="0dp"
+		app:elevation="0dp"
+		app:tabIndicatorHeight="2.5dp"
 		app:tabIndicatorColor="@color/primary"
 		app:tabSelectedTextColor="@color/primary"
 		app:tabTextColor="@color/on_surface_variant"

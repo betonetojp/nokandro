@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <color name="surface">#FFFFFF</color>
-  <color name="background">#FFFAFA</color> <!-- ライトピンクを帯びたスノーホワイト -->
+  <color name="background">#F8FAFC</color> <!-- 清潔感あふれるスレートホワイト -->
   <color name="on_surface">#0F172A</color>
-  <color name="on_surface_variant">#8B8592</color>
-  <color name="primary">#FF5CAD</color>
-  <color name="primary_dark">#E04C94</color>
-  <color name="primary_light">#FF7EBC</color>
-  <color name="primary_container">#FFEAF5</color>
+  <color name="on_surface_variant">#64748B</color>
+  <color name="primary">#E11D48</color> <!-- 上品で深みのあるモダン・ローズ (Rose 600) -->
+  <color name="primary_dark">#BE123C</color>
+  <color name="primary_light">#FB7185</color>
+  <color name="primary_container">#FFE4E6</color>
   <color name="on_primary">#FFFFFF</color>
   <color name="error">#B3261E</color>
-  <color name="outline">#FFEAF5</color>
-  <color name="status_message_color">#FF5CAD</color>
-  <color name="button_disabled">#FFD3E8</color>
-  <color name="update_available">#FFD700</color>
+  <color name="outline">#E2E8F0</color>
+  <color name="status_message_color">#E11D48</color>
+  <color name="button_disabled">#F1F5F9</color>
+  <color name="update_available">#D97706</color>
 </resources>
