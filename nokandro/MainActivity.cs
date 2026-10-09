@@ -3053,7 +3053,15 @@ namespace nokandro
                     itemRemoveBtn.LayoutParameters = btnLp;
                     itemRemoveBtn.SetPadding((int)(5 * density), (int)(5 * density), (int)(5 * density), (int)(5 * density));
                     itemRemoveBtn.SetImageResource(Resource.Drawable.ic_delete);
-                    itemRemoveBtn.SetColorFilter(Android.Graphics.Color.ParseColor("#FF5252"));
+                    try
+                    {
+                        var grayColor = new Android.Graphics.Color(AndroidX.Core.Content.ContextCompat.GetColor(this, Resource.Color.on_surface_variant));
+                        itemRemoveBtn.SetColorFilter(grayColor);
+                    }
+                    catch
+                    {
+                        itemRemoveBtn.SetColorFilter(Android.Graphics.Color.ParseColor("#8B8592"));
+                    }
 
                     var typedVal = new Android.Util.TypedValue();
                     if (Theme?.ResolveAttribute(Android.Resource.Attribute.SelectableItemBackgroundBorderless, typedVal, true) ?? false)

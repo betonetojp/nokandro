@@ -92,7 +92,7 @@
         android:padding="7dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_delete"
-        app:tint="@color/error"
+        app:tint="@color/on_surface_variant"
         android:contentDescription="Remove client" />
 
 </LinearLayout>
