@@ -41,13 +41,13 @@ namespace nokandro
             catch { }
         }
 
-        private static readonly Dictionary<string, string> KnownClientDomains = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly Dictionary<string, string> KnownClientTargets = new(StringComparer.OrdinalIgnoreCase)
         {
             { "streets", "streets.eyemono.moe" },
             { "nokakoi", "nokakoi.com" },
             { "lumilumi", "lumilumi.app" },
             { "nostter", "nostter.app" },
-            { "ehagaki", "ehagaki.com" },
+            { "ehagaki", "https://lokuyow.github.io/ehagaki/" },
             { "coracle", "coracle.social" },
             { "amethyst", "amethyst.social" },
             { "snort", "snort.social" },
@@ -73,11 +73,12 @@ namespace nokandro
 
         /// <summary>
         /// Generates a prioritized list of candidate image URLs to fetch for the client.
+        /// Supports domain-root and subpath-hosted PWAs (e.g., GitHub Pages).
         /// </summary>
         public static List<string> ResolveIconCandidates(string? rawUri, string? clientName)
         {
             var candidates = new List<string>();
-            var domains = new List<string>();
+            var targets = new List<string>();
 
             if (!string.IsNullOrEmpty(rawUri) && NostrConnectUri.TryParse(rawUri, out var parsed) && parsed != null)
             {
@@ -93,56 +94,46 @@ namespace nokandro
                         candidates.Add(metaIcon);
 
                     var metaUrl = ExtractUrlFromMetadata(parsed.Metadata);
-                    if (!string.IsNullOrEmpty(metaUrl) && Uri.TryCreate(metaUrl, UriKind.Absolute, out var u) && !string.IsNullOrEmpty(u.Host))
-                    {
-                        var host = u.Host.ToLowerInvariant();
-                        if (host != "localhost" && host != "127.0.0.1")
-                            domains.Add(host);
-                    }
+                    if (!string.IsNullOrEmpty(metaUrl) && IsHttpUrl(metaUrl))
+                        targets.Add(metaUrl);
                 }
 
                 // 3. Client URL parameter
-                if (!string.IsNullOrEmpty(parsed.Url) && Uri.TryCreate(parsed.Url, UriKind.Absolute, out var parsedUri) && !string.IsNullOrEmpty(parsedUri.Host))
-                {
-                    var host = parsedUri.Host.ToLowerInvariant();
-                    if (host != "localhost" && host != "127.0.0.1")
-                        domains.Add(host);
-                }
+                if (!string.IsNullOrEmpty(parsed.Url) && IsHttpUrl(parsed.Url))
+                    targets.Add(parsed.Url);
             }
 
-            // 4. Resolve domain by client name
+            // 4. Resolve domain/URL by client name
             if (!string.IsNullOrEmpty(clientName))
             {
                 var cleanName = clientName.Trim();
                 var lower = cleanName.ToLowerInvariant();
 
                 // Direct or substring match in known clients
-                foreach (var kvp in KnownClientDomains)
+                foreach (var kvp in KnownClientTargets)
                 {
                     if (lower.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
                     {
-                        domains.Add(kvp.Value);
+                        targets.Add(kvp.Value);
                         break;
                     }
                 }
 
-                // Domain format check (e.g. "foo.bar.org")
-                if (cleanName.Contains('.') && !cleanName.Contains(' ') && !cleanName.Contains('/') && cleanName.Length >= 4)
+                // Direct HTTP(S) URL or domain format check (e.g. "foo.bar.org")
+                if (IsHttpUrl(cleanName))
                 {
-                    domains.Add(lower);
+                    targets.Add(cleanName);
+                }
+                else if (cleanName.Contains('.') && !cleanName.Contains(' ') && !cleanName.Contains('/') && cleanName.Length >= 4)
+                {
+                    targets.Add(lower);
                 }
             }
 
-            // Expand domains into PWA apple-touch-icon, Google Favicon, and favicon.ico
-            foreach (var domain in domains)
+            // Expand targets into candidate icon URLs (PWA apple-touch-icon, Google Favicon, and favicon.ico)
+            foreach (var target in targets)
             {
-                // PWA standard high-res touch icon (180x180)
-                candidates.Add($"https://{domain}/apple-touch-icon.png");
-                candidates.Add($"https://{domain}/apple-touch-icon-precomposed.png");
-                // Google Favicon service
-                candidates.Add($"https://www.google.com/s2/favicons?domain={domain}&sz=128");
-                // Standard favicon
-                candidates.Add($"https://{domain}/favicon.ico");
+                AddTargetCandidates(candidates, target);
             }
 
             // Return unique candidate URLs
@@ -153,6 +144,65 @@ namespace nokandro
                 if (set.Add(c)) result.Add(c);
             }
             return result;
+        }
+
+        private static void AddTargetCandidates(List<string> candidates, string target)
+        {
+            if (string.IsNullOrWhiteSpace(target)) return;
+
+            target = target.Trim();
+
+            if (Uri.TryCreate(target, UriKind.Absolute, out var uri) &&
+                (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) || uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)))
+            {
+                var host = uri.Host.ToLowerInvariant();
+                if (host == "localhost" || host == "127.0.0.1") return;
+
+                var scheme = uri.Scheme.ToLowerInvariant();
+                var portPart = uri.IsDefaultPort ? "" : $":{uri.Port}";
+
+                // Subpath PWA handling (e.g. GitHub Pages /repo/)
+                var path = uri.AbsolutePath;
+                if (!string.IsNullOrEmpty(path) && path != "/")
+                {
+                    var baseDir = $"{scheme}://{host}{portPart}{path}";
+                    if (!baseDir.EndsWith('/'))
+                    {
+                        var lastSegment = System.IO.Path.GetFileName(path);
+                        if (!lastSegment.Contains('.'))
+                        {
+                            baseDir += "/";
+                        }
+                        else
+                        {
+                            var idx = baseDir.LastIndexOf('/');
+                            if (idx >= 0)
+                                baseDir = baseDir.Substring(0, idx + 1);
+                        }
+                    }
+
+                    candidates.Add($"{baseDir}apple-touch-icon.png");
+                    candidates.Add($"{baseDir}apple-touch-icon-precomposed.png");
+                    candidates.Add($"{baseDir}favicon.ico");
+                }
+
+                // Domain-root candidates
+                candidates.Add($"{scheme}://{host}{portPart}/apple-touch-icon.png");
+                candidates.Add($"{scheme}://{host}{portPart}/apple-touch-icon-precomposed.png");
+                candidates.Add($"https://www.google.com/s2/favicons?domain={host}&sz=128");
+                candidates.Add($"{scheme}://{host}{portPart}/favicon.ico");
+            }
+            else
+            {
+                var domain = target.ToLowerInvariant().Trim('/');
+                if (domain != "localhost" && domain != "127.0.0.1")
+                {
+                    candidates.Add($"https://{domain}/apple-touch-icon.png");
+                    candidates.Add($"https://{domain}/apple-touch-icon-precomposed.png");
+                    candidates.Add($"https://www.google.com/s2/favicons?domain={domain}&sz=128");
+                    candidates.Add($"https://{domain}/favicon.ico");
+                }
+            }
         }
 
         private static bool IsHttpUrl(string url) =>
