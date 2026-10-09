@@ -139,6 +139,26 @@ namespace nokandro
         {
             prefs(context)?.Edit()?.Remove(rawKey)?.Apply();
         }
+
+        public static void DeleteAllPermissionsForPackage(Context context, string packageName)
+        {
+            if (string.IsNullOrEmpty(packageName)) return;
+            var p = prefs(context);
+            if (p == null) return;
+            var all = p.All;
+            if (all == null) return;
+            var edit = p.Edit();
+            if (edit == null) return;
+            foreach (var kvp in all)
+            {
+                var key = kvp.Key;
+                if (key.StartsWith(PrefixGrant + packageName + ":") || key.StartsWith(PrefixReject + packageName + ":"))
+                {
+                    edit.Remove(key);
+                }
+            }
+            edit.Apply();
+        }
     }
 
     internal class PermissionEntry

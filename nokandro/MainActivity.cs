@@ -72,6 +72,7 @@ namespace nokandro
         private TextView? _ncStatusText;
         private LinearLayout? _ncClientList;
         private LinearLayout? _nip55ClientList;
+        private readonly HashSet<string> _expandedNip55Apps = new();
         private BroadcastReceiver? _ncReceiver;
         private string[] _lastNcPubkeys = [];
         private string[] _lastNcUris = [];
@@ -2608,50 +2609,241 @@ namespace nokandro
                 return;
             }
 
-            foreach (var perm in permissions)
+            var grouped = permissions
+                .GroupBy(p => p.PackageName)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
+            var padH = (int)(12 * density);
+            var padV = (int)(10 * density);
+
+            foreach (var group in grouped)
             {
-                var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, _nip55ClientList, false);
+                var pkg = group.Key;
 
-                var label = row.FindViewById<TextView>(Resource.Id.clientNameText);
-                if (label != null)
+                // Resolve app label and icon
+                string appLabel = pkg;
+                Android.Graphics.Drawables.Drawable? appIcon = null;
+                try
                 {
-                    var status = perm.IsGranted ? "Allowed" : "Rejected";
-                    var detail = perm.EventKind.HasValue 
-                        ? $"{perm.RequestType} (kind {perm.EventKind.Value})" 
-                        : perm.RequestType;
-                    
-                    label.Text = $"{perm.PackageName}\n{detail}: {status}";
-                    label.SetMaxLines(2);
-                    label.SetSingleLine(false);
-                    try { label.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
-                }
-
-                var removeBtn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
-                if (removeBtn != null)
-                {
-                    removeBtn.Click += (s, e) =>
+                    var pm = PackageManager;
+                    var info = pm?.GetApplicationInfo(pkg, 0);
+                    if (info != null && pm != null)
                     {
-                        var confirmDialog = new Android.App.AlertDialog.Builder(this)
-                            .SetTitle("Remove permission")
-                            .SetMessage($"Remove saved permission for\n{perm.PackageName}?")
-                            .SetPositiveButton("Remove", (sender, args) =>
-                            {
-                                try
-                                {
-                                    Nip55PermissionStore.DeletePermission(this, perm.RawKey);
-                                    RefreshNip55PermissionList();
-                                }
-                                catch { }
-                            })
-                            .SetNegativeButton("Cancel", (sender, args) => { })
-                            .Create();
+                        appLabel = pm.GetApplicationLabel(info) ?? pkg;
+                        appIcon = pm.GetApplicationIcon(info);
+                    }
+                }
+                catch { }
 
-                        confirmDialog.Show();
-                        DialogHelper.ApplyThemeColors(confirmDialog, this);
-                    };
+                var cardLayout = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical
+                };
+                cardLayout.SetBackgroundResource(Resource.Drawable.bg_code_box);
+                var cardLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+                {
+                    BottomMargin = (int)(6 * density)
+                };
+                cardLayout.LayoutParameters = cardLp;
+
+                // Header
+                var headerLayout = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                    Clickable = true,
+                    Focusable = true
+                };
+                headerLayout.SetGravity(GravityFlags.CenterVertical);
+                headerLayout.SetPadding(padH, padV, padH, padV);
+
+                var typedValue = new Android.Util.TypedValue();
+                if (Theme?.ResolveAttribute(Android.Resource.Attribute.SelectableItemBackground, typedValue, true) ?? false)
+                {
+                    headerLayout.SetBackgroundResource(typedValue.ResourceId);
                 }
 
-                _nip55ClientList.AddView(row);
+                // App icon
+                var iconView = new ImageView(this);
+                var iconSize = (int)(28 * density);
+                var iconLp = new LinearLayout.LayoutParams(iconSize, iconSize)
+                {
+                    RightMargin = (int)(10 * density)
+                };
+                iconView.LayoutParameters = iconLp;
+                if (appIcon != null)
+                {
+                    iconView.SetImageDrawable(appIcon);
+                }
+                else
+                {
+                    iconView.SetImageResource(Android.Resource.Drawable.SymDefAppIcon);
+                }
+                headerLayout.AddView(iconView);
+
+                // Title + Subtitle
+                var titleLayout = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical
+                };
+                var titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
+                titleLayout.LayoutParameters = titleLp;
+
+                var nameTv = new TextView(this)
+                {
+                    Text = appLabel,
+                    TextSize = 14f,
+                    Ellipsize = Android.Text.TextUtils.TruncateAt.End
+                };
+                nameTv.SetTypeface(Android.Graphics.Typeface.DefaultBold, Android.Graphics.TypefaceStyle.Bold);
+                try { nameTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+                titleLayout.AddView(nameTv);
+
+                var count = group.Count();
+                var subTv = new TextView(this)
+                {
+                    Text = $"{pkg} • {count} permission{(count > 1 ? "s" : "")}",
+                    TextSize = 11f,
+                    Ellipsize = Android.Text.TextUtils.TruncateAt.End
+                };
+                try { subTv.SetTextColor(Android.Graphics.Color.ParseColor("#888888")); } catch { }
+                titleLayout.AddView(subTv);
+
+                headerLayout.AddView(titleLayout);
+
+                // Clear all button for this package
+                var clearBtn = new Button(this, null, Android.Resource.Attribute.BorderlessButtonStyle)
+                {
+                    Text = "Clear",
+                    TextSize = 11f
+                };
+                clearBtn.SetTextColor(Android.Graphics.Color.ParseColor("#FF5252"));
+                clearBtn.SetPadding((int)(6 * density), 0, (int)(6 * density), 0);
+                clearBtn.Click += (s, e) =>
+                {
+                    var confirmDialog = new Android.App.AlertDialog.Builder(this)
+                        .SetTitle("Remove permissions")
+                        .SetMessage($"Remove all saved permissions for\n{appLabel}?")
+                        .SetPositiveButton("Remove", (sender, args) =>
+                        {
+                            try
+                            {
+                                Nip55PermissionStore.DeleteAllPermissionsForPackage(this, pkg);
+                                _expandedNip55Apps.Remove(pkg);
+                                RefreshNip55PermissionList();
+                            }
+                            catch { }
+                        })
+                        .SetNegativeButton("Cancel", (sender, args) => { })
+                        .Create();
+
+                    confirmDialog.Show();
+                    DialogHelper.ApplyThemeColors(confirmDialog, this);
+                };
+                headerLayout.AddView(clearBtn);
+
+                // Arrow indicator
+                var arrowTv = new TextView(this)
+                {
+                    TextSize = 12f
+                };
+                arrowTv.SetPadding((int)(4 * density), 0, (int)(2 * density), 0);
+                try { arrowTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+                headerLayout.AddView(arrowTv);
+
+                // Children layout (permissions list)
+                var childrenLayout = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical
+                };
+                childrenLayout.SetPadding((int)(38 * density), 0, padH, (int)(8 * density));
+
+                var isExpanded = _expandedNip55Apps.Contains(pkg);
+                childrenLayout.Visibility = isExpanded ? ViewStates.Visible : ViewStates.Gone;
+                arrowTv.Text = isExpanded ? "▲" : "▼";
+
+                headerLayout.Click += (s, e) =>
+                {
+                    if (_expandedNip55Apps.Contains(pkg))
+                    {
+                        _expandedNip55Apps.Remove(pkg);
+                        childrenLayout.Visibility = ViewStates.Gone;
+                        arrowTv.Text = "▼";
+                    }
+                    else
+                    {
+                        _expandedNip55Apps.Add(pkg);
+                        childrenLayout.Visibility = ViewStates.Visible;
+                        arrowTv.Text = "▲";
+                    }
+                };
+
+                // Populate permission rows
+                foreach (var perm in group)
+                {
+                    var itemRow = new LinearLayout(this)
+                    {
+                        Orientation = Orientation.Horizontal
+                    };
+                    itemRow.SetGravity(GravityFlags.CenterVertical);
+                    itemRow.SetPadding(0, (int)(3 * density), 0, (int)(3 * density));
+
+                    var itemTextLayout = new LinearLayout(this)
+                    {
+                        Orientation = Orientation.Vertical
+                    };
+                    var itemTextLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
+                    itemTextLayout.LayoutParameters = itemTextLp;
+
+                    var typeText = perm.EventKind.HasValue
+                        ? $"{perm.RequestType} (kind {perm.EventKind.Value})"
+                        : perm.RequestType;
+
+                    var permTv = new TextView(this)
+                    {
+                        Text = typeText,
+                        TextSize = 12.5f
+                    };
+                    try { permTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+                    itemTextLayout.AddView(permTv);
+
+                    var statusTv = new TextView(this)
+                    {
+                        Text = perm.IsGranted ? "Allowed" : "Rejected",
+                        TextSize = 10.5f
+                    };
+                    statusTv.SetTextColor(perm.IsGranted
+                        ? Android.Graphics.Color.ParseColor("#4CAF50")
+                        : Android.Graphics.Color.ParseColor("#F44336"));
+                    itemTextLayout.AddView(statusTv);
+
+                    itemRow.AddView(itemTextLayout);
+
+                    var itemRemoveBtn = new Button(this, null, Android.Resource.Attribute.BorderlessButtonStyle)
+                    {
+                        Text = "Remove",
+                        TextSize = 10.5f
+                    };
+                    itemRemoveBtn.SetTextColor(Android.Graphics.Color.ParseColor("#FF5252"));
+                    itemRemoveBtn.SetPadding((int)(4 * density), 0, (int)(4 * density), 0);
+                    itemRemoveBtn.Click += (s, e) =>
+                    {
+                        try
+                        {
+                            Nip55PermissionStore.DeletePermission(this, perm.RawKey);
+                            RefreshNip55PermissionList();
+                        }
+                        catch { }
+                    };
+                    itemRow.AddView(itemRemoveBtn);
+
+                    childrenLayout.AddView(itemRow);
+                }
+
+                cardLayout.AddView(headerLayout);
+                cardLayout.AddView(childrenLayout);
+                _nip55ClientList.AddView(cardLayout);
             }
         }
 
