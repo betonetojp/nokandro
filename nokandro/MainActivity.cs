@@ -2502,6 +2502,128 @@ namespace nokandro
             catch { }
         }
 
+        private static View CreateEmptyStateView(Android.Content.Context context, string title, string subtitle, int iconResId, float density)
+        {
+            var container = new LinearLayout(context)
+            {
+                Orientation = Orientation.Vertical
+            };
+            container.SetGravity(GravityFlags.CenterHorizontal);
+            container.SetPadding((int)(16 * density), (int)(18 * density), (int)(16 * density), (int)(18 * density));
+
+            if (iconResId != 0)
+            {
+                var icon = new ImageView(context);
+                icon.SetImageResource(iconResId);
+                var iconSize = (int)(28 * density);
+                var lp = new LinearLayout.LayoutParams(iconSize, iconSize)
+                {
+                    BottomMargin = (int)(6 * density)
+                };
+                icon.LayoutParameters = lp;
+                try { icon.SetColorFilter(Android.Graphics.Color.ParseColor("#888888")); } catch { }
+                container.AddView(icon);
+            }
+
+            var titleTv = new TextView(context)
+            {
+                Text = title,
+                TextSize = 13.5f,
+                Gravity = GravityFlags.CenterHorizontal
+            };
+            titleTv.SetTypeface(Android.Graphics.Typeface.DefaultBold, Android.Graphics.TypefaceStyle.Bold);
+            try { titleTv.SetTextColor(DialogHelper.OnSurfaceColor(context)); } catch { }
+            container.AddView(titleTv);
+
+            if (!string.IsNullOrEmpty(subtitle))
+            {
+                var subTv = new TextView(context)
+                {
+                    Text = subtitle,
+                    TextSize = 11.5f,
+                    Gravity = GravityFlags.CenterHorizontal
+                };
+                var subLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+                {
+                    TopMargin = (int)(3 * density)
+                };
+                subTv.LayoutParameters = subLp;
+                try { subTv.SetTextColor(Android.Graphics.Color.ParseColor("#888888")); } catch { }
+                container.AddView(subTv);
+            }
+
+            return container;
+        }
+
+        private static View CreateStatusBadge(Android.Content.Context context, bool isGranted, float density)
+        {
+            var badge = new TextView(context)
+            {
+                Text = isGranted ? "Allowed" : "Rejected",
+                TextSize = 10f
+            };
+            badge.SetTypeface(Android.Graphics.Typeface.DefaultBold, Android.Graphics.TypefaceStyle.Bold);
+            badge.SetPadding((int)(7 * density), (int)(2.5f * density), (int)(7 * density), (int)(2.5f * density));
+
+            var bg = new Android.Graphics.Drawables.GradientDrawable();
+            bg.SetShape(Android.Graphics.Drawables.ShapeType.Rectangle);
+            bg.SetCornerRadius(4f * density);
+
+            bool isDark = false;
+            try
+            {
+                isDark = (context.Resources?.Configuration?.UiMode & Android.Content.Res.UiMode.NightMask) == Android.Content.Res.UiMode.NightYes;
+            }
+            catch { }
+
+            if (isGranted)
+            {
+                bg.SetColor(Android.Graphics.Color.Argb(isDark ? 50 : 35, 76, 175, 80));
+                badge.SetTextColor(isDark ? Android.Graphics.Color.ParseColor("#81C784") : Android.Graphics.Color.ParseColor("#2E7D32"));
+            }
+            else
+            {
+                bg.SetColor(Android.Graphics.Color.Argb(isDark ? 50 : 35, 244, 67, 54));
+                badge.SetTextColor(isDark ? Android.Graphics.Color.ParseColor("#E57373") : Android.Graphics.Color.ParseColor("#C62828"));
+            }
+
+            badge.Background = bg;
+            return badge;
+        }
+
+        private static string FormatNip55PermissionLabel(string requestType, int? kind)
+        {
+            if (requestType == "sign_event" && kind.HasValue)
+            {
+                var kindDesc = kind.Value switch
+                {
+                    0 => "Profile",
+                    1 => "Note",
+                    3 => "Follows",
+                    4 => "Direct Message (legacy)",
+                    6 => "Repost",
+                    7 => "Reaction",
+                    42 => "Channel Message",
+                    10002 => "Relay List",
+                    _ => null
+                };
+                return kindDesc != null
+                    ? $"Sign Event (kind {kind.Value}: {kindDesc})"
+                    : $"Sign Event (kind {kind.Value})";
+            }
+
+            return requestType switch
+            {
+                "get_public_key" => "Get Public Key",
+                "nip04_encrypt" => "NIP-04 Encrypt",
+                "nip04_decrypt" => "NIP-04 Decrypt",
+                "nip44_encrypt" => "NIP-44 Encrypt",
+                "nip44_decrypt" => "NIP-44 Decrypt",
+                "decrypt_zap_event" => "Decrypt Zap Event",
+                _ => requestType
+            };
+        }
+
         private void RefreshNostrConnectClientList(string[] pubkeys, string[] uris)
         {
             _lastNcPubkeys = pubkeys;
@@ -2510,9 +2632,17 @@ namespace nokandro
             if (_ncClientList == null) return;
             _ncClientList.RemoveAllViews();
 
+            var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
+
             if (pubkeys.Length == 0)
             {
                 if (_ncStatusText != null) _ncStatusText.Text = "nostrconnect: no sessions";
+                _ncClientList.AddView(CreateEmptyStateView(
+                    this,
+                    "No Connected Clients",
+                    "Connect web clients or apps via NostrConnect (NIP-46)",
+                    Android.Resource.Drawable.IcMenuShare,
+                    density));
                 return;
             }
 
@@ -2521,7 +2651,7 @@ namespace nokandro
 
             // Add active sessions header label
             var activeHeader = new TextView(this) { Text = "Active sessions" };
-            activeHeader.SetPadding(8, 12, 8, 4);
+            activeHeader.SetPadding(8, 8, 8, 4);
             activeHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
             try { activeHeader.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
             _ncClientList.AddView(activeHeader);
@@ -2548,7 +2678,7 @@ namespace nokandro
                         : null;
 
                 var labelText = !string.IsNullOrEmpty(displayName)
-                    ? $"{displayName} ({pk[..Math.Min(12, pk.Length)]}...)"
+                    ? displayName
                     : $"{pk[..Math.Min(12, pk.Length)]}...";
 
                 clientItems.Add((pk, uri, displayName ?? "", labelText));
@@ -2562,6 +2692,12 @@ namespace nokandro
                 return string.Compare(a.labelText, b.labelText, StringComparison.CurrentCultureIgnoreCase);
             });
 
+            var avatarColors = new[]
+            {
+                "#E91E63", "#9C27B0", "#673AB7", "#3F51B5",
+                "#2196F3", "#009688", "#4CAF50", "#FF9800"
+            };
+
             foreach (var item in clientItems)
             {
                 var clientPk = item.pk;
@@ -2570,12 +2706,41 @@ namespace nokandro
 
                 var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, _ncClientList, false);
 
+                // Avatar
+                var avatarTv = row.FindViewById<TextView>(Resource.Id.clientAvatarText);
+                if (avatarTv != null)
+                {
+                    var initialText = !string.IsNullOrEmpty(labelText) ? labelText[..1].ToUpperInvariant() : "?";
+                    avatarTv.Text = initialText;
+
+                    var hash = Math.Abs((currentName + clientPk).GetHashCode());
+                    var color = Android.Graphics.Color.ParseColor(avatarColors[hash % avatarColors.Length]);
+                    var avatarBg = new Android.Graphics.Drawables.GradientDrawable();
+                    avatarBg.SetShape(Android.Graphics.Drawables.ShapeType.Oval);
+                    avatarBg.SetColor(color);
+                    avatarTv.Background = avatarBg;
+                }
+
+                // Name & SubText
                 var label = row.FindViewById<TextView>(Resource.Id.clientNameText);
                 if (label != null)
                 {
                     label.Text = labelText;
-                    label.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                    label.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+                }
+
+                var subText = row.FindViewById<TextView>(Resource.Id.clientSubText);
+                if (subText != null)
+                {
+                    var shortPk = clientPk.Length >= 16 ? clientPk[..8] + "..." + clientPk[^6..] : clientPk;
+                    subText.Text = $"Active • {shortPk}";
+                }
+
+                var infoLayout = row.FindViewById<LinearLayout>(Resource.Id.clientInfoLayout);
+                if (infoLayout != null)
+                {
+                    infoLayout.Clickable = true;
+                    infoLayout.Focusable = true;
+                    infoLayout.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
                 }
 
                 var removeBtn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
@@ -2625,13 +2790,16 @@ namespace nokandro
             _nip55ClientList.RemoveAllViews();
 
             var permissions = Nip55PermissionStore.GetAllPermissions(this);
+            var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
 
             if (permissions.Count == 0)
             {
-                var emptyTv = new TextView(this) { Text = "No signer permissions saved" };
-                emptyTv.SetPadding(8, 8, 8, 8);
-                try { emptyTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
-                _nip55ClientList.AddView(emptyTv);
+                _nip55ClientList.AddView(CreateEmptyStateView(
+                    this,
+                    "No Signer Permissions",
+                    "Permissions granted to apps via NIP-55 will appear here",
+                    Android.Resource.Drawable.IcSecure,
+                    density));
                 return;
             }
 
@@ -2671,7 +2839,6 @@ namespace nokandro
                 .ThenBy(a => a.PackageName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
             var padH = (int)(12 * density);
             var padV = (int)(10 * density);
 
@@ -2824,14 +2991,30 @@ namespace nokandro
                 };
 
                 // Populate permission rows
-                foreach (var perm in appGroup.Permissions)
+                for (int permIdx = 0; permIdx < appGroup.Permissions.Count; permIdx++)
                 {
+                    var perm = appGroup.Permissions[permIdx];
+
+                    // Subtle divider line between permissions
+                    if (permIdx > 0)
+                    {
+                        var divider = new View(this);
+                        var divLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, (int)(1 * density))
+                        {
+                            TopMargin = (int)(2 * density),
+                            BottomMargin = (int)(2 * density)
+                        };
+                        divider.LayoutParameters = divLp;
+                        divider.SetBackgroundColor(Android.Graphics.Color.Argb(20, 128, 128, 128));
+                        childrenLayout.AddView(divider);
+                    }
+
                     var itemRow = new LinearLayout(this)
                     {
                         Orientation = Orientation.Horizontal
                     };
                     itemRow.SetGravity(GravityFlags.CenterVertical);
-                    itemRow.SetPadding(0, (int)(3 * density), 0, (int)(3 * density));
+                    itemRow.SetPadding(0, (int)(4 * density), 0, (int)(4 * density));
 
                     var itemTextLayout = new LinearLayout(this)
                     {
@@ -2840,9 +3023,7 @@ namespace nokandro
                     var itemTextLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.0f);
                     itemTextLayout.LayoutParameters = itemTextLp;
 
-                    var typeText = perm.EventKind.HasValue
-                        ? $"{perm.RequestType} (kind {perm.EventKind.Value})"
-                        : perm.RequestType;
+                    var typeText = FormatNip55PermissionLabel(perm.RequestType, perm.EventKind);
 
                     var permTv = new TextView(this)
                     {
@@ -2852,25 +3033,24 @@ namespace nokandro
                     try { permTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
                     itemTextLayout.AddView(permTv);
 
-                    var statusTv = new TextView(this)
-                    {
-                        Text = perm.IsGranted ? "Allowed" : "Rejected",
-                        TextSize = 10.5f
-                    };
-                    statusTv.SetTextColor(perm.IsGranted
-                        ? Android.Graphics.Color.ParseColor("#4CAF50")
-                        : Android.Graphics.Color.ParseColor("#F44336"));
-                    itemTextLayout.AddView(statusTv);
-
                     itemRow.AddView(itemTextLayout);
+
+                    // Status badge (Allowed / Rejected)
+                    var statusBadge = CreateStatusBadge(this, perm.IsGranted, density);
+                    var badgeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+                    {
+                        RightMargin = (int)(6 * density)
+                    };
+                    statusBadge.LayoutParameters = badgeLp;
+                    itemRow.AddView(statusBadge);
 
                     var itemRemoveBtn = new Button(this, null, Android.Resource.Attribute.BorderlessButtonStyle)
                     {
-                        Text = "Remove",
-                        TextSize = 10.5f
+                        Text = "✕",
+                        TextSize = 11f
                     };
                     itemRemoveBtn.SetTextColor(Android.Graphics.Color.ParseColor("#FF5252"));
-                    itemRemoveBtn.SetPadding((int)(4 * density), 0, (int)(4 * density), 0);
+                    itemRemoveBtn.SetPadding((int)(6 * density), 0, (int)(6 * density), 0);
                     itemRemoveBtn.Click += (s, e) =>
                     {
                         try

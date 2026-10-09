@@ -5,31 +5,86 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:minHeight="56dp"
-    android:paddingStart="@dimen/spacing_sm"
+    android:minHeight="60dp"
+    android:paddingStart="@dimen/spacing_md"
     android:paddingEnd="@dimen/spacing_sm"
-    android:layout_marginBottom="4dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:layout_marginBottom="6dp"
     android:background="@drawable/bg_code_box">
 
-    <!-- App icon indicator -->
-    <ImageView
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_marginEnd="@dimen/spacing_md"
-        android:src="@android:drawable/ic_menu_info_details"
-        app:tint="@color/primary" />
+    <!-- Avatar Container with Online Indicator -->
+    <FrameLayout
+        android:id="@+id/clientAvatarContainer"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_marginEnd="@dimen/spacing_md">
 
-    <TextView
-        android:id="@+id/clientNameText"
+        <TextView
+            android:id="@+id/clientAvatarText"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_avatar_circle" />
+
+        <!-- Online indicator dot -->
+        <View
+            android:id="@+id/clientOnlineDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_gravity="bottom|end"
+            android:background="@drawable/bg_online_dot" />
+    </FrameLayout>
+
+    <!-- Info Column -->
+    <LinearLayout
+        android:id="@+id/clientInfoLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="@color/on_surface"
-        android:textSize="14sp"
-        android:fontFamily="sans-serif-medium"
-        android:ellipsize="end"
-        android:maxLines="1" />
+        android:orientation="vertical">
 
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/clientNameText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/on_surface"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium"
+                android:ellipsize="end"
+                android:maxLines="1" />
+
+            <ImageView
+                android:id="@+id/clientEditIcon"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginStart="6dp"
+                android:src="@android:drawable/ic_menu_edit"
+                app:tint="@color/on_surface_variant" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/clientSubText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="11sp"
+            android:ellipsize="end"
+            android:maxLines="1" />
+    </LinearLayout>
+
+    <!-- Remove Button -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/clientRemoveBtn"
         style="@style/AppButtonText"
@@ -37,8 +92,11 @@
         android:layout_height="wrap_content"
         android:text="Remove"
         android:textColor="@color/error"
+        android:textSize="12sp"
         android:minWidth="0dp"
         android:minHeight="36dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
         app:rippleColor="@color/primary_container" />
 
 </LinearLayout>
