@@ -62,6 +62,7 @@ namespace nokandro
         private string _lastMusicInfo = "Music: (waiting)"; // State holder for music info
 
         // NIP-46 Bunker
+        private View? _bunkerStatusDot;
         private TextView? _bunkerStatusText;
         private Android.Widget.Button? _bunkerBatteryOptBtn;
         private BroadcastReceiver? _bunkerReceiver;
@@ -69,7 +70,9 @@ namespace nokandro
         // nostrconnect://
         private const string PREF_NC_CLIENTS = "pref_nc_clients";
         private const string PREF_NC_NAMES = "pref_nc_names";
+        private View? _ncStatusDot;
         private TextView? _ncStatusText;
+        private LinearLayout? _ncStatusContainer;
         private LinearLayout? _ncClientList;
         private LinearLayout? _nip55ClientList;
         private readonly HashSet<string> _expandedNip55Apps = new();
@@ -206,7 +209,7 @@ namespace nokandro
             if (tabLayout != null)
             {
                 tabLayout.AddTab(tabLayout.NewTab().SetText("Main"));
-                tabLayout.AddTab(tabLayout.NewTab().SetText("Bunker"));
+                tabLayout.AddTab(tabLayout.NewTab().SetText("Signer"));
             }
 
             tabLayout?.AddOnTabSelectedListener(new SimpleTabSelectedListener(tab =>
@@ -230,7 +233,7 @@ namespace nokandro
             }
             catch { }
 
-            // nostrconnect_uriがIntentに含まれていればBunkerタブを初期表示し、入力欄に貼り付け（接続確認はUI構築後）
+            // nostrconnect_uriがIntentに含まれていればBunker/Signerタブを初期表示し、入力欄に貼り付け（接続確認はUI構築後）
             var nostrconnectUri = Intent?.GetStringExtra("nostrconnect_uri");
             if (!string.IsNullOrEmpty(nostrconnectUri))
             {
@@ -244,10 +247,11 @@ namespace nokandro
                 SwitchToTab(0);
             }
 
-            // If launched from Bunker notification, switch to Bunker tab
+            // If launched from Bunker/Signer notification, switch to Signer tab
             try
             {
-                if (Intent?.GetStringExtra("openTab") == "bunker")
+                var openTab = Intent?.GetStringExtra("openTab");
+                if (openTab == "bunker" || openTab == "signer")
                     SwitchToTab(1);
             }
             catch { }
@@ -834,6 +838,7 @@ namespace nokandro
             var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
             var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
             var bunkerResetSecretBtn = FindViewById<Button>(Resource.Id.bunkerResetSecretBtn);
+            _bunkerStatusDot = FindViewById<View>(Resource.Id.bunkerStatusDot);
             _bunkerStatusText = FindViewById<TextView>(Resource.Id.bunkerStatusText);
             _bunkerBatteryOptBtn = FindViewById<Button>(Resource.Id.bunkerBatteryOptBtn);
 
@@ -889,8 +894,8 @@ namespace nokandro
                     RunOnUiThread(() =>
                     {
                         if (bunkerUriText != null) bunkerUriText.Text = uri;
-                        if (intent.Action == "nokandro.ACTION_BUNKER_STARTED" && _bunkerStatusText != null)
-                            _bunkerStatusText.Text = "Bunker: starting...";
+                        if (intent.Action == "nokandro.ACTION_BUNKER_STARTED")
+                            UpdateBunkerStatusDisplay("Bunker: starting...", false, isStarting: true);
                         UpdateNostrConnectUIState(true);
                         UpdateBatteryOptimizationButton();
                     });
@@ -915,17 +920,16 @@ namespace nokandro
                 else if (intent.Action == "nokandro.ACTION_BUNKER_LOG")
                 {
                     var msg = intent.GetStringExtra("message") ?? "";
-                    RunOnUiThread(() =>
-                    {
-                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: " + msg;
-                    });
+                    var isRun = msg.Contains("running", StringComparison.OrdinalIgnoreCase) || msg.Contains("waiting", StringComparison.OrdinalIgnoreCase);
+                    var isStart = msg.Contains("starting", StringComparison.OrdinalIgnoreCase) || msg.Contains("connecting", StringComparison.OrdinalIgnoreCase);
+                    UpdateBunkerStatusDisplay("Bunker: " + msg, isRun, isStart);
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_STOPPED")
                 {
                     try { _bunkerController.UpdateStartedState(false); } catch { }
                     RunOnUiThread(() =>
                     {
-                        if (_bunkerStatusText != null) _bunkerStatusText.Text = "Bunker: stopped";
+                        UpdateBunkerStatusDisplay("Bunker: stopped", false);
                         if (bunkerUriText != null) bunkerUriText.Text = "";
                         // sync switch state
                         try { if (bunkerSwitch != null && bunkerSwitch.Checked) bunkerSwitch.Checked = false; } catch { }
@@ -1107,7 +1111,7 @@ namespace nokandro
                             return;
                         }
 
-                        var resetDialog = new Android.App.AlertDialog.Builder(this)
+                        var resetDialog = DialogHelper.CreateBuilder(this)
                              .SetTitle("Reset Bunker Secret")
                              .SetMessage("Reset the bunker secret and remove all paired clients?\nThe bunker will stop. After you turn it on again, share the new bunker URI with every client.")
                              .SetPositiveButton("Reset", (sender, args) =>
@@ -1140,6 +1144,8 @@ namespace nokandro
             // --- nostrconnect:// ---
             ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
             var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
+            _ncStatusContainer = FindViewById<LinearLayout>(Resource.Id.ncStatusContainer);
+            _ncStatusDot = FindViewById<View>(Resource.Id.ncStatusDot);
             _ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
             _ncClientList = FindViewById<LinearLayout>(Resource.Id.ncClientList);
             _nip55ClientList = FindViewById<LinearLayout>(Resource.Id.nip55ClientList);
@@ -1403,7 +1409,7 @@ namespace nokandro
                         {
                             try
                             {
-                                var dlg = new Android.App.AlertDialog.Builder(this)
+                                var dlg = DialogHelper.CreateBuilder(this)
                                     .SetTitle("Permission Required")
                                     .SetMessage("To use Now Playing, you must grant the Notification Listener permission.")
                                     .SetPositiveButton("Grant", (sender, args) =>
@@ -1963,12 +1969,11 @@ namespace nokandro
                             var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
                             if (bunkerUriText != null && !string.IsNullOrEmpty(BunkerService.LastBunkerUri))
                                 bunkerUriText.Text = BunkerService.LastBunkerUri;
-                            if (_bunkerStatusText != null)
-                                _bunkerStatusText.Text = "Bunker: running";
+                            UpdateBunkerStatusDisplay("Bunker: running", true);
                         }
-                        else if (wantBunker && _bunkerStatusText != null)
+                        else if (wantBunker)
                         {
-                            _bunkerStatusText.Text = "Bunker: starting...";
+                            UpdateBunkerStatusDisplay("Bunker: starting...", false, isStarting: true);
                             if (nsec != null && IsNsecValid())
                             {
                                 StartBunkerService(bunkerRelayEdit, nsec);
@@ -1988,7 +1993,7 @@ namespace nokandro
             base.OnNewIntent(intent);
             try
             {
-                // nostrconnect_uriがあればBunkerタブを表示してncUriEditに貼り付ける
+                // nostrconnect_uriがあればBunker/Signerタブを表示してncUriEditに貼り付ける
                 var ncUri = intent?.GetStringExtra("nostrconnect_uri");
                 if (!string.IsNullOrEmpty(ncUri))
                 {
@@ -2001,7 +2006,7 @@ namespace nokandro
                     RunOnUiThread(() => PromptNostrConnectIfValid(ncUri, nsecEdit));
                 }
                 var openTab = intent?.GetStringExtra("openTab");
-                if (openTab == "bunker")
+                if (openTab == "bunker" || openTab == "signer")
                     SwitchToTab(1);
                 else if (openTab == "main")
                     SwitchToTab(0);
@@ -2250,12 +2255,13 @@ namespace nokandro
                 if (_settingsRepo.BunkerBatteryPromptShown) return;
 
                 _settingsRepo.BunkerBatteryPromptShown = true;
-                new Android.App.AlertDialog.Builder(this)
+                var bDlg = DialogHelper.CreateBuilder(this)
                     .SetTitle("Keep Bunker running")
                     .SetMessage("Android may stop Bunker after the app sits unused. Exclude nokandro from battery optimization so the signer stays connected.")
                     .SetPositiveButton("Exclude", (s, e) => RequestIgnoreBatteryOptimizations())
                     .SetNegativeButton("Later", (s, e) => { })
                     .Show();
+                DialogHelper.ApplyThemeColors(bDlg, this);
             }
             catch { }
         }
@@ -2330,7 +2336,7 @@ namespace nokandro
                             btn.Click += (s, e) =>
                             {
                                 var shortName = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
-                                var removeDialog = new Android.App.AlertDialog.Builder(this)
+                                var removeDialog = DialogHelper.CreateBuilder(this)
                                     .SetTitle("Remove client")
                                     .SetMessage($"Remove authorized client\n{shortName}?\nThe bunker URI secret will change (shown URI and copy update). Other paired clients can reconnect without the new URI.")
                                     .SetPositiveButton("Remove", (sender, args) =>
@@ -2379,7 +2385,7 @@ namespace nokandro
                 ? $"Client: {shortPk}\nRelay: {relayPreview}\n\nConnect this app as a remote signer?"
                 : $"Client: {displayName}\n({shortPk})\nRelay: {relayPreview}\n\nConnect this app as a remote signer?";
 
-            var dialog = new Android.App.AlertDialog.Builder(this)
+            var dialog = DialogHelper.CreateBuilder(this)
                 .SetTitle("NostrConnect request")
                 .SetMessage(message)
                 .SetPositiveButton("Connect", (sender, args) =>
@@ -2507,6 +2513,56 @@ namespace nokandro
             catch { }
         }
 
+        private void UpdateBunkerStatusDisplay(string text, bool isRunning, bool isStarting = false)
+        {
+            RunOnUiThread(() =>
+            {
+                if (_bunkerStatusText != null)
+                {
+                    _bunkerStatusText.Text = text;
+                    if (isRunning)
+                    {
+                        _bunkerStatusText.SetTextColor(new Android.Graphics.Color(0x4C, 0xAF, 0x50));
+                        _bunkerStatusDot?.SetBackgroundResource(Resource.Drawable.bg_online_dot);
+                    }
+                    else if (isStarting)
+                    {
+                        var primaryColor = DialogHelper.PrimaryColor(this);
+                        _bunkerStatusText.SetTextColor(primaryColor);
+                        _bunkerStatusDot?.SetBackgroundResource(Resource.Drawable.bg_online_dot);
+                    }
+                    else
+                    {
+                        var variantColor = DialogHelper.OnSurfaceVariantColor(this);
+                        _bunkerStatusText.SetTextColor(variantColor);
+                        _bunkerStatusDot?.SetBackgroundResource(Resource.Drawable.bg_stopped_dot);
+                    }
+                }
+            });
+        }
+
+        private void UpdateNcStatusDisplay(string text, bool hasSessions)
+        {
+            RunOnUiThread(() =>
+            {
+                if (_ncStatusText != null)
+                {
+                    _ncStatusText.Text = text;
+                    if (hasSessions)
+                    {
+                        _ncStatusText.SetTextColor(new Android.Graphics.Color(0x4C, 0xAF, 0x50));
+                        _ncStatusDot?.SetBackgroundResource(Resource.Drawable.bg_online_dot);
+                    }
+                    else
+                    {
+                        var variantColor = DialogHelper.OnSurfaceVariantColor(this);
+                        _ncStatusText.SetTextColor(variantColor);
+                        _ncStatusDot?.SetBackgroundResource(Resource.Drawable.bg_stopped_dot);
+                    }
+                }
+            });
+        }
+
         private void UpdateNostrConnectUIState(bool bunkerEnabled)
         {
             var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
@@ -2524,7 +2580,11 @@ namespace nokandro
                 ncDisabledHint.Visibility = bunkerEnabled ? ViewStates.Gone : ViewStates.Visible;
             }
 
-            if (ncStatusText != null)
+            if (_ncStatusContainer != null)
+            {
+                _ncStatusContainer.Visibility = bunkerEnabled ? ViewStates.Visible : ViewStates.Gone;
+            }
+            else if (ncStatusText != null)
             {
                 ncStatusText.Visibility = bunkerEnabled ? ViewStates.Visible : ViewStates.Gone;
             }
@@ -2697,7 +2757,7 @@ namespace nokandro
 
             if (pubkeys.Length == 0)
             {
-                if (_ncStatusText != null) _ncStatusText.Text = "nostrconnect: no sessions";
+                UpdateNcStatusDisplay("nostrconnect: no sessions", false);
                 _ncClientList.AddView(CreateEmptyStateView(
                     this,
                     "No Connected Clients",
@@ -2707,8 +2767,7 @@ namespace nokandro
                 return;
             }
 
-            if (_ncStatusText != null)
-                _ncStatusText.Text = $"nostrconnect: {pubkeys.Length} session(s)";
+            UpdateNcStatusDisplay($"nostrconnect: {pubkeys.Length} session(s)", true);
 
             // Add active sessions header label
             var activeHeader = new TextView(this) { Text = "Active sessions" };
@@ -2810,7 +2869,7 @@ namespace nokandro
                     removeBtn.Click += (s, e) =>
                     {
                         var name = GetNcClientDisplayName(clientPk);
-                        var removeDialog = new Android.App.AlertDialog.Builder(this)
+                        var removeDialog = DialogHelper.CreateBuilder(this)
                             .SetTitle("Remove client")
                             .SetMessage($"Disconnect and remove {name}?")
                             .SetPositiveButton("Remove", (sender, args) =>
@@ -2994,7 +3053,7 @@ namespace nokandro
                 clearBtn.SetPadding((int)(6 * density), 0, (int)(6 * density), 0);
                 clearBtn.Click += (s, e) =>
                 {
-                    var confirmDialog = new Android.App.AlertDialog.Builder(this)
+                    var confirmDialog = DialogHelper.CreateBuilder(this)
                         .SetTitle("Remove permissions")
                         .SetMessage($"Remove all saved permissions for\n{appLabel}?")
                         .SetPositiveButton("Remove", (sender, args) =>
@@ -3136,7 +3195,7 @@ namespace nokandro
 
                     itemRemoveBtn.Click += (s, e) =>
                     {
-                        var confirmDialog = new Android.App.AlertDialog.Builder(this)
+                        var confirmDialog = DialogHelper.CreateBuilder(this)
                             .SetTitle("Remove permission")
                             .SetMessage($"Remove permission:\n{typeText}\nfor {appLabel}?")
                             .SetPositiveButton("Remove", (sender, args) =>
@@ -3174,7 +3233,7 @@ namespace nokandro
             };
             input.SetSingleLine(true);
 
-            var editDialog = new Android.App.AlertDialog.Builder(this)
+            var editDialog = DialogHelper.CreateBuilder(this)
                  .SetTitle("Edit client name")
                  .SetMessage(clientPubkey[..Math.Min(12, clientPubkey.Length)] + "...")
                  .SetView(input)
@@ -3777,7 +3836,7 @@ namespace nokandro
             var list = foundRelays.OrderBy(x => x).ToArray();
             RunOnUiThread(() =>
             {
-                new Android.App.AlertDialog.Builder(this)
+                var relayDialog = DialogHelper.CreateBuilder(this)
                     .SetTitle("Select Relay")
                     .SetItems(list, (s, e) =>
                     {
@@ -3790,6 +3849,7 @@ namespace nokandro
                         } catch {}
                     })
                     .Show();
+                DialogHelper.ApplyThemeColors(relayDialog, this);
             });
         }
 

@@ -685,13 +685,35 @@
 								android:layout_marginStart="@dimen/spacing_sm" />
 						</LinearLayout>
 
-						<TextView
-							android:id="@+id/bunkerStatusText"
-							android:layout_width="match_parent"
+						<LinearLayout
+							android:id="@+id/bunkerStatusContainer"
+							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Bunker: stopped"
-							android:textColor="@color/status_message_color"
-							android:layout_marginTop="@dimen/spacing_xs" />
+							android:orientation="horizontal"
+							android:gravity="center_vertical"
+							android:paddingStart="8dp"
+							android:paddingEnd="10dp"
+							android:paddingTop="3dp"
+							android:paddingBottom="3dp"
+							android:layout_marginTop="@dimen/spacing_xs"
+							android:background="@drawable/bg_status_chip">
+
+							<View
+								android:id="@+id/bunkerStatusDot"
+								android:layout_width="7dp"
+								android:layout_height="7dp"
+								android:layout_marginEnd="6dp"
+								android:background="@drawable/bg_stopped_dot" />
+
+							<TextView
+								android:id="@+id/bunkerStatusText"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Bunker: stopped"
+								android:textSize="11.5sp"
+								android:fontFamily="sans-serif-medium"
+								android:textColor="@color/on_surface_variant" />
+						</LinearLayout>
 					</LinearLayout>
 				</LinearLayout>
 
@@ -758,13 +780,35 @@
 							android:layout_marginStart="@dimen/spacing_sm" />
 					</LinearLayout>
 
-					<TextView
-						android:id="@+id/ncStatusText"
-						android:layout_width="match_parent"
+					<LinearLayout
+						android:id="@+id/ncStatusContainer"
+						android:layout_width="wrap_content"
 						android:layout_height="wrap_content"
-						android:text="nostrconnect: no sessions"
-						android:textColor="@color/status_message_color"
-						android:layout_marginBottom="@dimen/spacing_xs" />
+						android:orientation="horizontal"
+						android:gravity="center_vertical"
+						android:paddingStart="8dp"
+						android:paddingEnd="10dp"
+						android:paddingTop="3dp"
+						android:paddingBottom="3dp"
+						android:layout_marginBottom="@dimen/spacing_xs"
+						android:background="@drawable/bg_status_chip">
+
+						<View
+							android:id="@+id/ncStatusDot"
+							android:layout_width="7dp"
+							android:layout_height="7dp"
+							android:layout_marginEnd="6dp"
+							android:background="@drawable/bg_stopped_dot" />
+
+						<TextView
+							android:id="@+id/ncStatusText"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:text="nostrconnect: no sessions"
+							android:textSize="11.5sp"
+							android:fontFamily="sans-serif-medium"
+							android:textColor="@color/on_surface_variant" />
+					</LinearLayout>
 
 					<LinearLayout
 						android:id="@+id/ncClientList"

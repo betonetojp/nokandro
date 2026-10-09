@@ -94,7 +94,7 @@ namespace nokandro
             root.AddView(remember);
 
             // AlertDialogでタイトルバーをカスタム
-            var dlg = new Android.App.AlertDialog.Builder(this)
+            var dlg = DialogHelper.CreateBuilder(this)
                 .SetTitle("nokandro")
                 .SetIcon(Resource.Mipmap.ic_launcher)
                 .SetView(root)
