@@ -59,21 +59,36 @@ namespace nokandro
             // 2. Check disk cache
             var cacheDir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
             System.IO.Directory.CreateDirectory(cacheDir);
-            var filePath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}.png");
+            var srcFilePath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}_src.png");
+            var legacyFilePath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}.png");
 
-            if (System.IO.File.Exists(filePath))
+            // Delete legacy oversize cache file if present so it gets re-downloaded/re-processed cleanly
+            if (System.IO.File.Exists(legacyFilePath))
+            {
+                try { System.IO.File.Delete(legacyFilePath); } catch { }
+            }
+
+            if (System.IO.File.Exists(srcFilePath))
             {
                 try
                 {
-                    var diskBmp = BitmapFactory.DecodeFile(filePath);
-                    if (diskBmp != null)
+                    var diskSrcBmp = BitmapFactory.DecodeFile(srcFilePath);
+                    if (diskSrcBmp != null)
                     {
-                        MemoryCache[pubkeyHex] = diskBmp;
-                        ApplyAvatar(layout, pubkeyHex, diskBmp);
-                        return;
+                        var avatarBmp = CreateCircularAvatar(diskSrcBmp, context);
+                        diskSrcBmp.Recycle();
+                        if (avatarBmp != null)
+                        {
+                            MemoryCache[pubkeyHex] = avatarBmp;
+                            ApplyAvatar(layout, pubkeyHex, avatarBmp);
+                            return;
+                        }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Android.Util.Log.Warn("UserProfileLoader", $"Disk cache load failed: {ex}");
+                }
             }
 
             // 3. Fetch kind 0 metadata from relays in background
@@ -84,17 +99,11 @@ namespace nokandro
                     var pictureUrl = await FetchPictureUrlAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
                     if (string.IsNullOrEmpty(pictureUrl)) return;
 
-                    var bitmap = await DownloadAndCropAvatarAsync(pictureUrl, filePath).ConfigureAwait(false);
+                    var bitmap = await DownloadAndProcessAvatarAsync(pictureUrl, srcFilePath, context).ConfigureAwait(false);
                     if (bitmap != null)
                     {
                         MemoryCache[pubkeyHex] = bitmap;
-                        layout.Post(() =>
-                        {
-                            if (string.Equals(layout.Tag?.ToString(), pubkeyHex, StringComparison.OrdinalIgnoreCase))
-                            {
-                                ApplyAvatar(layout, pubkeyHex, bitmap);
-                            }
-                        });
+                        ApplyAvatar(layout, pubkeyHex, bitmap);
                     }
                 }
                 catch (Exception ex)
@@ -122,13 +131,23 @@ namespace nokandro
 
         private static void ApplyAvatar(TextInputLayout layout, string expectedPubkey, Bitmap bitmap)
         {
-            try
+            layout.Post(() =>
             {
-                var drawable = new BitmapDrawable(layout.Resources, bitmap);
-                layout.StartIconDrawable = drawable;
-                layout.SetStartIconTintList(null); // Clear tint to preserve avatar photo colors
-            }
-            catch { }
+                try
+                {
+                    if (!string.Equals(layout.Tag?.ToString(), expectedPubkey, StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    var drawable = new BitmapDrawable(layout.Resources, bitmap);
+                    layout.StartIconDrawable = drawable;
+                    layout.SetStartIconTintList(null); // Clear tint to preserve avatar photo colors
+                    Android.Util.Log.Info("UserProfileLoader", $"Applied avatar successfully to TextInputLayout (bitmap size: {bitmap.Width}x{bitmap.Height}, density: {bitmap.Density})");
+                }
+                catch (Exception ex)
+                {
+                    Android.Util.Log.Error("UserProfileLoader", $"Failed to apply avatar: {ex}");
+                }
+            });
         }
 
         private static void ResetToDefaultIcon(Context context, TextInputLayout layout)
@@ -245,7 +264,7 @@ namespace nokandro
             return null;
         }
 
-        private static async Task<Bitmap?> DownloadAndCropAvatarAsync(string pictureUrl, string diskCachePath)
+        private static async Task<Bitmap?> DownloadAndProcessAvatarAsync(string pictureUrl, string diskCachePath, Context context)
         {
             try
             {
@@ -255,36 +274,49 @@ namespace nokandro
                 var rawBitmap = await BitmapFactory.DecodeByteArrayAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
                 if (rawBitmap == null) return null;
 
-                var circular = CreateCircularBitmap(rawBitmap, 120);
-                rawBitmap.Recycle();
-
-                if (circular != null)
+                // Save to disk cache for instant offline restore
+                try
                 {
-                    try
-                    {
-                        using var fs = System.IO.File.OpenWrite(diskCachePath);
-                        circular.Compress(Bitmap.CompressFormat.Png, 100, fs);
-                    }
-                    catch { }
-                    return circular;
+                    using var fs = System.IO.File.OpenWrite(diskCachePath);
+                    rawBitmap.Compress(Bitmap.CompressFormat.Png, 100, fs);
                 }
+                catch { }
+
+                var avatar = CreateCircularAvatar(rawBitmap, context);
+                rawBitmap.Recycle();
+                return avatar;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Error("UserProfileLoader", $"DownloadAndProcessAvatarAsync error: {ex}");
+            }
             return null;
         }
 
-        private static Bitmap? CreateCircularBitmap(Bitmap source, int targetSize)
+        private static Bitmap? CreateCircularAvatar(Bitmap source, Context context, float canvasDp = 48f, float avatarDp = 24f)
         {
             try
             {
-                var output = Bitmap.CreateBitmap(targetSize, targetSize, Bitmap.Config.Argb8888!);
-                using var canvas = new Canvas(output!);
-                using var paint = new Paint { AntiAlias = true };
+                var metrics = context.Resources?.DisplayMetrics;
+                var density = metrics?.Density ?? 2.0f;
+                var densityDpi = (int)(metrics?.DensityDpi ?? Android.Util.DisplayMetricsDensity.Default);
+
+                var canvasPx = Math.Max(48, (int)Math.Round(canvasDp * density));
+                var avatarPx = Math.Max(24, (int)Math.Round(avatarDp * density));
+
+                var output = Bitmap.CreateBitmap(canvasPx, canvasPx, Bitmap.Config.Argb8888!);
+                if (output == null) return null;
+                output.Density = densityDpi;
+
+                using var canvas = new Canvas(output);
+                using var paint = new Paint { AntiAlias = true, FilterBitmap = true };
+
+                var offset = (canvasPx - avatarPx) * 0.5f;
 
                 var matrix = new Matrix();
-                var scale = Math.Max((float)targetSize / source.Width, (float)targetSize / source.Height);
-                var dx = (targetSize - source.Width * scale) * 0.5f;
-                var dy = (targetSize - source.Height * scale) * 0.5f;
+                var scale = Math.Max((float)avatarPx / source.Width, (float)avatarPx / source.Height);
+                var dx = offset + (avatarPx - source.Width * scale) * 0.5f;
+                var dy = offset + (avatarPx - source.Height * scale) * 0.5f;
                 matrix.SetScale(scale, scale);
                 matrix.PostTranslate(dx, dy);
 
@@ -292,13 +324,27 @@ namespace nokandro
                 shader.SetLocalMatrix(matrix);
                 paint.SetShader(shader);
 
-                var radius = targetSize / 2f;
-                canvas.DrawCircle(radius, radius, radius, paint);
+                var cx = canvasPx * 0.5f;
+                var cy = canvasPx * 0.5f;
+                var radius = avatarPx * 0.5f;
+                canvas.DrawCircle(cx, cy, radius, paint);
+
+                // Subtle border to outline the avatar against dark/light backgrounds
+                var strokeWidth = Math.Max(1f, density * 0.75f);
+                using var borderPaint = new Paint
+                {
+                    AntiAlias = true,
+                    Color = new Color(128, 128, 128, 60),
+                    StrokeWidth = strokeWidth
+                };
+                borderPaint.SetStyle(Paint.Style.Stroke);
+                canvas.DrawCircle(cx, cy, radius - strokeWidth * 0.5f, borderPaint);
 
                 return output;
             }
-            catch
+            catch (Exception ex)
             {
+                Android.Util.Log.Error("UserProfileLoader", $"CreateCircularAvatar error: {ex}");
                 return null;
             }
         }
