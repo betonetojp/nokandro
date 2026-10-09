@@ -2,6 +2,10 @@
 
 Package name: `com.nokakoi.nokandro`
 
+[English](#overview) | [日本語 (Japanese)](#japanese)
+
+> 日本語のドキュメントは本ページの下部にあります。[日本語セクションへ移動](#japanese)
+
 ## Overview
 
 `nokandro` is a lightweight Android app that connects to the Nostr protocol. It reads incoming posts using TTS (Text-to-Speech), shares your "Now Playing" music status, and acts as a remote signer for both **NIP-46** (Bunker / nostrconnect) and **NIP-55** (`nostrsigner:` + content provider). The UI is split into **Main** and **Signer** tabs.
@@ -31,10 +35,11 @@ Package name: `com.nokakoi.nokandro`
 
 1. Download and install the provided APK.
 2. On first launch, you may be prompted for permissions such as notifications. If enabling "Broadcast Now Playing", you will be prompted to grant "Notification Listener" permission.
+3. When using the In-App Updater for the first time, Android will prompt you to grant "Install unknown apps" permission for nokandro.
 
 ## Main Tab
 
-- **App Title & Version (In-App Updater)**: Tap the version number (top right) to check for updates. When a newer version is available on GitHub Releases, a gold badge displays `vCurrent -> vNew`. Tapping it opens an update dialog with rich formatted markdown release notes and download size, allowing you to download and install the update directly inside the app.
+- **App Title & Version (In-App Updater)**: Tap the version number (top right) to check for updates. When a newer version is available on GitHub Releases, a gold badge displays `vCurrent -> vNew`. Tapping it opens an update dialog with rich formatted markdown release notes and download size, allowing you to download and install the update directly inside the app (first-time update will prompt to enable "Install unknown apps" in Settings).
 - **Your npub & Profile Avatar**: Your Nostr public key (bech32 `npub...` or hex). nokandro automatically queries relays for your `kind: 0` profile metadata and displays your profile picture as a circular avatar in the input field.
 - **Your nsec (optional)**: Your Nostr private key (bech32 `nsec...`). Required for publishing "Now Playing" status and for the Signer (Bunker) feature. Entering an nsec automatically derives the corresponding npub.
 - **Relay**: The URL of the relay to connect to. Use the **v** button to fetch your relay list (kind: 10002) and select one.
@@ -164,8 +169,17 @@ In that case, please follow these steps to allow restricted settings:
 2. Tap the menu in the top right corner (three dots) and select "Allow restricted settings".
 3. Return to the app and try enabling the permission switch again.
 
+## Note for In-App Updates (Unknown App Sources Permission)
+
+When installing an update directly from within nokandro for the first time, Android 8.0+ requires permission to allow nokandro to install unknown apps:
+1. Tap the version number and tap "Update" in the update dialog.
+2. A "Permission Required" dialog will appear. Tap "Open Settings".
+3. In the Android Settings screen that opens, toggle "Allow from this source" to ON.
+4. Return to nokandro and tap "Update" again to begin downloading and installing the new version.
+
 ---
 
+<a id="japanese"></a>
 ## 概要
 
 `nokandro` は Nostr プロトコルに接続し、受信したメッセージを TTS（音声合成）で読み上げたり、再生中の音楽情報（Now Playing）を共有したり、**NIP-46**（Bunker / nostrconnect）および **NIP-55**（`nostrsigner:` + ContentProvider）リモート署名として動作する Android アプリです。UIは **Main** タブと **Signer** タブに分かれています。
@@ -180,7 +194,7 @@ In that case, please follow these steps to allow restricted settings:
 - **NIP-46 リモート署名**: 外部の Nostr クライアントからの署名・暗号化/復号リクエストに応答するリモート署名機能です（`bunker://` および `nostrconnect://` に対応）。クライアントの Web アイコン取得（PWA apple-touch-icon や GitHub Pages サブパス対応）や表示名のインライン編集が可能です。
 - **NIP-55 Signer**: 外部署名対応クライアント向けに `nostrsigner:` と NIP-55 ContentProvider（`SIGN_EVENT`, `NIP04_DECRYPT` など）をサポートします。
 - **NIP-55 権限マネージャー**: 保存された権限を呼び出し元アプリごとにアプリアイコン・名前付きカードでグループ化。展開/折りたたみ、わかりやすいイベント種別注釈、Allowed/Rejected バッジ、アプリ単位の一括削除（Clear）に対応しています。
-- **モダンUI & スティッキーフッター**: Material Design 3 に準拠。画面下部に常駐するフッターにリアルタイムのサービス稼働状態（Running/Stopped バッジ）やオフタイマー残時間を表示します。
+- **モダンUI & スティッキーフッター**: Material Design 3 に準拠。画面下部に常駐するフッターにリアルタイムのサービス稼働状況（Running/Stopped バッジ）やオフタイマー残時間を表示します。
 - **端末再起動時の自動起動（任意）**: Signer タブのスイッチで、端末再起動後に Bunker を自動起動できます。
 - 指定した `npub` に基づくフォローリスト・ミュートリスト・ミュートワードを取得し、読み上げの判定やフィルタリングを行います。
 - **オフタイマー**: 指定時間後にサービスを自動停止します。
@@ -194,10 +208,11 @@ In that case, please follow these steps to allow restricted settings:
 
 1. APK をインストールしてください。
 2. 初回起動時、通知権限などが求められます。「Broadcast Now Playing」を有効にする際は、別途「通知へのアクセス（Notification Listener）」権限の許可を促されます。
+3. アプリ内アップデーターを初めて使用する際、nokandro による「不明なアプリのインストール」権限の許可が求められます。
 
 ## Main タブ
 
-- **タイトル・バージョン（In-App Updater）**: 右上のバージョン番号をタップすると、GitHub Releases の最新版をチェックします。更新がある場合は金色バッジ（`v現在 -> v最新`）が表示されます。タップするとマークダウン整形されたリリースノートとファイルサイズが表示され、アプリ内から直接 APK をダウンロードしてインストールできます。
+- **タイトル・バージョン（In-App Updater）**: 右上のバージョン番号をタップすると、GitHub Releases の最新版をチェックします。更新がある場合は金色バッジ（`v現在 -> v最新`）が表示されます。タップするとマークダウン整形されたリリースノートとファイルサイズが表示され、アプリ内から直接 APK をダウンロードしてインストールできます（初回アップデート時は設定画面で「不明なアプリのインストール」を許可する案内が表示されます）。
 - **Your npub & プロフィールアバター**: 自分の公開鍵 (`npub...` または hex)。リレーからプロフィールメタデータ (kind: 0) を自動取得し、入力欄の左側に円形アバターとして表示します。
 - **Your nsec (任意)**: 自分の秘密鍵 (`nsec...`)。「Now Playing」の投稿や Signer（Bunker）機能に必要です。入力すると npub が自動的に導出されます。
 - **Relay**: 接続先リレーの URL。**v** ボタンでリレーリスト (kind: 10002) を取得して選択できます。
@@ -325,4 +340,14 @@ GitHubからAPKをダウンロードしてインストールした場合、権�
 1. Androidの本体設定から「アプリ」->「nokandro」を開く
 2. 右上のメニューから「制限付き設定を許可」を選択
 3. 再度アプリ内のスイッチから権限を有効にしてください
+
+## アプリ内アップデートの初回実行時について（不明なアプリのインストール許可）
+
+アプリ内の更新ダイアログから直接最新版をインストールする場合、Android 8.0 以降では端末のセキュリティ設定により、nokandro に対する「不明なアプリのインストール（この提供元のアプリを許可）」権限が初回のみ必要となります。
+
+1. バージョン番号をタップし、表示された更新ダイアログで「Update」をタップします。
+2. 初回のみ「Permission Required」ダイアログが表示されますので、「Open Settings」をタップします。
+3. Android の設定画面が開きますので、「この提供元のアプリを許可」のスイッチを ON にしてください。
+4. nokandro アプリに戻り、再度「Update」をタップすると APK のダウンロードとインストールが自動的に行われます。
+
 
