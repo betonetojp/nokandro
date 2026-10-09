@@ -1374,6 +1374,7 @@ namespace nokandro
                 try { setControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
+                try { UpdateServiceStatusFooter(); } catch { }
             }
             catch { }
 
@@ -1537,6 +1538,7 @@ namespace nokandro
                 try { SetControlEnabled(offTimerSwitch, false); } catch { }
                 try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
                 try { SetControlEnabled(offTimerDisableOnEndSwitch, false); } catch { }
+                try { UpdateServiceStatusFooter(); } catch { }
             };
 
             stop.Click += (s, e) =>
@@ -1545,6 +1547,7 @@ namespace nokandro
                 intent.SetAction("STOP");
                 StartService(intent);
                 try { SetControlEnabled(stop, false); } catch { }
+                try { UpdateServiceStatusFooter(); } catch { }
             };
 
             // register for service start/stop broadcasts to update button state
@@ -1575,6 +1578,7 @@ namespace nokandro
                             try { SetControlEnabled(offTimerSwitch, false); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
                             try { SetControlEnabled(offTimerDisableOnEndSwitch, false); } catch { }
+                            try { UpdateServiceStatusFooter(); } catch { }
                         });
                         // Start countdown if off-timer was set (e.g. via Tasker or Widget)
                         try
@@ -1623,6 +1627,7 @@ namespace nokandro
                             try { SetControlEnabled(offTimerSwitch, true); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, offTimerSwitch?.Checked ?? false); } catch { }
                             try { SetControlEnabled(offTimerDisableOnEndSwitch, offTimerSwitch?.Checked ?? false); } catch { }
+                            try { UpdateServiceStatusFooter(); } catch { }
                             // speechSeek remains enabled
                         });
                     }
@@ -1891,6 +1896,7 @@ namespace nokandro
                 try { SetControlEnabled(autoStopSwitch, !running); } catch { }
                 try { SetControlEnabled(offTimerSwitch, !running); } catch { }
                 try { SetControlEnabled(offTimerMinutesEdit, !running && (offTimerSwitch?.Checked ?? false)); } catch { }
+                try { UpdateServiceStatusFooter(); } catch { }
             }
 
             UpdateNsecBunkerHints();
@@ -2003,6 +2009,49 @@ namespace nokandro
             catch { }
         }
 
+        private void UpdateServiceStatusFooter(string? overrideDetail = null)
+        {
+            try
+            {
+                var statusDot = FindViewById<View>(Resource.Id.serviceStatusDot);
+                var statusText = FindViewById<TextView>(Resource.Id.serviceStatusText);
+                var detailText = FindViewById<TextView>(Resource.Id.serviceStatusDetailText);
+                if (statusDot == null || statusText == null) return;
+
+                bool running = NostrService.IsRunning;
+                bool isDark = false;
+                try
+                {
+                    isDark = (Resources?.Configuration?.UiMode & Android.Content.Res.UiMode.NightMask) == Android.Content.Res.UiMode.NightYes;
+                }
+                catch { }
+
+                if (running)
+                {
+                    statusDot.SetBackgroundResource(Resource.Drawable.bg_online_dot);
+                    statusText.Text = "Service: Running";
+                    statusText.SetTextColor(isDark ? Android.Graphics.Color.ParseColor("#81C784") : Android.Graphics.Color.ParseColor("#2E7D32"));
+
+                    if (detailText != null)
+                    {
+                        detailText.Text = !string.IsNullOrEmpty(overrideDetail) ? overrideDetail : "Listening";
+                    }
+                }
+                else
+                {
+                    statusDot.SetBackgroundResource(Resource.Drawable.bg_stopped_dot);
+                    statusText.Text = "Service: Stopped";
+                    try { statusText.SetTextColor(DialogHelper.OnSurfaceVariantColor(this)); } catch { }
+
+                    if (detailText != null)
+                    {
+                        detailText.Text = !string.IsNullOrEmpty(overrideDetail) ? overrideDetail : "Ready";
+                    }
+                }
+            }
+            catch { }
+        }
+
         private void StartCountdown(DateTime endTimeUtc)
         {
             _countdownTimer?.Dispose();
@@ -2015,12 +2064,20 @@ namespace nokandro
                 {
                     _countdownTimer?.Dispose();
                     _countdownTimer = null;
-                    RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone; });
+                    RunOnUiThread(() =>
+                    {
+                        if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone;
+                        UpdateServiceStatusFooter();
+                    });
                     return;
                 }
                 var h = (int)remaining.TotalHours;
                 var text = $"{h:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
-                RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Text = text; });
+                RunOnUiThread(() =>
+                {
+                    if (_offTimerCountdownView != null) _offTimerCountdownView.Text = text;
+                    UpdateServiceStatusFooter($"Timer: {text}");
+                });
             }, null, 0, 1000);
         }
 
@@ -2028,7 +2085,11 @@ namespace nokandro
         {
             _countdownTimer?.Dispose();
             _countdownTimer = null;
-            RunOnUiThread(() => { if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone; });
+            RunOnUiThread(() =>
+            {
+                if (_offTimerCountdownView != null) _offTimerCountdownView.Visibility = ViewStates.Gone;
+                UpdateServiceStatusFooter();
+            });
         }
 
         private void SaveCountdownEndTime(DateTime endTimeUtc)

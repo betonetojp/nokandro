@@ -804,28 +804,76 @@
 	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:orientation="horizontal"
-		android:padding="@dimen/spacing_md"
+		android:orientation="vertical"
 		android:background="@color/surface"
-		android:elevation="4dp">
+		android:elevation="6dp">
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/startBtn"
-			style="@style/AppButtonPrimary"
-			android:layout_width="0dp"
+		<!-- Service status indicator banner -->
+		<LinearLayout
+			android:id="@+id/footerStatusBar"
+			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:text="Start"
-			android:layout_marginEnd="@dimen/spacing_xs" />
+			android:orientation="horizontal"
+			android:gravity="center_vertical"
+			android:paddingStart="@dimen/spacing_md"
+			android:paddingEnd="@dimen/spacing_md"
+			android:paddingTop="8dp"
+			android:paddingBottom="2dp">
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/stopBtn"
-			style="@style/AppButtonOutlined"
-			android:layout_width="0dp"
+			<View
+				android:id="@+id/serviceStatusDot"
+				android:layout_width="8dp"
+				android:layout_height="8dp"
+				android:layout_marginEnd="6dp"
+				android:background="@drawable/bg_stopped_dot" />
+
+			<TextView
+				android:id="@+id/serviceStatusText"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:text="Service: Stopped"
+				android:textSize="12sp"
+				android:textColor="@color/on_surface_variant"
+				android:fontFamily="sans-serif-medium" />
+
+			<TextView
+				android:id="@+id/serviceStatusDetailText"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:text="Ready"
+				android:textSize="11sp"
+				android:textColor="@color/on_surface_variant" />
+		</LinearLayout>
+
+		<!-- Action buttons -->
+		<LinearLayout
+			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:text="Stop"
-			android:layout_marginStart="@dimen/spacing_xs" />
+			android:orientation="horizontal"
+			android:paddingStart="@dimen/spacing_md"
+			android:paddingEnd="@dimen/spacing_md"
+			android:paddingBottom="@dimen/spacing_md"
+			android:paddingTop="4dp">
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/startBtn"
+				style="@style/AppButtonPrimary"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:text="Start"
+				android:layout_marginEnd="@dimen/spacing_xs" />
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/stopBtn"
+				style="@style/AppButtonOutlined"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:text="Stop"
+				android:layout_marginStart="@dimen/spacing_xs" />
+		</LinearLayout>
 
 	</LinearLayout>
 
