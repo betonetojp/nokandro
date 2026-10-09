@@ -16,7 +16,7 @@ namespace nokandro
 {
     /// <summary>
     /// Loads, circular-crops, and caches site/app icons for NIP-46 NostrConnect clients.
-    /// Supports direct image URLs, metadata icons, and Google Favicon service for domains.
+    /// Supports direct image URLs, PWA apple-touch-icon, and Google Favicon service with earth-icon filtering.
     /// </summary>
     public static class ClientIconLoader
     {
@@ -32,7 +32,7 @@ namespace nokandro
             };
             HttpClient = new HttpClient(handler)
             {
-                Timeout = TimeSpan.FromSeconds(10)
+                Timeout = TimeSpan.FromSeconds(6)
             };
             try
             {
@@ -43,11 +43,11 @@ namespace nokandro
 
         private static readonly Dictionary<string, string> KnownClientDomains = new(StringComparer.OrdinalIgnoreCase)
         {
+            { "streets", "streets.eyemono.moe" },
             { "nokakoi", "nokakoi.com" },
             { "lumilumi", "lumilumi.app" },
             { "nostter", "nostter.app" },
             { "ehagaki", "ehagaki.com" },
-            { "streets", "streets.social" },
             { "coracle", "coracle.social" },
             { "amethyst", "amethyst.social" },
             { "snort", "snort.social" },
@@ -72,54 +72,87 @@ namespace nokandro
         };
 
         /// <summary>
-        /// Attempts to resolve an icon URL from a raw nostrconnect:// URI or client name.
+        /// Generates a prioritized list of candidate image URLs to fetch for the client.
         /// </summary>
-        public static string? ResolveIconUrl(string? rawUri, string? clientName)
+        public static List<string> ResolveIconCandidates(string? rawUri, string? clientName)
         {
+            var candidates = new List<string>();
+            var domains = new List<string>();
+
             if (!string.IsNullOrEmpty(rawUri) && NostrConnectUri.TryParse(rawUri, out var parsed) && parsed != null)
             {
                 // 1. Direct image parameter
                 if (!string.IsNullOrEmpty(parsed.Image) && IsHttpUrl(parsed.Image))
-                    return parsed.Image;
+                    candidates.Add(parsed.Image);
 
-                // 2. Metadata JSON
+                // 2. Metadata JSON icons / images
                 if (!string.IsNullOrEmpty(parsed.Metadata))
                 {
                     var metaIcon = ExtractIconFromMetadata(parsed.Metadata);
                     if (!string.IsNullOrEmpty(metaIcon) && IsHttpUrl(metaIcon))
-                        return metaIcon;
+                        candidates.Add(metaIcon);
 
                     var metaUrl = ExtractUrlFromMetadata(parsed.Metadata);
                     if (!string.IsNullOrEmpty(metaUrl) && Uri.TryCreate(metaUrl, UriKind.Absolute, out var u) && !string.IsNullOrEmpty(u.Host))
-                        return $"https://www.google.com/s2/favicons?domain={u.Host}&sz=128";
+                    {
+                        var host = u.Host.ToLowerInvariant();
+                        if (host != "localhost" && host != "127.0.0.1")
+                            domains.Add(host);
+                    }
                 }
 
                 // 3. Client URL parameter
                 if (!string.IsNullOrEmpty(parsed.Url) && Uri.TryCreate(parsed.Url, UriKind.Absolute, out var parsedUri) && !string.IsNullOrEmpty(parsedUri.Host))
-                    return $"https://www.google.com/s2/favicons?domain={parsedUri.Host}&sz=128";
+                {
+                    var host = parsedUri.Host.ToLowerInvariant();
+                    if (host != "localhost" && host != "127.0.0.1")
+                        domains.Add(host);
+                }
             }
 
-            // 4. Resolve by client name or domain
+            // 4. Resolve domain by client name
             if (!string.IsNullOrEmpty(clientName))
             {
                 var cleanName = clientName.Trim();
-                if (KnownClientDomains.TryGetValue(cleanName, out var knownDomain))
-                    return $"https://www.google.com/s2/favicons?domain={knownDomain}&sz=128";
-
-                // Substring match for known clients (e.g. "nokakoi test" -> "nokakoi", "Streets" -> "streets")
                 var lower = cleanName.ToLowerInvariant();
+
+                // Direct or substring match in known clients
                 foreach (var kvp in KnownClientDomains)
                 {
                     if (lower.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
-                        return $"https://www.google.com/s2/favicons?domain={kvp.Value}&sz=128";
+                    {
+                        domains.Add(kvp.Value);
+                        break;
+                    }
                 }
 
-                // Check if clientName looks like a domain name (e.g. "example.com" or "app.domain.org")
+                // Domain format check (e.g. "foo.bar.org")
                 if (cleanName.Contains('.') && !cleanName.Contains(' ') && !cleanName.Contains('/') && cleanName.Length >= 4)
-                    return $"https://www.google.com/s2/favicons?domain={cleanName.ToLowerInvariant()}&sz=128";
+                {
+                    domains.Add(lower);
+                }
             }
 
-            return null;
+            // Expand domains into PWA apple-touch-icon, Google Favicon, and favicon.ico
+            foreach (var domain in domains)
+            {
+                // PWA standard high-res touch icon (180x180)
+                candidates.Add($"https://{domain}/apple-touch-icon.png");
+                candidates.Add($"https://{domain}/apple-touch-icon-precomposed.png");
+                // Google Favicon service
+                candidates.Add($"https://www.google.com/s2/favicons?domain={domain}&sz=128");
+                // Standard favicon
+                candidates.Add($"https://{domain}/favicon.ico");
+            }
+
+            // Return unique candidate URLs
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<string>();
+            foreach (var c in candidates)
+            {
+                if (set.Add(c)) result.Add(c);
+            }
+            return result;
         }
 
         private static bool IsHttpUrl(string url) =>
@@ -133,7 +166,6 @@ namespace nokandro
                 using var doc = JsonDocument.Parse(metadataJson);
                 var root = doc.RootElement;
 
-                // Check "icons" (can be array or string)
                 if (root.TryGetProperty("icons", out var iconsProp))
                 {
                     if (iconsProp.ValueKind == JsonValueKind.Array && iconsProp.GetArrayLength() > 0)
@@ -148,7 +180,6 @@ namespace nokandro
                     }
                 }
 
-                // Check "icon", "image", "picture", "logo"
                 string[] candidates = ["icon", "image", "picture", "logo"];
                 foreach (var candidate in candidates)
                 {
@@ -180,18 +211,15 @@ namespace nokandro
         /// </summary>
         public static void LoadIcon(Context context, ImageView imageView, TextView fallbackAvatar, string? rawUri, string? clientName)
         {
-            var iconUrl = ResolveIconUrl(rawUri, clientName);
-            if (string.IsNullOrEmpty(iconUrl))
-            {
-                imageView.Visibility = ViewStates.Gone;
-                fallbackAvatar.Visibility = ViewStates.Visible;
-                return;
-            }
+            var candidates = ResolveIconCandidates(rawUri, clientName);
+            var cacheKey = !string.IsNullOrEmpty(rawUri)
+                ? ComputeHash(rawUri)
+                : ComputeHash(clientName ?? Guid.NewGuid().ToString());
 
-            imageView.Tag = iconUrl;
+            imageView.Tag = cacheKey;
 
             // Check in-memory cache first
-            if (MemoryCache.TryGetValue(iconUrl, out var cached) && cached != null && !cached.IsRecycled)
+            if (MemoryCache.TryGetValue(cacheKey, out var cached) && cached != null && !cached.IsRecycled)
             {
                 imageView.SetImageBitmap(cached);
                 imageView.Visibility = ViewStates.Visible;
@@ -203,14 +231,16 @@ namespace nokandro
             imageView.Visibility = ViewStates.Gone;
             fallbackAvatar.Visibility = ViewStates.Visible;
 
+            if (candidates.Count == 0) return;
+
             Task.Run(async () =>
             {
-                var bitmap = await FetchCircularBitmapAsync(context, iconUrl).ConfigureAwait(false);
+                var bitmap = await FetchCircularBitmapAsync(context, cacheKey, candidates).ConfigureAwait(false);
                 if (bitmap != null)
                 {
                     imageView.Post(() =>
                     {
-                        if (string.Equals(imageView.Tag?.ToString(), iconUrl, StringComparison.Ordinal))
+                        if (string.Equals(imageView.Tag?.ToString(), cacheKey, StringComparison.Ordinal))
                         {
                             imageView.SetImageBitmap(bitmap);
                             imageView.Visibility = ViewStates.Visible;
@@ -221,7 +251,7 @@ namespace nokandro
             });
         }
 
-        private static async Task<Bitmap?> FetchCircularBitmapAsync(Context context, string iconUrl)
+        private static async Task<Bitmap?> FetchCircularBitmapAsync(Context context, string cacheKey, List<string> candidates)
         {
             try
             {
@@ -229,8 +259,7 @@ namespace nokandro
                 var cacheDir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? "", "client_icons");
                 System.IO.Directory.CreateDirectory(cacheDir);
 
-                var hash = ComputeHash(iconUrl);
-                var filePath = System.IO.Path.Combine(cacheDir, $"{hash}.png");
+                var filePath = System.IO.Path.Combine(cacheDir, $"{cacheKey}.png");
 
                 if (System.IO.File.Exists(filePath))
                 {
@@ -239,39 +268,57 @@ namespace nokandro
                         var diskBmp = BitmapFactory.DecodeFile(filePath);
                         if (diskBmp != null)
                         {
-                            MemoryCache[iconUrl] = diskBmp;
+                            MemoryCache[cacheKey] = diskBmp;
                             return diskBmp;
                         }
                     }
                     catch { }
                 }
 
-                // 2. Fetch from network
-                using var response = await HttpClient.GetAsync(iconUrl).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode) return null;
-
-                var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-                if (bytes == null || bytes.Length == 0) return null;
-
-                var rawBitmap = await BitmapFactory.DecodeByteArrayAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
-                if (rawBitmap == null) return null;
-
-                // Crop and round to circular bitmap (target 100x100 for high DPI crispness)
-                var circular = CreateCircularBitmap(rawBitmap, 100);
-                rawBitmap.Recycle();
-
-                if (circular != null)
+                // 2. Fetch from candidate URLs in order
+                foreach (var url in candidates)
                 {
-                    // Save to disk cache
                     try
                     {
-                        using var fs = System.IO.File.OpenWrite(filePath);
-                        circular.Compress(Bitmap.CompressFormat.Png, 100, fs);
+                        using var response = await HttpClient.GetAsync(url).ConfigureAwait(false);
+                        if (!response.IsSuccessStatusCode) continue;
+
+                        // Skip HTML fallback responses (common on SPAs when asset not found)
+                        var mediaType = response.Content.Headers.ContentType?.MediaType;
+                        if (!string.IsNullOrEmpty(mediaType) && mediaType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                        if (bytes == null || bytes.Length == 0) continue;
+
+                        var rawBitmap = await BitmapFactory.DecodeByteArrayAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                        if (rawBitmap == null) continue;
+
+                        // Filter out Google Favicon's 16x16 default earth icon dummy
+                        if (rawBitmap.Width <= 16 && rawBitmap.Height <= 16)
+                        {
+                            rawBitmap.Recycle();
+                            continue;
+                        }
+
+                        // Valid icon found! Crop and round to circular bitmap
+                        var circular = CreateCircularBitmap(rawBitmap, 100);
+                        rawBitmap.Recycle();
+
+                        if (circular != null)
+                        {
+                            try
+                            {
+                                using var fs = System.IO.File.OpenWrite(filePath);
+                                circular.Compress(Bitmap.CompressFormat.Png, 100, fs);
+                            }
+                            catch { }
+
+                            MemoryCache[cacheKey] = circular;
+                            return circular;
+                        }
                     }
                     catch { }
-
-                    MemoryCache[iconUrl] = circular;
-                    return circular;
                 }
             }
             catch { }
@@ -287,7 +334,6 @@ namespace nokandro
                 using var canvas = new Canvas(output!);
                 using var paint = new Paint { AntiAlias = true };
 
-                // Scale and center-crop the source into target size
                 var matrix = new Matrix();
                 var scale = Math.Max((float)targetSize / source.Width, (float)targetSize / source.Height);
                 var dx = (targetSize - source.Width * scale) * 0.5f;
