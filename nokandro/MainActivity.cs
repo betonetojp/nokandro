@@ -148,7 +148,7 @@ namespace nokandro
                     SetSupportActionBar(toolbar);
                     SupportActionBar?.SetDisplayShowTitleEnabled(false);
                     var custom = LayoutInflater.From(this)!.Inflate(Resource.Layout.actionbar_title_with_version, toolbar, false);
-                    toolbar.AddView(custom, new Toolbar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+                    toolbar.AddView(custom, new Toolbar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
                     var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
                     var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
                     titleTv?.Text = GetString(Resource.String.app_name);
@@ -159,12 +159,46 @@ namespace nokandro
                         verTv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
                         verTv.Click += (s, e) =>
                         {
-                            try
+                            var current = versionName ?? "v0.0.0";
+                            var info = AppUpdater.LatestUpdateInfo;
+                            if (info != null && info.HasUpdate)
                             {
-                                var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse("https://github.com/betonetojp/nokandro/releases/latest"));
-                                StartActivity(intent);
+                                AppUpdater.ShowUpdateDialog(this, info);
                             }
-                            catch { }
+                            else
+                            {
+                                Toast.MakeText(this, "Checking for updates...", ToastLength.Short)?.Show();
+                                Task.Run(async () =>
+                                {
+                                    var latest = await AppUpdater.CheckForUpdateAsync(current).ConfigureAwait(false);
+                                    if (latest != null && latest.HasUpdate)
+                                    {
+                                        AppUpdater.ShowUpdateDialog(this, latest);
+                                    }
+                                    else
+                                    {
+                                        RunOnUiThread(() =>
+                                        {
+                                            var upToDateDlg = DialogHelper.CreateBuilder(this)
+                                                .SetTitle("Up to date")
+                                                .SetMessage($"nokandro is up to date!\n\nCurrent version: {current}")
+                                                .SetPositiveButton("OK", (sender, args) => { })
+                                                .SetNeutralButton("View Releases", (sender, args) =>
+                                                {
+                                                    try
+                                                    {
+                                                        var intent = new Intent(Intent.ActionView, Android.Net.Uri.Parse("https://github.com/betonetojp/nokandro/releases"));
+                                                        StartActivity(intent);
+                                                    }
+                                                    catch { }
+                                                })
+                                                .Create();
+                                            upToDateDlg.Show();
+                                            DialogHelper.ApplyThemeColors(upToDateDlg, this);
+                                        });
+                                    }
+                                });
+                            }
                         };
                         _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0");
                     }
@@ -3923,26 +3957,19 @@ namespace nokandro
         {
             try
             {
-                using var client = new System.Net.Http.HttpClient();
-                client.DefaultRequestHeaders.UserAgent.TryParseAdd("nokandro");
-                client.Timeout = TimeSpan.FromSeconds(10);
-                var json = await client.GetStringAsync("https://api.github.com/repos/betonetojp/nokandro/releases/latest");
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("tag_name", out var tagEl))
+                var info = await AppUpdater.CheckForUpdateAsync(currentVer).ConfigureAwait(false);
+                if (info != null && info.HasUpdate)
                 {
-                    var latestTag = tagEl.GetString(); 
-                    if (!string.IsNullOrEmpty(latestTag) && IsNewer(currentVer, latestTag))
+                    RunOnUiThread(() =>
                     {
-                         RunOnUiThread(() => 
-                         {
-                             try 
-                             { 
-                                 verTv.Text = $"{currentVer} -> {latestTag}";
-                                 verTv.SetTextColor(new Android.Graphics.Color(GetColor(Resource.Color.update_available)));
-                                 verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
-                             } catch { }
-                         });
-                    }
+                        try
+                        {
+                            verTv.Text = $"{currentVer} -> {info.LatestVersion}";
+                            verTv.SetTextColor(new Android.Graphics.Color(GetColor(Resource.Color.update_available)));
+                            verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
+                        }
+                        catch { }
+                    });
                 }
             }
             catch { }
