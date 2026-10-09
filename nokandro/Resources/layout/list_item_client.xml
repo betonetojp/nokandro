@@ -84,19 +84,15 @@
             android:maxLines="1" />
     </LinearLayout>
 
-    <!-- Remove Button -->
-    <com.google.android.material.button.MaterialButton
+    <!-- Remove Button (Trash Icon) -->
+    <ImageButton
         android:id="@+id/clientRemoveBtn"
-        style="@style/AppButtonText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Remove"
-        android:textColor="@color/error"
-        android:textSize="12sp"
-        android:minWidth="0dp"
-        android:minHeight="36dp"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        app:rippleColor="@color/primary_container" />
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:padding="7dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_delete"
+        app:tint="@color/error"
+        android:contentDescription="Remove client" />
 
 </LinearLayout>

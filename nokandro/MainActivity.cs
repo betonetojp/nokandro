@@ -2743,7 +2743,7 @@ namespace nokandro
                     infoLayout.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
                 }
 
-                var removeBtn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
+                var removeBtn = row.FindViewById<View>(Resource.Id.clientRemoveBtn);
                 if (removeBtn != null)
                 {
                     removeBtn.Click += (s, e) =>
@@ -3044,21 +3044,46 @@ namespace nokandro
                     statusBadge.LayoutParameters = badgeLp;
                     itemRow.AddView(statusBadge);
 
-                    var itemRemoveBtn = new Button(this, null, Android.Resource.Attribute.BorderlessButtonStyle)
+                    var itemRemoveBtn = new ImageButton(this)
                     {
-                        Text = "✕",
-                        TextSize = 11f
+                        ContentDescription = "Remove permission"
                     };
-                    itemRemoveBtn.SetTextColor(Android.Graphics.Color.ParseColor("#FF5252"));
-                    itemRemoveBtn.SetPadding((int)(6 * density), 0, (int)(6 * density), 0);
+                    var btnSize = (int)(32 * density);
+                    var btnLp = new LinearLayout.LayoutParams(btnSize, btnSize);
+                    itemRemoveBtn.LayoutParameters = btnLp;
+                    itemRemoveBtn.SetPadding((int)(5 * density), (int)(5 * density), (int)(5 * density), (int)(5 * density));
+                    itemRemoveBtn.SetImageResource(Resource.Drawable.ic_delete);
+                    itemRemoveBtn.SetColorFilter(Android.Graphics.Color.ParseColor("#FF5252"));
+
+                    var typedVal = new Android.Util.TypedValue();
+                    if (Theme?.ResolveAttribute(Android.Resource.Attribute.SelectableItemBackgroundBorderless, typedVal, true) ?? false)
+                    {
+                        itemRemoveBtn.SetBackgroundResource(typedVal.ResourceId);
+                    }
+                    else
+                    {
+                        itemRemoveBtn.SetBackgroundColor(Android.Graphics.Color.Transparent);
+                    }
+
                     itemRemoveBtn.Click += (s, e) =>
                     {
-                        try
-                        {
-                            Nip55PermissionStore.DeletePermission(this, perm.RawKey);
-                            RefreshNip55PermissionList();
-                        }
-                        catch { }
+                        var confirmDialog = new Android.App.AlertDialog.Builder(this)
+                            .SetTitle("Remove permission")
+                            .SetMessage($"Remove permission:\n{typeText}\nfor {appLabel}?")
+                            .SetPositiveButton("Remove", (sender, args) =>
+                            {
+                                try
+                                {
+                                    Nip55PermissionStore.DeletePermission(this, perm.RawKey);
+                                    RefreshNip55PermissionList();
+                                }
+                                catch { }
+                            })
+                            .SetNegativeButton("Cancel", (sender, args) => { })
+                            .Create();
+
+                        confirmDialog.Show();
+                        DialogHelper.ApplyThemeColors(confirmDialog, this);
                     };
                     itemRow.AddView(itemRemoveBtn);
 
