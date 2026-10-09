@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,18 +115,17 @@ namespace nokandro
                 try
                 {
                     var builder = DialogHelper.CreateBuilder(activity);
-                    builder.SetTitle($"🚀 Update Available: {info.LatestVersion}");
+                    builder.SetTitle($"Update Available: {info.LatestVersion}");
 
                     var notes = string.IsNullOrWhiteSpace(info.ReleaseNotes)
                         ? "A new release is available with improvements and bug fixes."
                         : info.ReleaseNotes.Trim();
 
-                    // Limit long release notes to reasonable length
-                    if (notes.Length > 600)
-                        notes = notes[..597] + "...";
+                    // Limit extremely long release notes to reasonable length
+                    if (notes.Length > 1500)
+                        notes = notes[..1490] + "\n\n...(more on GitHub)";
 
-                    var sizeText = info.ApkSize > 0 ? $"\nSize: {info.ApkSize / 1024.0 / 1024.0:F1} MB" : "";
-                    builder.SetMessage($"Current: {info.CurrentVersion}\nLatest: {info.LatestVersion}{sizeText}\n\n{notes}");
+                    builder.SetMessage(FormatReleaseMessage(info, notes));
 
                     if (!string.IsNullOrEmpty(info.ApkDownloadUrl))
                     {
@@ -376,6 +376,78 @@ namespace nokandro
             var s = v.TrimStart('v', 'V');
             if (Version.TryParse(s, out var ver)) return ver;
             return new Version(0, 0, 0);
+        }
+
+        private static Java.Lang.ICharSequence FormatReleaseMessage(AppUpdateInfo info, string notes)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                var sizeText = info.ApkSize > 0 ? $" &nbsp;|&nbsp; <b>Size:</b> {info.ApkSize / 1024.0 / 1024.0:F1} MB" : "";
+                sb.Append("<b>Current:</b> ").Append(System.Net.WebUtility.HtmlEncode(info.CurrentVersion))
+                  .Append(" &nbsp;→&nbsp; <b>Latest:</b> <font color='#3B82F6'><b>").Append(System.Net.WebUtility.HtmlEncode(info.LatestVersion)).Append("</b></font>")
+                  .Append(sizeText).Append("<br><br>");
+
+                var lines = notes.Replace("\r\n", "\n").Split('\n');
+                foreach (var rawLine in lines)
+                {
+                    var line = rawLine.Trim();
+                    if (line.StartsWith("---"))
+                    {
+                        sb.Append("<hr>");
+                        continue;
+                    }
+                    if (line.StartsWith("### "))
+                    {
+                        var title = line.Substring(4).Trim();
+                        sb.Append("<br><b>").Append(FormatInline(title)).Append("</b><br>");
+                        continue;
+                    }
+                    if (line.StartsWith("## "))
+                    {
+                        var title = line.Substring(3).Trim();
+                        sb.Append("<br><big><b>").Append(FormatInline(title)).Append("</b></big><br>");
+                        continue;
+                    }
+                    if (line.StartsWith("# "))
+                    {
+                        var title = line.Substring(2).Trim();
+                        sb.Append("<br><big><b>").Append(FormatInline(title)).Append("</b></big><br>");
+                        continue;
+                    }
+                    if (line.StartsWith("- ") || line.StartsWith("* "))
+                    {
+                        var item = line.Substring(2).Trim();
+                        sb.Append("• ").Append(FormatInline(item)).Append("<br>");
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        sb.Append("<br>");
+                    }
+                    else
+                    {
+                        sb.Append(FormatInline(line)).Append("<br>");
+                    }
+                }
+
+                return Android.Text.Html.FromHtml(sb.ToString(), Android.Text.FromHtmlOptions.ModeCompact)!;
+            }
+            catch
+            {
+                return new Java.Lang.String($"Current: {info.CurrentVersion}\nLatest: {info.LatestVersion}\n\n{notes}");
+            }
+        }
+
+        private static string FormatInline(string text)
+        {
+            var s = System.Net.WebUtility.HtmlEncode(text);
+            // Replace **bold** with <b>bold</b>
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\*\*(.+?)\*\*", "<b>$1</b>");
+            // Replace `code` with <font color='#6B7280'>code</font>
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"`(.+?)`", "<tt>$1</tt>");
+            return s;
         }
     }
 }

@@ -368,6 +368,7 @@ namespace nokandro
             // From this point locals are known to be non-null — create non-nullable aliases to inform the compiler
             var relay = (EditText)relayEdit!;
             var npub = (EditText)npubEdit!;
+            var npubLayout = FindViewById<Google.Android.Material.TextField.TextInputLayout>(Resource.Id.npubInputLayout);
             var nsec = (EditText?)nsecEdit;
             // keep reference for updating from incoming intents
             _npubEdit_field = npub;
@@ -477,6 +478,10 @@ namespace nokandro
                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                 relay.Text = prefs.GetString(PREF_RELAY, "wss://relay-jp.nostr.wirednet.jp/");
                 npub.Text = prefs.GetString(PREF_NPUB, string.Empty);
+                if (npubLayout != null && !string.IsNullOrEmpty(npub.Text))
+                {
+                    UserProfileLoader.LoadAvatar(this, npubLayout, npub.Text, relay.Text);
+                }
                 if (nsec != null) nsec.Text = SecurePreferences.GetNsec(this);
                 var savedLen = prefs.GetInt(PREF_TRUNCATE_LEN, CONTENT_TRUNCATE_LENGTH);
                 truncate.Text = savedLen.ToString();
@@ -570,6 +575,19 @@ namespace nokandro
                         }
                     }
                     catch { }
+
+                    // Load user avatar icon from kind 0
+                    if (npubLayout != null)
+                    {
+                        if (IsNpubValid(txt))
+                        {
+                            UserProfileLoader.LoadAvatar(this, npubLayout, txt, relay.Text);
+                        }
+                        else if (string.IsNullOrEmpty(txt))
+                        {
+                            UserProfileLoader.LoadAvatar(this, npubLayout, null, null);
+                        }
+                    }
                 }
                 catch { }
             };

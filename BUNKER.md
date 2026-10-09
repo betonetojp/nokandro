@@ -1,10 +1,10 @@
-# NIP-46 Bunker 機能 詳細ガイド
+# NIP-46 Bunker / Remote Signer 機能 詳細ガイド
 
-nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/nostr-protocol/nips/blob/master/46.md) に準拠したリモート署名サービスです。外部の Nostr クライアント（Webアプリ等）に秘密鍵を渡すことなく、イベントの署名や暗号化/復号を代行します。
+nokandro の **Signer** 機能は、[NIP-46 (Nostr Connect)](https://github.com/nostr-protocol/nips/blob/master/46.md) および [NIP-55 (Android Nostr Signer)](https://github.com/nostr-protocol/nips/blob/master/55.md) に準拠したリモート署名サービスです。外部の Nostr クライアント（Webアプリや他のAndroidアプリ等）に秘密鍵を渡すことなく、イベントの署名や暗号化/復号を代行します。
 
-2つの接続方式をサポートしています:
-- **`bunker://`** — 署名者起点: nokandro が URI を生成し、クライアントに共有します。
-- **`nostrconnect://`** — クライアント起点: クライアントが URI を生成し、nokandro で読み取ります。
+2つのリモート接続方式をサポートしています:
+- **`bunker://`** - 署名者起点: nokandro が URI を生成し、クライアントに共有します。
+- **`nostrconnect://`** - クライアント起点: クライアントが URI を生成し、nokandro で読み取ります。
 
 ---
 
@@ -14,6 +14,8 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 - [仕組み](#仕組み)
 - [セットアップ手順 (bunker://)](#セットアップ手順-bunker)
 - [nostrconnect:// での接続](#nostrconnect-での接続)
+- [クライアントアイコンと表示名の管理](#クライアントアイコンと表示名の管理)
+- [NIP-55 Signer と権限管理](#nip-55-signer-と権限管理)
 - [対応メソッド](#対応メソッド)
 - [セキュリティモデル](#セキュリティモデル)
 - [シークレットの管理](#シークレットの管理)
@@ -30,12 +32,12 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 ```
   bunker:// (署名者起点):
-  nokandro (Bunker)          --- bunker:// URI --->          外部クライアント
+  nokandro (Signer)          --- bunker:// URI --->          外部クライアント
     秘密鍵を保持          <-- kind:24133 (リレー経由) -->      (Webアプリ等)
                                                                秘密鍵なし
 
   nostrconnect:// (クライアント起点):
-  外部クライアント        --- nostrconnect:// URI --->   nokandro
+  外部クライアント        --- nostrconnect:// URI --->   nokandro (Signer)
     (Webアプリ等)          <-- kind:24133 (リレー経由) -->   秘密鍵を保持
 ```
 
@@ -43,6 +45,7 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 - **秘密鍵が外部に漏れない**: クライアントに nsec を入力する必要がありません。
 - **複数クライアント対応**: 同時に複数のクライアントからの接続を受け付けます。
+- **Web アイコン自動取得**: 接続先クライアントの Favicon や PWA apple-touch-icon を自動取得し、視覚的に認識しやすく表示します。
 - **暗号化対応**: NIP-04 / NIP-44 による暗号化・復号をリモートで実行できます。
 
 ---
@@ -70,7 +73,7 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 - **通信チャネル**: リレー経由の `kind:24133` イベント
 - **リクエスト暗号化**: NIP-44（NIP-46 準拠）
 - **認証**: `bunker://` URI に含まれるシークレットによる接続認証
-- **方向**: クライアント → Bunker（リクエスト）、Bunker → クライアント（レスポンス）
+- **方向**: クライアント -> Bunker（リクエスト）、Bunker -> クライアント（レスポンス）
 
 ---
 
@@ -80,11 +83,11 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 **Main タブ**で `nsec`（秘密鍵）を入力します。nsec を入力すると npub が自動的に導出されます。
 
-> ⚠️ nsec が未入力の状態では Bunker を起動できません。
+[注意]: nsec が未入力の状態では Bunker を起動できません。
 
 ### 2. Bunker リレーの設定
 
-**Bunker タブ**を開き、Bunker リレーの URL を設定します（デフォルト: `wss://ephemeral.snowflare.cc/`）。
+**Signer タブ**を開き、Bunker リレーの URL を設定します（デフォルト: `wss://ephemeral.snowflare.cc/`）。
 
 - Bunker リレーは nokandro と外部クライアントの通信を中継するためのリレーです。
 - メインのリレー（Main タブ）とは別のリレーを使用できます。
@@ -96,7 +99,7 @@ nokandro の **Bunker** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 起動すると以下が表示されます：
 - **Bunker URI**: `bunker://` で始まる URI
-- **Status**: 接続状態（`Connected to relay` → `Subscribed (kind:24133)` の順に表示）
+- **Status**: 接続状態（`Connected to relay` -> `Subscribed (kind:24133)` の順に表示）
 
 ### 4. URI の共有
 
@@ -137,17 +140,18 @@ nostrconnect://<client_pubkey_hex>?name=AppName&relay=wss://...&secret=xxx
 
 ### 3. nokandro で接続
 
-**Bunker タブ**で以下のいずれかの方法で接続します：
+**Signer タブ**で以下のいずれかの方法で接続します：
 
 - **貼り付け**: URI 入力欄に `nostrconnect://` URI を貼り付け、**Connect** ボタンをタップ。
-- **ディープリンク**: 他アプリから `nostrconnect://` を開くと Bunker タブに URI が貼り付けられ、**接続確認ダイアログ**で Connect / Cancel を選べます（即接続はしません）。
+- **ディープリンク**: 他アプリから `nostrconnect://` を開くと Signer タブに URI が貼り付けられ、**接続確認ダイアログ**で Connect / Cancel を選べます（即接続はしません）。
 - **QR スキャン**: **Scan QR** ボタンをタップし、クライアントが表示する QR コードをスキャン。URI を入力欄に入れたうえで、ディープリンクと同様の**接続確認ダイアログ**が表示されます。
 
 ### 4. セッション管理
 
 接続済みのクライアントは **クライアントリスト** に表示されます：
 
-- クライアント名をタップするとラベル（表示名）を編集できます。
+- クライアントの Web サイトアイコンが自動的に取得・表示されます。
+- クライアント名をタップするとラベル（表示名）を直接インライン編集できます。
 - **Remove** ボタンで切断・削除できます。
 - セッションはアプリ再起動後も自動的に復元されます。
 
@@ -157,10 +161,35 @@ NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須�
 
 ---
 
+## クライアントアイコンと表示名の管理
+
+- **Web アイコン自動解決 (`ClientIconLoader`)**:
+  - クライアントの接続メタデータや URL から、Favicon、PWA Manifest、HTML ヘッダー内の `apple-touch-icon` などを自動取得します。
+  - GitHub Pages などのサブパス構成（例: `https://username.github.io/project/`）にも対応し、相対パスアイコンも正確にダウンロード・キャッシュされます。
+  - アイコンが取得できない場合やオフライン時は、フォールバックアイコンが安全に表示されます。
+- **表示名のインライン編集**:
+  - クライアントカードの名称をタップすることで、ユーザーが識別しやすい任意の表示名（例: "Coracle on iPad" や "eHagaki" 等）に変更できます。
+
+---
+
+## NIP-55 Signer と権限管理
+
+nokandro は、Android 端末上の他アプリから安全に署名を行うための [NIP-55](https://github.com/nostr-protocol/nips/blob/master/55.md) 規格に対応しています。
+
+- **`nostrsigner:` Intent & ContentProvider**:
+  - 外部クライアントアプリからの署名呼び出し（`SIGN_EVENT`、`GET_PUBLIC_KEY`、`NIP04_DECRYPT`、`NIP44_DECRYPT` など）を受信し、ユーザー確認ダイアログ（Approve / Deny / Remember my choice）を表示します。
+- **Signer タブの権限マネージャー**:
+  - 「Remember my choice」で保存された許可・拒否設定を、呼び出し元アプリごとにカードでグループ化して一覧表示します。
+  - 各アプリカードにはアプリアイコンとアプリ名、展開/折りたたみ可能なアコーディオンが備わっています。
+  - 各項目には要求の種類、わかりやすいイベント種別注釈（`Note (kind 1)`, `Reaction (kind 7)` 等）、ステータスバッジ（Allowed / Rejected）が表示されます。
+  - 個別の **Remove** ボタンによる権限の個別削除、およびアプリ単位の **Clear** ボタンによる全権限の一括削除が可能です。
+
+---
+
 ## 対応メソッド
 
 | メソッド | 説明 | パラメータ |
-|---------|------|-----------|
+|---|---|---|
 | `connect` | クライアントの接続認証 | `[client_pubkey, secret?]` |
 | `get_public_key` | Bunker の公開鍵を取得 | なし |
 | `sign_event` | イベントに署名 | `[unsigned_event_json]` |
@@ -168,7 +197,7 @@ NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須�
 | `nip04_decrypt` | NIP-04 復号 | `[third_party_pubkey, ciphertext]` |
 | `nip44_encrypt` | NIP-44 暗号化 | `[third_party_pubkey, plaintext]` |
 | `nip44_decrypt` | NIP-44 復号 | `[third_party_pubkey, ciphertext]` |
-| `ping` | 接続確認 | なし → `pong` |
+| `ping` | 接続確認 | なし -> `pong` |
 | `switch_relays` | リレー一覧の取得 | リレー URL 配列または `null` |
 
 ### sign_event の動作
@@ -249,7 +278,7 @@ NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須�
 3. **Bunker が自動的に停止**します。
 4. 次回起動時に新しいシークレットで新しい URI が生成されます。
 
-> ⚠️ リセット後は **すべてのクライアント**に新しい URI の再共有が必要です。
+[注意]: リセット後は **すべてのクライアント**に新しい URI の再共有が必要です。
 
 ### nostrconnect:// のシークレット
 
@@ -264,29 +293,38 @@ NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須�
 ### アーキテクチャ
 
 ```
-MainActivity (Bunker タブ)
+MainActivity (Signer タブ)
     │
-    ├── BunkerService (Android フォアグラウンドサービス)
+    ├── BunkerService (Android フォアグラウンドサービス: NIP-46)
     │       │
     │       ├── NostrBunker (bunker:// プロトコル処理)
     │       │       │
-    │       │       ├── WebSocket → Bunker リレー
+    │       │       ├── WebSocket -> Bunker リレー
     │       │       ├── NostrCrypto.Decrypt / Encrypt (NIP-04/44)
     │       │       ├── NostrCrypto.Sign (BIP-340 Schnorr)
     │       │       └── NostrCrypto.GetPublicKey (secp256k1)
     │       │
     │       └── NostrConnectSession (nostrconnect:// セッション管理)
     │               │
-    │               ├── WebSocket → クライアント指定リレー (複数可)
+    │               ├── WebSocket -> クライアント指定リレー (複数可)
     │               ├── NostrConnectUri (URI パース: pubkey, relay, secret, metadata)
     │               ├── セッション永続化 (SharedPreferences)
     │               └── NostrCrypto (共通の暗号化・署名処理)
     │
+    ├── ClientIconLoader (Web / PWA アイコン非同期ローダー)
+    │       ├── Favicon / PWA apple-touch-icon / Manifest パース
+    │       └── ディスク＆メモリキャッシュ
+    │
+    ├── NIP-55 署名コンポーネント (Android プロセス間通信)
+    │       ├── Nip55SignerActivity (nostrsigner: Intent 受信・承認UI)
+    │       ├── Nip55ContentProvider (ContentProvider クエリ処理)
+    │       └── Nip55PermissionStore (アプリ別権限保存・一括管理)
+    │
     └── LocalBroadcast (UI 更新)
-            ├── ACTION_BUNKER_STARTED  → URI 表示
-            ├── ACTION_BUNKER_LOG      → ステータス更新
-            ├── ACTION_BUNKER_STOPPED  → UI リセット
-            └── ACTION_NC_SESSION_*    → nostrconnect セッション更新
+            ├── ACTION_BUNKER_STARTED  -> URI 表示
+            ├── ACTION_BUNKER_LOG      -> ステータス更新
+            ├── ACTION_BUNKER_STOPPED  -> UI リセット
+            └── ACTION_NC_SESSION_*    -> nostrconnect セッション更新
 ```
 
 ### フォアグラウンドサービス
@@ -297,7 +335,7 @@ MainActivity (Bunker タブ)
 - bunker:// と nostrconnect:// の両方のセッションを同一サービス内で管理します。
 - メインの TTS サービス (`NostrService`) とは独立して動作します。
 - OS がプロセスを殺して Sticky 再起動した場合、Intent extras が無いことがあります。そのときは `pref_bunker_enabled` が ON ならセキュア保存の nsec / リレー / secret から自動復元します。
-- 長時間放置後も止まりやすい端末では、Bunker タブの **Exclude from battery optimization** でバッテリー最適化から除外してください（Bunker 有効化時に一度だけ案内ダイアログも出ます）。
+- 長時間放置後も止まりやすい端末では、Signer タブの **Exclude from battery optimization** でバッテリー最適化から除外してください（Bunker 有効化時に一度だけ案内ダイアログも出ます）。
 
 ### 再接続
 
@@ -323,7 +361,7 @@ kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 
 
 1. **nokandro 側**
    - Main タブで nsec を入力
-   - Bunker タブで NIP-46 Bunker スイッチを ON
+   - Signer タブで NIP-46 Bunker スイッチを ON
    - 表示された `bunker://...` URI をコピー
 
 2. **Web クライアント側**
@@ -334,7 +372,7 @@ kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 
 3. **接続後**
    - nokandro の Status に `Client connected` が表示される
    - Web クライアントから投稿やDM送信を行うと、nokandro が署名を行い結果を返す
-   - nokandro の Status に `sign_event → OK` 等のログが表示される
+   - nokandro の Status に `sign_event -> OK` 等のログが表示される
 
 ### nostrconnect:// での接続
 
@@ -344,12 +382,12 @@ kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 
 
 2. **nokandro 側**
    - Main タブで nsec を入力
-   - Bunker タブで `nostrconnect://` URI を貼り付けて **Connect** をタップ、または **Scan QR** で QR コードをスキャン
+   - Signer タブで `nostrconnect://` URI を貼り付けて **Connect** をタップ、または **Scan QR** で QR コードをスキャン
 
 3. **接続後**
-   - nokandro のクライアントリストにクライアント名が表示される
+   - nokandro のクライアントリストにクライアントアイコンと名称が表示される
    - Web クライアントから投稿やDM送信を行うと、nokandro が署名を行い結果を返す
-   - クライアント名をタップしてラベルを編集可能
+   - クライアント名をタップしてラベルをインライン編集可能
 
 ---
 
@@ -365,8 +403,8 @@ kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 
 
 - **シークレットの一致を確認**
   - 新規クライアントの場合、URI を正確にコピー&ペーストしてください（末尾の空白や改行に注意）。
-  - Status に `Secret mismatch` または `invalid secret` エラーが表示される場合、URI（とくに `secret=`）が古い可能性があります。Bunker タブの **Copy bunker URI** で表示中の最新 URI を使ってください（新規ペア成功後・**Remove** 後に secret は変わります）。
-  - すべてのペアをやり直す場合のみ **Reset Secret** → Bunker 再起動で新しい URI を配布してください。
+  - Status に `Secret mismatch` または `invalid secret` エラーが表示される場合、URI（とくに `secret=`）が古い可能性があります。Signer タブの **Copy bunker URI** で表示中の最新 URI を使ってください（新規ペア成功後・**Remove** 後に secret は変わります）。
+  - すべてのペアをやり直す場合のみ **Reset Secret** -> Bunker 再起動で新しい URI を配布してください。
   - 既に認証済みのクライアントが再接続する場合、シークレットチェックは省略されます。
 
 - **リレーの到達性を確認**
