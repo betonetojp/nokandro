@@ -194,6 +194,7 @@ namespace nokandro
                     .Scheme("nostrsigner")
                     .Authority("result")
                     .AppendQueryParameter("result", formatted)
+                    .AppendQueryParameter("signature", formatted)
                     .AppendQueryParameter("id", requestId);
 
                 if (!string.IsNullOrEmpty(signedEvent) && returnType.Equals("event", StringComparison.OrdinalIgnoreCase))
@@ -204,6 +205,7 @@ namespace nokandro
                 var resultIntent = new Intent();
                 resultIntent.SetData(builder.Build());
                 resultIntent.PutExtra("result", formatted);
+                resultIntent.PutExtra("signature", formatted);
                 resultIntent.PutExtra("id", requestId);
                 if (!string.IsNullOrEmpty(signedEvent)) resultIntent.PutExtra("event", signedEvent);
                 if (!string.IsNullOrEmpty(packageName)) resultIntent.PutExtra("package", packageName);
@@ -266,6 +268,7 @@ namespace nokandro
             {
                 builder.Append(separator).Append("result=").Append(global::System.Uri.EscapeDataString(result));
                 separator = "&";
+                builder.Append(separator).Append("signature=").Append(global::System.Uri.EscapeDataString(result));
             }
             if (!string.IsNullOrEmpty(requestId))
             {

@@ -40,6 +40,16 @@ namespace nokandro
         {
             if (string.IsNullOrEmpty(currentUser)) return;
             var normalized = currentUser.Trim().ToLowerInvariant();
+            if (normalized.StartsWith("npub1"))
+            {
+                var (hrp, data) = NostrKeyDecoder.Bech32Decode(normalized);
+                if (hrp == "npub" && data != null)
+                {
+                    var bytes = NostrKeyDecoder.ConvertBits(data, 5, 8, false);
+                    if (bytes != null && bytes.Length == 32)
+                        normalized = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+                }
+            }
             if (normalized.Length == 64 && normalized != pubkeyHex)
                 throw new UnauthorizedAccessException("current_user does not match signer pubkey");
         }

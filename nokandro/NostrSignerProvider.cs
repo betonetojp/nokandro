@@ -36,13 +36,13 @@ namespace nokandro
 
                 return Authority switch
                 {
-                    "com.nokakoi.nokandro.GET_PUBLIC_KEY" => SingleColumn("result", NostrSignerOperations.GetPublicKey(privKey)),
+                    "com.nokakoi.nokandro.GET_PUBLIC_KEY" => ResultCursor(NostrSignerOperations.GetPublicKey(privKey)),
                     "com.nokakoi.nokandro.SIGN_EVENT" => SignEventCursor(projection ?? [], privKey),
-                    "com.nokakoi.nokandro.NIP04_ENCRYPT" => SingleColumn("result", NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
-                    "com.nokakoi.nokandro.NIP44_ENCRYPT" => SingleColumn("result", NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
-                    "com.nokakoi.nokandro.NIP04_DECRYPT" => SingleColumn("result", NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
-                    "com.nokakoi.nokandro.NIP44_DECRYPT" => SingleColumn("result", NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
-                    "com.nokakoi.nokandro.DECRYPT_ZAP_EVENT" => SingleColumn("result", NostrZapDecrypt.Decrypt(GetArg(projection ?? [], 0), privKey, pubkeyHex)),
+                    "com.nokakoi.nokandro.NIP04_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
+                    "com.nokakoi.nokandro.NIP44_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
+                    "com.nokakoi.nokandro.NIP04_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
+                    "com.nokakoi.nokandro.NIP44_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
+                    "com.nokakoi.nokandro.DECRYPT_ZAP_EVENT" => ResultCursor(NostrZapDecrypt.Decrypt(GetArg(projection ?? [], 0), privKey, pubkeyHex)),
                     _ => null
                 };
             }
@@ -60,14 +60,14 @@ namespace nokandro
         private static ICursor RejectedCursor()
         {
             var cursor = new MatrixCursor(["rejected"]);
-            cursor.AddRow([""]);
+            cursor.AddRow(["true"]);
             return cursor;
         }
 
-        private static ICursor SingleColumn(string column, string value)
+        private static ICursor ResultCursor(string value)
         {
-            var cursor = new MatrixCursor([column]);
-            cursor.AddRow([value]);
+            var cursor = new MatrixCursor(["signature", "result"]);
+            cursor.AddRow([value, value]);
             return cursor;
         }
 
@@ -77,8 +77,8 @@ namespace nokandro
             if (string.IsNullOrEmpty(eventJson)) return RejectedCursor();
             var signed = NostrSignerOperations.SignEvent(eventJson, privKey);
             var sig = NostrSignerOperations.GetSignature(signed);
-            var cursor = new MatrixCursor(["result", "event"]);
-            cursor.AddRow([sig, signed]);
+            var cursor = new MatrixCursor(["signature", "event", "result"]);
+            cursor.AddRow([sig, signed, sig]);
             return cursor;
         }
 
