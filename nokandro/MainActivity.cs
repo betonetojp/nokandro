@@ -2529,16 +2529,13 @@ namespace nokandro
             // Load custom names
             var customNames = LoadNcClientNames();
 
-            // Resolve known names from nostrconnect settings for display consistency
-            var ncCustomNames = LoadNcClientNames();
-            var ncMetadataNames = LoadNcMetadataNamesByPubkey();
-
+            // Build client list with resolved display names
+            var clientItems = new List<(string pk, string uri, string displayName, string labelText)>();
             for (int i = 0; i < pubkeys.Length; i++)
             {
                 var pk = pubkeys[i];
                 var uri = i < uris.Length ? uris[i] : "";
 
-                // Resolve display name: custom name > metadata name > pubkey
                 customNames.TryGetValue(pk, out var customName);
                 string? metadataName = null;
                 if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
@@ -2554,8 +2551,22 @@ namespace nokandro
                     ? $"{displayName} ({pk[..Math.Min(12, pk.Length)]}...)"
                     : $"{pk[..Math.Min(12, pk.Length)]}...";
 
-                var clientPk = pk;
-                var currentName = displayName ?? "";
+                clientItems.Add((pk, uri, displayName ?? "", labelText));
+            }
+
+            // Sort by display name (A -> Z), then by label text
+            clientItems.Sort((a, b) =>
+            {
+                var comp = string.Compare(a.displayName, b.displayName, StringComparison.CurrentCultureIgnoreCase);
+                if (comp != 0) return comp;
+                return string.Compare(a.labelText, b.labelText, StringComparison.CurrentCultureIgnoreCase);
+            });
+
+            foreach (var item in clientItems)
+            {
+                var clientPk = item.pk;
+                var currentName = item.displayName;
+                var labelText = item.labelText;
 
                 var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, _ncClientList, false);
 
@@ -2593,6 +2604,21 @@ namespace nokandro
             }
         }
 
+        private static int GetNip55PermissionSortOrder(string requestType)
+        {
+            return requestType switch
+            {
+                "get_public_key" => 1,
+                "sign_event" => 2,
+                "nip04_encrypt" => 3,
+                "nip04_decrypt" => 4,
+                "nip44_encrypt" => 5,
+                "nip44_decrypt" => 6,
+                "decrypt_zap_event" => 7,
+                _ => 99
+            };
+        }
+
         private void RefreshNip55PermissionList()
         {
             if (_nip55ClientList == null) return;
@@ -2609,33 +2635,51 @@ namespace nokandro
                 return;
             }
 
-            var grouped = permissions
+            var appGroups = permissions
                 .GroupBy(p => p.PackageName)
-                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var pkg = g.Key;
+                    string appLabel = pkg;
+                    Android.Graphics.Drawables.Drawable? appIcon = null;
+                    try
+                    {
+                        var pm = PackageManager;
+                        var info = pm?.GetApplicationInfo(pkg, 0);
+                        if (info != null && pm != null)
+                        {
+                            appLabel = pm.GetApplicationLabel(info) ?? pkg;
+                            appIcon = pm.GetApplicationIcon(info);
+                        }
+                    }
+                    catch { }
+
+                    var sortedPerms = g
+                        .OrderBy(p => GetNip55PermissionSortOrder(p.RequestType))
+                        .ThenBy(p => p.EventKind ?? -1)
+                        .ToList();
+
+                    return new
+                    {
+                        PackageName = pkg,
+                        AppLabel = appLabel,
+                        AppIcon = appIcon,
+                        Permissions = sortedPerms
+                    };
+                })
+                .OrderBy(a => a.AppLabel, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(a => a.PackageName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
             var padH = (int)(12 * density);
             var padV = (int)(10 * density);
 
-            foreach (var group in grouped)
+            foreach (var appGroup in appGroups)
             {
-                var pkg = group.Key;
-
-                // Resolve app label and icon
-                string appLabel = pkg;
-                Android.Graphics.Drawables.Drawable? appIcon = null;
-                try
-                {
-                    var pm = PackageManager;
-                    var info = pm?.GetApplicationInfo(pkg, 0);
-                    if (info != null && pm != null)
-                    {
-                        appLabel = pm.GetApplicationLabel(info) ?? pkg;
-                        appIcon = pm.GetApplicationIcon(info);
-                    }
-                }
-                catch { }
+                var pkg = appGroup.PackageName;
+                var appLabel = appGroup.AppLabel;
+                var appIcon = appGroup.AppIcon;
 
                 var cardLayout = new LinearLayout(this)
                 {
@@ -2700,7 +2744,7 @@ namespace nokandro
                 try { nameTv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
                 titleLayout.AddView(nameTv);
 
-                var count = group.Count();
+                var count = appGroup.Permissions.Count;
                 var subTv = new TextView(this)
                 {
                     Text = $"{pkg} • {count} permission{(count > 1 ? "s" : "")}",
@@ -2780,7 +2824,7 @@ namespace nokandro
                 };
 
                 // Populate permission rows
-                foreach (var perm in group)
+                foreach (var perm in appGroup.Permissions)
                 {
                     var itemRow = new LinearLayout(this)
                     {
