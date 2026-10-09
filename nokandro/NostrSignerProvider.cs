@@ -14,13 +14,14 @@ namespace nokandro
         {
             var package = CallingPackage;
             var method = AuthorityToMethod(Authority);
+            var args = (projection != null && projection.Length > 0) ? projection : (selectionArgs ?? []);
 
             if (Nip55PermissionStore.IsAlwaysRejected(Context!, package, method))
                 return RejectedCursor();
 
-            if (!Nip55PermissionStore.HasPermission(Context!, package, method, ExtractEventKind(method, projection)))
+            if (!Nip55PermissionStore.HasPermission(Context!, package, method, ExtractEventKind(method, args)))
             {
-                NostrSignerProviderPrompt.TryStartApproval(Context!, method, projection, package);
+                NostrSignerProviderPrompt.TryStartApproval(Context!, method, args, package);
                 return null;
             }
 
@@ -29,20 +30,20 @@ namespace nokandro
                 if (!NostrSignerOperations.TryLoadPrivateKey(Context!, out var privKey, out var pubkeyHex) || privKey == null)
                     return null;
 
-                var currentUser = GetArg(projection ?? [], 2);
+                var currentUser = GetArg(args, 2);
                 if (string.IsNullOrEmpty(currentUser) && method != "get_public_key")
-                    currentUser = GetArg(projection ?? [], 1);
+                    currentUser = GetArg(args, 1);
                 NostrSignerOperations.ValidateCurrentUser(currentUser, pubkeyHex);
 
                 return Authority switch
                 {
                     "com.nokakoi.nokandro.GET_PUBLIC_KEY" => ResultCursor(NostrSignerOperations.GetPublicKey(privKey)),
-                    "com.nokakoi.nokandro.SIGN_EVENT" => SignEventCursor(projection ?? [], privKey),
-                    "com.nokakoi.nokandro.NIP04_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
-                    "com.nokakoi.nokandro.NIP44_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
-                    "com.nokakoi.nokandro.NIP04_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: false)),
-                    "com.nokakoi.nokandro.NIP44_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(projection ?? [], 0), GetArg(projection ?? [], 1), privKey, nip44: true)),
-                    "com.nokakoi.nokandro.DECRYPT_ZAP_EVENT" => ResultCursor(NostrZapDecrypt.Decrypt(GetArg(projection ?? [], 0), privKey, pubkeyHex)),
+                    "com.nokakoi.nokandro.SIGN_EVENT" => SignEventCursor(args, privKey),
+                    "com.nokakoi.nokandro.NIP04_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(args, 0), GetArg(args, 1), privKey, nip44: false)),
+                    "com.nokakoi.nokandro.NIP44_ENCRYPT" => ResultCursor(NostrSignerOperations.Encrypt(GetArg(args, 0), GetArg(args, 1), privKey, nip44: true)),
+                    "com.nokakoi.nokandro.NIP04_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(args, 0), GetArg(args, 1), privKey, nip44: false)),
+                    "com.nokakoi.nokandro.NIP44_DECRYPT" => ResultCursor(NostrSignerOperations.Decrypt(GetArg(args, 0), GetArg(args, 1), privKey, nip44: true)),
+                    "com.nokakoi.nokandro.DECRYPT_ZAP_EVENT" => ResultCursor(NostrZapDecrypt.Decrypt(GetArg(args, 0), privKey, pubkeyHex)),
                     _ => null
                 };
             }
@@ -96,12 +97,12 @@ namespace nokandro
             _ => authority
         };
 
-        private static int? ExtractEventKind(string method, string[]? projection)
+        private static int? ExtractEventKind(string method, string[]? args)
         {
-            if (method != "sign_event" || projection == null || projection.Length == 0) return null;
+            if (method != "sign_event" || args == null || args.Length == 0) return null;
             try
             {
-                using var doc = JsonDocument.Parse(projection[0]);
+                using var doc = JsonDocument.Parse(args[0]);
                 if (doc.RootElement.TryGetProperty("kind", out var k)) return k.GetInt32();
             }
             catch { }

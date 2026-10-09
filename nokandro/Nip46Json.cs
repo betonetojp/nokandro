@@ -1,54 +1,25 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace nokandro
 {
     internal static class Nip46Json
     {
+        private static readonly JsonWriterOptions CompactJsonOptions = new()
+        {
+            Indented = false,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
         public static string EscapeJsonString(string? text)
         {
             if (text == null) return "null";
-            var sb = new StringBuilder();
-            sb.Append('"');
-            foreach (var c in text)
+            return JsonSerializer.Serialize(text, new JsonSerializerOptions
             {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"': sb.Append("\\\""); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < ' ') sb.Append($"\\u{(int)c:x4}");
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            sb.Append('"');
-            return sb.ToString();
-        }
-
-        public static byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
-        {
-            var sb = new StringBuilder();
-            sb.Append("[0,\"");
-            sb.Append(pubkey);
-            sb.Append("\",");
-            sb.Append(createdAt);
-            sb.Append(',');
-            sb.Append(kind);
-            sb.Append(',');
-            sb.Append(tagsJson);
-            sb.Append(',');
-            sb.Append(EscapeJsonString(content));
-            sb.Append(']');
-
-            using var sha = SHA256.Create();
-            return sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
         }
 
         public static string BytesToHex(byte[] bytes)
@@ -58,30 +29,158 @@ namespace nokandro
             return sb.ToString();
         }
 
+        public static List<List<string>> ParseTags(JsonElement tagsElement)
+        {
+            var result = new List<List<string>>();
+            if (tagsElement.ValueKind != JsonValueKind.Array) return result;
+
+            foreach (var item in tagsElement.EnumerateArray())
+            {
+                var tag = new List<string>();
+                if (item.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var sub in item.EnumerateArray())
+                    {
+                        if (sub.ValueKind == JsonValueKind.String)
+                        {
+                            tag.Add(sub.GetString() ?? "");
+                        }
+                        else
+                        {
+                            tag.Add(sub.ToString() ?? "");
+                        }
+                    }
+                }
+                result.Add(tag);
+            }
+            return result;
+        }
+
+        public static List<List<string>> ParseTags(string tagsJson)
+        {
+            if (string.IsNullOrWhiteSpace(tagsJson)) return [];
+            try
+            {
+                using var doc = JsonDocument.Parse(tagsJson);
+                return ParseTags(doc.RootElement);
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        public static byte[] ComputeEventId(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
+        {
+            using var ms = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
+            {
+                writer.WriteStartArray();
+                writer.WriteNumberValue(0);
+                writer.WriteStringValue(pubkey.ToLowerInvariant());
+                writer.WriteNumberValue(createdAt);
+                writer.WriteNumberValue(kind);
+                writer.WriteStartArray();
+                foreach (var tag in tags)
+                {
+                    writer.WriteStartArray();
+                    foreach (var elem in tag)
+                    {
+                        writer.WriteStringValue(elem ?? "");
+                    }
+                    writer.WriteEndArray();
+                }
+                writer.WriteEndArray();
+                writer.WriteStringValue(content ?? "");
+                writer.WriteEndArray();
+            }
+
+            using var sha = SHA256.Create();
+            return sha.ComputeHash(ms.ToArray());
+        }
+
+        public static byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
+        {
+            var tagsList = ParseTags(tagsJson);
+            return ComputeEventId(pubkey, createdAt, kind, tagsList, content);
+        }
+
         public static string SignUnsignedEvent(string unsignedJson, string pubkeyHex, byte[] privKey)
         {
             using var evDoc = JsonDocument.Parse(unsignedJson);
             var ev = evDoc.RootElement;
 
-            var kind = ev.TryGetProperty("kind", out var kEl) ? kEl.GetInt32() : 1;
-            var createdAt = ev.TryGetProperty("created_at", out var ctEl) ? ctEl.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var kind = ev.TryGetProperty("kind", out var kEl) && kEl.TryGetInt32(out var k) ? k : 1;
+            var createdAt = ev.TryGetProperty("created_at", out var ctEl) && ctEl.TryGetInt64(out var ct) ? ct : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var eventPubkey = ev.TryGetProperty("pubkey", out var pkEl) ? pkEl.GetString() : null;
+            if (string.IsNullOrWhiteSpace(eventPubkey) || eventPubkey.Length != 64)
+            {
+                eventPubkey = pubkeyHex;
+            }
+            eventPubkey = eventPubkey.ToLowerInvariant();
+
             var content = ev.TryGetProperty("content", out var cEl) ? cEl.GetString() ?? "" : "";
-            var tags = ev.TryGetProperty("tags", out var tEl) ? tEl.GetRawText() : "[]";
+            var tagsList = ev.TryGetProperty("tags", out var tEl) ? ParseTags(tEl) : [];
 
-            var eventId = ComputeEventId(pubkeyHex, createdAt, kind, tags, content);
-            var sig = NostrCrypto.Sign(eventId, privKey);
+            var eventIdBytes = ComputeEventId(eventPubkey, createdAt, kind, tagsList, content);
+            var eventIdHex = BytesToHex(eventIdBytes);
 
-            return $"{{\"id\":\"{BytesToHex(eventId)}\",\"pubkey\":\"{pubkeyHex}\",\"created_at\":{createdAt},\"kind\":{kind},\"tags\":{tags},\"content\":{EscapeJsonString(content)},\"sig\":\"{BytesToHex(sig)}\"}}";
+            var sigBytes = NostrCrypto.Sign(eventIdBytes, privKey);
+            var sigHex = BytesToHex(sigBytes);
+
+            using var ms = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", eventIdHex);
+                writer.WriteString("pubkey", eventPubkey);
+                writer.WriteNumber("created_at", createdAt);
+                writer.WriteNumber("kind", kind);
+                writer.WriteStartArray("tags");
+                foreach (var tag in tagsList)
+                {
+                    writer.WriteStartArray();
+                    foreach (var elem in tag)
+                    {
+                        writer.WriteStringValue(elem);
+                    }
+                    writer.WriteEndArray();
+                }
+                writer.WriteEndArray();
+                writer.WriteString("content", content);
+                writer.WriteString("sig", sigHex);
+                writer.WriteEndObject();
+            }
+
+            return Encoding.UTF8.GetString(ms.ToArray());
         }
 
         public static string BuildSignedKind24133(string signerPubkeyHex, string clientPubkeyHex, string encryptedContent, byte[] privKey)
         {
             var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var tagsJson = $"[[\"p\",\"{clientPubkeyHex}\"]]";
-            var eventId = ComputeEventId(signerPubkeyHex, createdAt, 24133, tagsJson, encryptedContent);
+            var tags = new List<List<string>> { new() { "p", clientPubkeyHex } };
+            var eventId = ComputeEventId(signerPubkeyHex, createdAt, 24133, tags, encryptedContent);
             var sig = NostrCrypto.Sign(eventId, privKey);
-            var contentJson = EscapeJsonString(encryptedContent);
-            return $"{{\"kind\":24133,\"created_at\":{createdAt},\"tags\":{tagsJson},\"content\":{contentJson},\"pubkey\":\"{signerPubkeyHex}\",\"id\":\"{BytesToHex(eventId)}\",\"sig\":\"{BytesToHex(sig)}\"}}";
+
+            using var ms = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", BytesToHex(eventId));
+                writer.WriteString("pubkey", signerPubkeyHex.ToLowerInvariant());
+                writer.WriteNumber("created_at", createdAt);
+                writer.WriteNumber("kind", 24133);
+                writer.WriteStartArray("tags");
+                writer.WriteStartArray();
+                writer.WriteStringValue("p");
+                writer.WriteStringValue(clientPubkeyHex);
+                writer.WriteEndArray();
+                writer.WriteEndArray();
+                writer.WriteString("content", encryptedContent);
+                writer.WriteString("sig", BytesToHex(sig));
+                writer.WriteEndObject();
+            }
+            return Encoding.UTF8.GetString(ms.ToArray());
         }
 
         public static string BuildBunkerUri(string pubkeyHex, IEnumerable<string> relays, string secret)

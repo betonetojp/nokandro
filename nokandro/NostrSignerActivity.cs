@@ -114,11 +114,33 @@ namespace nokandro
                 .SetNegativeButton("Deny", (s, e) => {
                     if (remember.Checked)
                         Nip55PermissionStore.SetAlwaysRejected(this, _callerPackage, _requestType);
-                    FinishWithFailure("rejected", _requestId, _callbackUrl);
+                    DeliverRejection(_requestId, _callbackUrl);
                 })
                 .Create();
+            dlg.SetCanceledOnTouchOutside(false);
             dlg.Show();
             DialogHelper.ApplyThemeColors(dlg, this);
+        }
+
+        private void DeliverRejection(string requestId, string? callbackUrl)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(callbackUrl))
+                {
+                    FinishWithFailure("rejected", requestId, callbackUrl);
+                    return;
+                }
+                var resultIntent = new Intent();
+                resultIntent.PutExtra("rejected", true);
+                if (!string.IsNullOrEmpty(requestId)) resultIntent.PutExtra("id", requestId);
+                SetResult(Result.Ok, resultIntent);
+            }
+            catch { }
+            finally
+            {
+                Finish();
+            }
         }
 
         private void ExecuteAndDeliver()
@@ -188,39 +210,44 @@ namespace nokandro
         {
             try
             {
-                var formatted = NostrSignerOperations.FormatWebResult(returnType, compressionType, result, signedEvent);
-
-                var builder = new AndroidUri.Builder()
-                    .Scheme("nostrsigner")
-                    .Authority("result")
-                    .AppendQueryParameter("result", formatted)
-                    .AppendQueryParameter("signature", formatted)
-                    .AppendQueryParameter("id", requestId);
-
-                if (!string.IsNullOrEmpty(signedEvent) && returnType.Equals("event", StringComparison.OrdinalIgnoreCase))
-                    builder.AppendQueryParameter("event", signedEvent);
-                if (!string.IsNullOrEmpty(packageName))
-                    builder.AppendQueryParameter("package", packageName);
-
-                var resultIntent = new Intent();
-                resultIntent.SetData(builder.Build());
-                resultIntent.PutExtra("result", formatted);
-                resultIntent.PutExtra("signature", formatted);
-                resultIntent.PutExtra("id", requestId);
-                if (!string.IsNullOrEmpty(signedEvent)) resultIntent.PutExtra("event", signedEvent);
-                if (!string.IsNullOrEmpty(packageName)) resultIntent.PutExtra("package", packageName);
-                SetResult(Result.Ok, resultIntent);
-
                 if (!string.IsNullOrEmpty(callbackUrl))
                 {
+                    var formatted = NostrSignerOperations.FormatWebResult(returnType, compressionType, result, signedEvent);
                     var callbackIntent = new Intent(Intent.ActionView, BuildCallbackUri(callbackUrl, formatted, requestId, signedEvent, packageName, null));
                     callbackIntent.AddFlags(ActivityFlags.NewTask);
                     StartActivity(callbackIntent);
                 }
                 else
                 {
-                    if (GetSystemService(ClipboardService) is ClipboardManager cm)
-                        cm.PrimaryClip = ClipData.NewPlainText("nostr-signer-result", formatted);
+                    var resultIntent = new Intent();
+                    resultIntent.PutExtra("signature", result);
+                    resultIntent.PutExtra("result", result);
+                    resultIntent.PutExtra("id", requestId);
+                    if (!string.IsNullOrEmpty(signedEvent))
+                    {
+                        resultIntent.PutExtra("event", signedEvent);
+                    }
+                    if (!string.IsNullOrEmpty(packageName))
+                    {
+                        resultIntent.PutExtra("package", packageName);
+                    }
+
+                    var builder = new AndroidUri.Builder()
+                        .Scheme("nostrsigner")
+                        .Authority("result")
+                        .AppendQueryParameter("result", result)
+                        .AppendQueryParameter("signature", result)
+                        .AppendQueryParameter("id", requestId);
+                    if (!string.IsNullOrEmpty(signedEvent))
+                        builder.AppendQueryParameter("event", signedEvent);
+                    if (!string.IsNullOrEmpty(packageName))
+                        builder.AppendQueryParameter("package", packageName);
+                    resultIntent.SetData(builder.Build());
+
+                    SetResult(Result.Ok, resultIntent);
+
+                    if (CallingActivity == null && GetSystemService(ClipboardService) is ClipboardManager cm)
+                        cm.PrimaryClip = ClipData.NewPlainText("nostr-signer-result", result);
                 }
             }
             catch
