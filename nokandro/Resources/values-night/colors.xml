@@ -8,6 +8,7 @@
   <color name="primary_dark">#3B82F6</color>
   <color name="primary_light">#93C5FD</color>
   <color name="primary_container">#1E293B</color>
+  <color name="surface_variant">#1C2333</color> <!-- 深みのある上品なスレートダーク -->
   <color name="on_primary">#0B0E14</color>
   <color name="error">#F87171</color>
   <color name="outline">#23293D</color>

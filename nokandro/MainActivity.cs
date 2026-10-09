@@ -2277,6 +2277,24 @@ namespace nokandro
             return "";
         }
 
+        private string? FindUriForPubkey(string pk)
+        {
+            try
+            {
+                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                var raw = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
+                foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (NostrConnectUri.TryParse(line, out var parsed) && parsed != null)
+                    {
+                        if (string.Equals(parsed.ClientPubkey, pk, StringComparison.OrdinalIgnoreCase))
+                            return line;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
 
         private void RefreshBunkerAuthorizedList()
         {
@@ -2313,24 +2331,66 @@ namespace nokandro
                     authHeader.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
                     list.AddView(authHeader);
 
+                    var avatarColors = new[]
+                    {
+                        "#E91E63", "#9C27B0", "#673AB7", "#3F51B5",
+                        "#2196F3", "#009688", "#4CAF50", "#FF9800"
+                    };
+
                     foreach (var pk in items.Distinct())
                     {
                         var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, list, false);
 
                         var shortPk = $"{pk[..Math.Min(12, pk.Length)]}...";
                         var displayName = ResolveBunkerClientDisplayName(pk, store);
+                        var labelText = !string.IsNullOrEmpty(displayName) ? displayName : shortPk;
+
+                        // Avatar & Icon
+                        var avatarTv = row.FindViewById<TextView>(Resource.Id.clientAvatarText);
+                        var avatarImg = row.FindViewById<ImageView>(Resource.Id.clientAvatarImage);
+                        if (avatarTv != null)
+                        {
+                            var initialText = !string.IsNullOrEmpty(labelText) ? labelText[..1].ToUpperInvariant() : "?";
+                            avatarTv.Text = initialText;
+
+                            var hash = Math.Abs(((displayName ?? "") + pk).GetHashCode());
+                            var color = Android.Graphics.Color.ParseColor(avatarColors[hash % avatarColors.Length]);
+                            var avatarBg = new Android.Graphics.Drawables.GradientDrawable();
+                            avatarBg.SetShape(Android.Graphics.Drawables.ShapeType.Oval);
+                            avatarBg.SetColor(color);
+                            avatarTv.Background = avatarBg;
+                        }
+
+                        if (avatarImg != null && avatarTv != null)
+                        {
+                            var matchedUri = FindUriForPubkey(pk);
+                            ClientIconLoader.LoadIcon(this, avatarImg, avatarTv, matchedUri, displayName);
+                        }
+
                         var tv = row.FindViewById<TextView>(Resource.Id.clientNameText);
                         if (tv != null)
                         {
-                            tv.Text = !string.IsNullOrEmpty(displayName) ? $"{displayName} ({shortPk})" : shortPk;
-                            tv.SetTextColor(DialogHelper.OnSurfaceColor(this));
-                            tv.PaintFlags |= Android.Graphics.PaintFlags.UnderlineText;
-                            var clientPk = pk;
-                            var currentName = displayName;
-                            tv.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+                            tv.Text = labelText;
                         }
 
-                        var btn = row.FindViewById<Button>(Resource.Id.clientRemoveBtn);
+                        var subTv = row.FindViewById<TextView>(Resource.Id.clientSubText);
+                        if (subTv != null)
+                        {
+                            var formattedPk = pk.Length >= 16 ? pk[..8] + "..." + pk[^6..] : pk;
+                            subTv.Text = $"Authorized • {formattedPk}";
+                        }
+
+                        var infoLayout = row.FindViewById<LinearLayout>(Resource.Id.clientInfoLayout);
+                        if (infoLayout != null)
+                        {
+                            infoLayout.Clickable = true;
+                            infoLayout.Focusable = true;
+                            var clientPk = pk;
+                            var currentName = displayName;
+                            infoLayout.Click += (s, e) => ShowEditNcClientNameDialog(clientPk, currentName);
+                        }
+
+                        var btn = row.FindViewById<View>(Resource.Id.clientRemoveBtn);
                         if (btn != null)
                         {
                             btn.Click += (s, e) =>
@@ -2828,6 +2888,7 @@ namespace nokandro
 
                 // Avatar
                 var avatarTv = row.FindViewById<TextView>(Resource.Id.clientAvatarText);
+                var avatarImg = row.FindViewById<ImageView>(Resource.Id.clientAvatarImage);
                 if (avatarTv != null)
                 {
                     var initialText = !string.IsNullOrEmpty(labelText) ? labelText[..1].ToUpperInvariant() : "?";
@@ -2839,6 +2900,11 @@ namespace nokandro
                     avatarBg.SetShape(Android.Graphics.Drawables.ShapeType.Oval);
                     avatarBg.SetColor(color);
                     avatarTv.Background = avatarBg;
+                }
+
+                if (avatarImg != null && avatarTv != null)
+                {
+                    ClientIconLoader.LoadIcon(this, avatarImg, avatarTv, item.uri, item.displayName);
                 }
 
                 // Name & SubText

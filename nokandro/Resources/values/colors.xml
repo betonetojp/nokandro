@@ -8,6 +8,7 @@
   <color name="primary_dark">#BE123C</color>
   <color name="primary_light">#FB7185</color>
   <color name="primary_container">#FFE4E6</color>
+  <color name="surface_variant">#F1F5F9</color> <!-- 上品で落ち着いたニュートラルスレート (Slate 100) -->
   <color name="on_primary">#FFFFFF</color>
   <color name="error">#B3261E</color>
   <color name="outline">#E2E8F0</color>
