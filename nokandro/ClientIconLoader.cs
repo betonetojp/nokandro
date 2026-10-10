@@ -344,6 +344,8 @@ namespace nokandro
                         var rawBitmap = await BitmapFactory.DecodeByteArrayAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
                         if (rawBitmap == null) continue;
 
+                        rawBitmap = UserProfileLoader.ApplyExifOrientation(rawBitmap, bytes);
+
                         // Filter out Google Favicon's 16x16 default earth icon dummy
                         if (rawBitmap.Width <= 16 && rawBitmap.Height <= 16)
                         {

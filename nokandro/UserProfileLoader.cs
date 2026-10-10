@@ -274,6 +274,8 @@ namespace nokandro
                 var rawBitmap = await BitmapFactory.DecodeByteArrayAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
                 if (rawBitmap == null) return null;
 
+                rawBitmap = ApplyExifOrientation(rawBitmap, bytes);
+
                 // Save to disk cache for instant offline restore
                 try
                 {
@@ -347,6 +349,55 @@ namespace nokandro
                 Android.Util.Log.Error("UserProfileLoader", $"CreateCircularAvatar error: {ex}");
                 return null;
             }
+        }
+
+        internal static Bitmap ApplyExifOrientation(Bitmap bitmap, byte[] bytes)
+        {
+            try
+            {
+                using var ms = new System.IO.MemoryStream(bytes);
+                var exif = new Android.Media.ExifInterface(ms);
+                var orientation = exif.GetAttributeInt(Android.Media.ExifInterface.TagOrientation, 1);
+                var matrix = new Matrix();
+
+                switch (orientation)
+                {
+                    case 6: // Rotate 90 CW
+                        matrix.PostRotate(90);
+                        break;
+                    case 3: // Rotate 180
+                        matrix.PostRotate(180);
+                        break;
+                    case 8: // Rotate 270 CW (or 90 CCW)
+                        matrix.PostRotate(270);
+                        break;
+                    case 2: // Flip Horizontal
+                        matrix.PostScale(-1, 1);
+                        break;
+                    case 4: // Flip Vertical
+                        matrix.PostScale(1, -1);
+                        break;
+                    case 5: // Transpose
+                        matrix.PostRotate(90);
+                        matrix.PostScale(-1, 1);
+                        break;
+                    case 7: // Transverse
+                        matrix.PostRotate(270);
+                        matrix.PostScale(-1, 1);
+                        break;
+                    default:
+                        return bitmap;
+                }
+
+                var rotated = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
+                if (rotated != null && rotated != bitmap)
+                {
+                    bitmap.Recycle();
+                    return rotated;
+                }
+            }
+            catch { }
+            return bitmap;
         }
     }
 }
