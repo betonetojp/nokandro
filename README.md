@@ -27,7 +27,8 @@ Package name: `com.nokakoi.nokandro`
 - **Off timer**: Automatically stops the service after a configurable number of minutes.
 - **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires.
 - **Relay list fetch**: Fetches your relay list (kind: 10002) from known relays and lets you pick one.
-- **Home screen widget**: Start/stop the service and quick-post from a widget.
+- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars, kind 7 star reactions, 20-post browsing navigation (`< 20/20 >`), independent service toggle, and dedicated TTS/Muted controls.
+- **Monochrome Notification Icon**: Silhouette notification vector icon (`ic_stat_nokandro`) with dynamic tinting for full compatibility with modern Android versions (Google Pixel, Android 12-15) without solid circular masking.
 - **Tasker / automation support**: Start and stop the service via broadcast intents.
 - The background service uses foreground notifications, ensuring stability and allowing stop control from the notification area.
 
@@ -200,7 +201,8 @@ When installing an update directly from within nokandro for the first time, Andr
 - **オフタイマー**: 指定時間後にサービスを自動停止します。
 - **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。
 - **リレーリスト取得**: リレーリスト (kind: 10002) を取得して接続先を選択できます。
-- **ホーム画面ウィジェット**: ウィジェットからサービスのON/OFFや投稿が可能です。
+- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示、最大20件の履歴ナビゲーション（左右タップおよび下部中央の `< 20/20 >` 操作）、スターリアクション（★/☆ React）、サービス稼働（投稿受信）と音声読み上げ（TTS/Muted）の個別切り替えに対応しています。
+- **通知アイコンのシルエット対応**: Google Pixel や Android 12〜15 などの新しい端末で通知アイコンが丸く塗りつぶされる問題に対応した、背景透明・単色ストロークのベクターアイコン（`ic_stat_nokandro`）を搭載。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスの開始・停止を制御できます。
 - バックグラウンドサービスはフォアグラウンド通知を使用し、通知領域から停止操作が可能です。
 
