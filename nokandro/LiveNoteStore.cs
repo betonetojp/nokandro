@@ -32,8 +32,8 @@ namespace nokandro
     {
         private const string PREFS_NAME = "nokandro_live_note_prefs";
         private const string KEY_POSTS_JSON = "posts_json";
-        private const int MAX_POSTS = 20;
-        private const int MAX_KEEP_POSTS = 50;
+        private const int MAX_POSTS = 50;
+        private const int MAX_KEEP_POSTS = 100;
 
         private static readonly object Lock = new();
         private static readonly List<LiveNoteItem> Posts = new();
@@ -174,8 +174,38 @@ namespace nokandro
                 if (Posts.Count > 0)
                 {
                     _currentIndex = Math.Max(0, _currentIndex - 1);
-                    // 最新に戻ったときは、閲覧キープで超過した過去ログを MAX_POSTS (20件) にトリミング
+                    // 最新に戻ったときは、閲覧キープで超過した過去ログを MAX_POSTS (50件) にトリミング
                     if (_currentIndex == 0 && Posts.Count > MAX_POSTS)
+                    {
+                        Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
+                        SaveToPrefs(context);
+                    }
+                }
+            }
+        }
+
+        public static void StepFirst(Context context)
+        {
+            lock (Lock)
+            {
+                EnsureInitialized(context);
+                if (Posts.Count > 0)
+                {
+                    _currentIndex = Posts.Count - 1; // 最古へ
+                }
+            }
+        }
+
+        public static void StepLast(Context context)
+        {
+            lock (Lock)
+            {
+                EnsureInitialized(context);
+                if (Posts.Count > 0)
+                {
+                    _currentIndex = 0; // 最新へ
+                    // 最新に戻ったときは、閲覧キープで超過した過去ログを MAX_POSTS (50件) にトリミング
+                    if (Posts.Count > MAX_POSTS)
                     {
                         Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
                         SaveToPrefs(context);

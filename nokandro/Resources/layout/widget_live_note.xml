@@ -132,6 +132,7 @@
 
     <!-- Bottom Bar: Relative Time (Left, weight 1) + Navigation (Center) + Quick Post (Right, weight 1) -->
     <LinearLayout
+        android:id="@+id/liveNoteBottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -140,6 +141,7 @@
 
         <!-- Left: Relative Time String (Bottom-Left) -->
         <LinearLayout
+            android:id="@+id/liveNoteTimeContainer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -155,16 +157,29 @@
                 android:textColor="@color/on_surface_variant" />
         </LinearLayout>
 
-        <!-- Center: Navigation Buttons (< / >) and Index (< 1/20 >) -->
+        <!-- Center: Navigation Buttons (<< / < / Index / > / >>) -->
         <LinearLayout
+            android:id="@+id/liveNoteNavContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="horizontal">
 
             <TextView
+                android:id="@+id/liveNoteFirstBtn"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingBottom="4dp"
+                android:text="«"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_surface_variant" />
+
+            <TextView
                 android:id="@+id/liveNotePrevBtn"
-                android:layout_width="28dp"
+                android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
@@ -189,12 +204,24 @@
 
             <TextView
                 android:id="@+id/liveNoteNextBtn"
-                android:layout_width="28dp"
+                android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:paddingBottom="4dp"
                 android:text="›"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_surface_variant" />
+
+            <TextView
+                android:id="@+id/liveNoteLastBtn"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingBottom="4dp"
+                android:text="»"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:textColor="@color/on_surface_variant" />

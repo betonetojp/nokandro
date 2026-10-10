@@ -23,6 +23,9 @@ namespace nokandro
         "nokandro.ACTION_REACT_STAR",
         "nokandro.ACTION_PREV_NOTE",
         "nokandro.ACTION_NEXT_NOTE",
+        "nokandro.ACTION_FIRST_NOTE",
+        "nokandro.ACTION_LAST_NOTE",
+        "nokandro.ACTION_NOOP",
         "nokandro.ACTION_TOGGLE_SERVICE"
     })]
     [MetaData("android.appwidget.provider", Resource = "@xml/widget_live_note_info")]
@@ -34,6 +37,9 @@ namespace nokandro
         public const string ACTION_REACT_STAR = "nokandro.ACTION_REACT_STAR";
         public const string ACTION_PREV_NOTE = "nokandro.ACTION_PREV_NOTE";
         public const string ACTION_NEXT_NOTE = "nokandro.ACTION_NEXT_NOTE";
+        public const string ACTION_FIRST_NOTE = "nokandro.ACTION_FIRST_NOTE";
+        public const string ACTION_LAST_NOTE = "nokandro.ACTION_LAST_NOTE";
+        public const string ACTION_NOOP = "nokandro.ACTION_NOOP";
         public const string ACTION_TOGGLE_SERVICE = "nokandro.ACTION_TOGGLE_SERVICE";
 
         public override void OnUpdate(Context? context, AppWidgetManager? appWidgetManager, int[]? appWidgetIds)
@@ -67,6 +73,21 @@ namespace nokandro
             {
                 LiveNoteStore.StepNext(context);
                 UpdateAllWidgets(context, mgr, ids);
+            }
+            else if (ACTION_FIRST_NOTE.Equals(action))
+            {
+                LiveNoteStore.StepFirst(context);
+                UpdateAllWidgets(context, mgr, ids);
+            }
+            else if (ACTION_LAST_NOTE.Equals(action))
+            {
+                LiveNoteStore.StepLast(context);
+                UpdateAllWidgets(context, mgr, ids);
+            }
+            else if (ACTION_NOOP.Equals(action))
+            {
+                // No-op: prevents launcher from launching main activity on background/bottom tap
+                return;
             }
             else if (ACTION_REACT_STAR.Equals(action))
             {
@@ -206,7 +227,12 @@ namespace nokandro
                 var pendingIntentQuickPost = PendingIntent.GetActivity(context, 12, intentQuickPost, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteQuickPostBtn, pendingIntentQuickPost);
 
-                // 3. Navigation Controls (< / >) and Content Area Left/Right Touch Targets
+                // 3. Navigation Controls (« / ‹ / › / ») and Content Area Left/Right Touch Targets
+                var intentFirst = new Intent(context, typeof(LiveNoteWidget));
+                intentFirst.SetAction(ACTION_FIRST_NOTE);
+                var piFirst = PendingIntent.GetBroadcast(context, 16, intentFirst, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteFirstBtn, piFirst);
+
                 var intentPrev = new Intent(context, typeof(LiveNoteWidget));
                 intentPrev.SetAction(ACTION_PREV_NOTE);
                 var piPrev = PendingIntent.GetBroadcast(context, 13, intentPrev, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
@@ -218,6 +244,21 @@ namespace nokandro
                 var piNext = PendingIntent.GetBroadcast(context, 14, intentNext, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteNextBtn, piNext);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTouchNext, piNext);
+
+                var intentLast = new Intent(context, typeof(LiveNoteWidget));
+                intentLast.SetAction(ACTION_LAST_NOTE);
+                var piLast = PendingIntent.GetBroadcast(context, 17, intentLast, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteLastBtn, piLast);
+
+                // Prevent accidental launcher activation on bottom bar / timestamp / nav index tap
+                var intentNoop = new Intent(context, typeof(LiveNoteWidget));
+                intentNoop.SetAction(ACTION_NOOP);
+                var piNoop = PendingIntent.GetBroadcast(context, 18, intentNoop, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteBottomBar, piNoop);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTimeContainer, piNoop);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTime, piNoop);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteNavContainer, piNoop);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteNavIndex, piNoop);
 
                 if (currentPost != null)
                 {
@@ -247,8 +288,10 @@ namespace nokandro
                         var metaColor = new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
                         remoteViews.SetTextColor(Resource.Id.liveNoteTime, metaColor);
                         remoteViews.SetTextColor(Resource.Id.liveNoteNavIndex, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNoteFirstBtn, metaColor);
                         remoteViews.SetTextColor(Resource.Id.liveNotePrevBtn, metaColor);
                         remoteViews.SetTextColor(Resource.Id.liveNoteNextBtn, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNoteLastBtn, metaColor);
                         remoteViews.SetTextColor(Resource.Id.liveNoteQuickPostBtn, metaColor);
                     }
                     catch { }
