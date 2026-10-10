@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/liveNoteRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="@dimen/spacing_md"
+    android:background="@drawable/widget_live_note_background">
+
+    <!-- Top Bar: App branding + Service Status / Time -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <ImageView
+            android:id="@+id/liveNoteAppIcon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="@string/app_name"
+            android:layout_marginEnd="6dp" />
+
+        <TextView
+            android:id="@+id/liveNoteAppTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="nokandro"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/on_surface_variant" />
+
+        <TextView
+            android:id="@+id/liveNoteTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="11sp"
+            android:textColor="@color/on_surface_variant" />
+    </LinearLayout>
+
+    <!-- Main Content: Left Avatar (with Petname Pill) + Right Post Text -->
+    <LinearLayout
+        android:id="@+id/liveNoteContentArea"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/liveNoteAvatar"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginEnd="10dp"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/liveNoteText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:textSize="13sp"
+            android:lineSpacingMultiplier="1.15"
+            android:textColor="@color/on_surface"
+            android:text="Listening for Nostr posts..." />
+    </LinearLayout>
+
+    <!-- Bottom Controls: Reaction Star + Navigation & Quick Post -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp">
+
+        <!-- Star Reaction Button -->
+        <LinearLayout
+            android:id="@+id/liveNoteStarBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:background="@drawable/bg_status_chip">
+
+            <ImageView
+                android:id="@+id/liveNoteStarIcon"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@drawable/ic_star_outline"
+                android:layout_marginEnd="4dp" />
+
+            <TextView
+                android:id="@+id/liveNoteStarText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="React"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/on_surface" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Navigation Buttons (< / >) -->
+        <TextView
+            android:id="@+id/liveNotePrevBtn"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:text="‹"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/on_surface_variant" />
+
+        <TextView
+            android:id="@+id/liveNoteNavIndex"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="10sp"
+            android:textColor="@color/on_surface_variant"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp" />
+
+        <TextView
+            android:id="@+id/liveNoteNextBtn"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:text="›"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/on_surface_variant" />
+
+        <!-- Quick Post Launch Button -->
+        <TextView
+            android:id="@+id/liveNoteQuickPostBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="Post"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/primary"
+            android:background="@drawable/bg_status_chip"
+            android:layout_marginStart="6dp" />
+    </LinearLayout>
+
+</LinearLayout>

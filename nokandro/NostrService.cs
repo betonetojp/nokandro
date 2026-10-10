@@ -999,6 +999,19 @@ namespace nokandro
             }
             catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
 
+            // Store for LiveNoteWidget
+            try
+            {
+                var eventId = eventObj.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                var createdAt = eventObj.TryGetProperty("created_at", out var createdEl) && createdEl.TryGetInt64(out var ca) ? ca : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (!string.IsNullOrEmpty(eventId))
+                {
+                    LiveNoteStore.AddPost(this, eventId, pubkey, content, petname, createdAt);
+                    LiveNoteWidget.UpdateAllWidgets(this);
+                }
+            }
+            catch (Exception ex) { AppLog.W(TAG, "LiveNoteStore.AddPost failed: " + ex.Message); }
+
             if (_enableTts)
             {
                 SpeakText(content, pitch, speechRate, isFollowed, petname);

@@ -165,7 +165,7 @@ namespace nokandro
             catch { }
         }
 
-        private static async Task<string?> FetchPictureUrlAsync(string pubkeyHex, string? preferredRelay)
+        internal static async Task<string?> FetchPictureUrlAsync(string pubkeyHex, string? preferredRelay)
         {
             var relays = new List<string>();
             if (!string.IsNullOrWhiteSpace(preferredRelay) &&
@@ -264,7 +264,7 @@ namespace nokandro
             return null;
         }
 
-        private static async Task<Bitmap?> DownloadAndProcessAvatarAsync(string pictureUrl, string diskCachePath, Context context)
+        internal static async Task<Bitmap?> DownloadAndProcessAvatarAsync(string pictureUrl, string diskCachePath, Context context)
         {
             try
             {

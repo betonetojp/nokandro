@@ -2036,6 +2036,7 @@ namespace nokandro
                 }
                 catch { }
                 try { RefreshNip55PermissionList(); } catch { }
+                try { HandleCustomIntent(Intent); } catch { }
             }
             catch { }
         }
@@ -2045,25 +2046,55 @@ namespace nokandro
             base.OnNewIntent(intent);
             try
             {
-                // nostrconnect_uriがあればBunker/Signerタブを表示してncUriEditに貼り付ける
-                var ncUri = intent?.GetStringExtra("nostrconnect_uri");
-                if (!string.IsNullOrEmpty(ncUri))
-                {
-                    SwitchToTab(1);
-                    var ncUriEditLocal = FindViewById<EditText>(Resource.Id.ncUriEdit);
-                    if (ncUriEditLocal != null)
-                        ncUriEditLocal.Text = ncUri;
-
-                    var nsecEdit = FindViewById<EditText>(Resource.Id.nsecEdit);
-                    RunOnUiThread(() => PromptNostrConnectIfValid(ncUri, nsecEdit));
-                }
-                var openTab = intent?.GetStringExtra("openTab");
-                if (openTab == "bunker" || openTab == "signer")
-                    SwitchToTab(1);
-                else if (openTab == "main")
-                    SwitchToTab(0);
+                HandleCustomIntent(intent);
             }
             catch { }
+        }
+
+        private void HandleCustomIntent(Intent? intent)
+        {
+            if (intent == null) return;
+
+            // nostrconnect_uriがあればBunker/Signerタブを表示してncUriEditに貼り付ける
+            var ncUri = intent.GetStringExtra("nostrconnect_uri");
+            if (!string.IsNullOrEmpty(ncUri))
+            {
+                SwitchToTab(1);
+                var ncUriEditLocal = FindViewById<EditText>(Resource.Id.ncUriEdit);
+                if (ncUriEditLocal != null)
+                    ncUriEditLocal.Text = ncUri;
+
+                var nsecEdit = FindViewById<EditText>(Resource.Id.nsecEdit);
+                RunOnUiThread(() => PromptNostrConnectIfValid(ncUri, nsecEdit));
+            }
+            var openTab = intent.GetStringExtra("openTab");
+            if (openTab == "bunker" || openTab == "signer")
+                SwitchToTab(1);
+            else if (openTab == "main")
+                SwitchToTab(0);
+
+            var action = intent.GetStringExtra("action");
+            if (action == "pin_live_note")
+            {
+                TryPinWidget(typeof(LiveNoteWidget));
+            }
+            else if (action == "pin_post_widget")
+            {
+                TryPinWidget(typeof(PostWidget));
+            }
+        }
+
+        private void TryPinWidget(Type widgetType)
+        {
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+                var appWidgetManager = Android.Appwidget.AppWidgetManager.GetInstance(this);
+                if (appWidgetManager != null && appWidgetManager.IsRequestPinAppWidgetSupported)
+                {
+                    var myProvider = new ComponentName(this, Java.Lang.Class.FromType(widgetType));
+                    appWidgetManager.RequestPinAppWidget(myProvider, null, null);
+                }
+            }
         }
 
         private void UpdateServiceStatusFooter(string? overrideDetail = null)
