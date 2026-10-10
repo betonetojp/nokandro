@@ -123,79 +123,25 @@ namespace nokandro
                 remoteViews.SetOnClickPendingIntent(Resource.Id.widgetIcon, pendingIntentToggle);
 
                 // Update Icon Cleanliness
-                bool isRunning = NostrService.IsRunning;
-                if (isRunning)
+                bool isTtsActive = NostrService.IsRunning && NostrService.IsTtsEnabled;
+                if (isTtsActive)
                 {
                     remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 255);
-                    // Reset color filter to remove gray
-                    remoteViews.SetInt(Resource.Id.widgetIcon, "setColorFilter", 0);
-                    // Or if using standard API:
-                    // Unfortunately setTint is not directly available on RemoteViews for ImageView via specific method easily across all API levels without compat issues.
-                    // But setColorFilter(0) usually clears filter.
-                    // Actually, to make it colorful, we just ensure it's normal.
-                    // To be safe against state persistence issues, we might want to re-set the resource.
                     remoteViews.SetImageViewResource(Resource.Id.widgetIcon, Resource.Mipmap.ic_launcher);
-                    // Clear color filter if possible, or just set alpha. 
-                    // Using setInt with "setColorFilter" (int color) where 0 is transparent/none works on many versions but technically depends on method signature. 
-                    // ImageView.setColorFilter(null) is not available via RemoteViews. ImageView.clearColorFilter() is void.
-                    // However, SetImageViewResource usually resets basic state.
                 }
                 else
                 {
-                    // Stopped state -> Monochrome / Dimmed
-                    remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 128); // Semi-transparent
-                    // Apply gray tint?
-                    // remoteViews.SetInt(Resource.Id.widgetIcon, "setColorFilter", Color.Gray.ToArgb()); 
-                    // This tints the whole non-transparent area gray. Good enough for "monochrome".
-                    // If icons are colorful, this makes them a flat gray shape.
-                    
-                    // Create grayscale bitmap for better look (preserves details but removes color)
-                    try
-                    {
-                        var bmp = GetGrayscaleIcon(context);
-                        if (bmp != null)
-                             remoteViews.SetImageViewBitmap(Resource.Id.widgetIcon, bmp);
-                        else
-                             remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 100);
-                    }
-                    catch
-                    {
-                        remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 100);
-                    }
+                    // Stopped state or Muted -> Monochrome
+                    remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 128);
+                    var bmp = WidgetIconHelper.GetGrayscaleLauncherIcon(context);
+                    if (bmp != null)
+                        remoteViews.SetImageViewBitmap(Resource.Id.widgetIcon, bmp);
+                    else
+                        remoteViews.SetImageViewResource(Resource.Id.widgetIcon, Resource.Mipmap.ic_launcher);
                 }
 
                 appWidgetManager.UpdateAppWidget(widgetId, remoteViews);
             }
-        }
-
-        private Bitmap? GetGrayscaleIcon(Context context)
-        {
-            // Load original drawable
-            var drawable = context.GetDrawable(Resource.Mipmap.ic_launcher);
-            if (drawable == null) return null;
-            
-            // Convert to bitmap
-            var width = drawable.IntrinsicWidth;
-            var height = drawable.IntrinsicHeight;
-            if (width <= 0) width = 96;
-            if (height <= 0) height = 96;
-            
-            Bitmap bmp = Bitmap.CreateBitmap(width, height, Bitmap.Config.Argb8888);
-            var canvas = new Canvas(bmp);
-            drawable.SetBounds(0, 0, canvas.Width, canvas.Height);
-            drawable.Draw(canvas);
-
-            // Create grayscale
-            Bitmap bmpGray = Bitmap.CreateBitmap(width, height, Bitmap.Config.Argb8888);
-            var c = new Canvas(bmpGray);
-            var paint = new Paint();
-            var cm = new ColorMatrix();
-            cm.SetSaturation(0);
-            var f = new ColorMatrixColorFilter(cm);
-            paint.SetColorFilter(f);
-            c.DrawBitmap(bmp, 0, 0, paint);
-            
-            return bmpGray;
         }
     }
 }

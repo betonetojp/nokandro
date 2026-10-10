@@ -18,6 +18,7 @@ namespace nokandro
     [IntentFilter(new string[] {
         "android.appwidget.action.APPWIDGET_UPDATE",
         "nokandro.ACTION_UPDATE_LIVE_NOTE",
+        "nokandro.ACTION_UPDATE_WIDGET",
         "nokandro.ACTION_REACT_STAR",
         "nokandro.ACTION_PREV_NOTE",
         "nokandro.ACTION_NEXT_NOTE",
@@ -27,6 +28,7 @@ namespace nokandro
     public class LiveNoteWidget : AppWidgetProvider
     {
         public const string ACTION_UPDATE_LIVE_NOTE = "nokandro.ACTION_UPDATE_LIVE_NOTE";
+        public const string ACTION_UPDATE_WIDGET = "nokandro.ACTION_UPDATE_WIDGET";
         public const string ACTION_REACT_STAR = "nokandro.ACTION_REACT_STAR";
         public const string ACTION_PREV_NOTE = "nokandro.ACTION_PREV_NOTE";
         public const string ACTION_NEXT_NOTE = "nokandro.ACTION_NEXT_NOTE";
@@ -50,7 +52,7 @@ namespace nokandro
             var ids = mgr?.GetAppWidgetIds(new ComponentName(context, Java.Lang.Class.FromType(typeof(LiveNoteWidget))));
             if (mgr == null || ids == null || ids.Length == 0) return;
 
-            if (ACTION_UPDATE_LIVE_NOTE.Equals(action) || Intent.ActionBootCompleted?.Equals(action) == true)
+            if (ACTION_UPDATE_LIVE_NOTE.Equals(action) || ACTION_UPDATE_WIDGET.Equals(action) || Intent.ActionBootCompleted?.Equals(action) == true)
             {
                 UpdateAllWidgets(context, mgr, ids);
             }
@@ -126,6 +128,27 @@ namespace nokandro
                 intentToggle.SetAction(ACTION_TOGGLE_SERVICE);
                 var pendingIntentToggle = PendingIntent.GetBroadcast(context, 10, intentToggle, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppIcon, pendingIntentToggle);
+
+                // Update Icon color based on whether TTS (reading) is active
+                bool isTtsActive = NostrService.IsRunning && NostrService.IsTtsEnabled;
+                if (isTtsActive)
+                {
+                    remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
+                    remoteViews.SetInt(Resource.Id.liveNoteAppIcon, "setAlpha", 255);
+                }
+                else
+                {
+                    var grayIcon = WidgetIconHelper.GetGrayscaleLauncherIcon(context);
+                    if (grayIcon != null)
+                    {
+                        remoteViews.SetImageViewBitmap(Resource.Id.liveNoteAppIcon, grayIcon);
+                    }
+                    else
+                    {
+                        remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
+                    }
+                    remoteViews.SetInt(Resource.Id.liveNoteAppIcon, "setAlpha", 128);
+                }
 
                 // Title click opens Main App
                 var intentApp = new Intent(context, typeof(MainActivity));

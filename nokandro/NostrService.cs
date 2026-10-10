@@ -27,6 +27,7 @@ namespace nokandro
     {
         // indicate service running state for Activity UI
         public static bool IsRunning { get; private set; } = false;
+        public static bool IsTtsEnabled { get; private set; } = true;
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
         private NostrWebSocketClient? _wsClient;
@@ -236,7 +237,12 @@ namespace nokandro
                 try { _speakPetname = intent.GetBooleanExtra("speakPetname", _speakPetname); } catch { }
                 try { _truncateEllipsis = intent.GetStringExtra("truncateEllipsis") ?? _truncateEllipsis; } catch { }
                 try { _enableMusicStatus = intent.GetBooleanExtra("enableMusicStatus", false); } catch { }
-                try { _enableTts = intent.GetBooleanExtra("enableTts", true); } catch { }
+                try
+                {
+                    _enableTts = intent.GetBooleanExtra("enableTts", true);
+                    IsTtsEnabled = _enableTts;
+                }
+                catch { }
                 try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
                 try { _skipContentWarning = intent.GetBooleanExtra("skipContentWarning", false); } catch { }
                 try { _offTimerMinutes = intent.GetIntExtra("offTimerMinutes", 0); } catch { }
@@ -412,6 +418,7 @@ namespace nokandro
                 var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
+                LiveNoteWidget.UpdateAllWidgets(this);
             }
             catch { }
 
@@ -422,6 +429,7 @@ namespace nokandro
         {
             AppLog.D(TAG, "OnDestroy");
             IsRunning = false;
+            IsTtsEnabled = false;
             try { _offTimerCts?.Cancel(); _offTimerCts = null; } catch { }
             try
             {
@@ -447,6 +455,7 @@ namespace nokandro
                 var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
+                LiveNoteWidget.UpdateAllWidgets(this);
             }
             catch { }
             try { if (_localReceiver != null) LocalBroadcast.UnregisterReceiver(_localReceiver); } catch { }
