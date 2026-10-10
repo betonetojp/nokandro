@@ -12,8 +12,15 @@ namespace nokandro
     {
         private static readonly ConcurrentDictionary<string, Bitmap> CompositeCache = new(StringComparer.OrdinalIgnoreCase);
 
+        public static void ClearMemoryCache()
+        {
+            CompositeCache.Clear();
+        }
+
         public static Bitmap GetOrCreateAvatar(Context context, string pubkeyHex, string? petname, float density)
         {
+            UserProfileLoader.EnsureCacheVersion(context);
+
             var cacheKey = $"{pubkeyHex}_{petname ?? ""}";
             if (CompositeCache.TryGetValue(cacheKey, out var cached) && cached != null && !cached.IsRecycled)
             {
@@ -45,6 +52,7 @@ namespace nokandro
         public static void TriggerAvatarDownloadIfNeeded(Context context, string pubkeyHex, string? preferredRelay, Action onDownloaded)
         {
             if (string.IsNullOrEmpty(pubkeyHex)) return;
+            UserProfileLoader.EnsureCacheVersion(context);
 
             var cacheDir = IOPath.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
             Directory.CreateDirectory(cacheDir);

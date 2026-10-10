@@ -32,12 +32,41 @@ namespace nokandro
             "wss://yabu.me"
         ];
 
+        private const string PREF_AVATAR_CACHE_VERSION = "pref_avatar_cache_version";
+        private const int CURRENT_AVATAR_CACHE_VERSION = 3; // bumped to purge non-EXIF-corrected cache
+
+        public static void EnsureCacheVersion(Context context)
+        {
+            try
+            {
+                var prefs = context.GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                var ver = prefs?.GetInt(PREF_AVATAR_CACHE_VERSION, 1) ?? 1;
+                if (ver < CURRENT_AVATAR_CACHE_VERSION)
+                {
+                    var cacheDir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
+                    if (System.IO.Directory.Exists(cacheDir))
+                    {
+                        System.IO.Directory.Delete(cacheDir, true);
+                    }
+                    MemoryCache.Clear();
+                    LiveNoteAvatarHelper.ClearMemoryCache();
+                    prefs?.Edit()?.PutInt(PREF_AVATAR_CACHE_VERSION, CURRENT_AVATAR_CACHE_VERSION)?.Apply();
+                    Android.Util.Log.Info("UserProfileLoader", $"EnsureCacheVersion: Purged profile_avatars cache for version {CURRENT_AVATAR_CACHE_VERSION}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn("UserProfileLoader", $"EnsureCacheVersion failed: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Loads the user's Nostr profile avatar asynchronously and applies it to the TextInputLayout.
         /// </summary>
         public static void LoadAvatar(Context context, TextInputLayout layout, string? npubOrHex, string? preferredRelay)
         {
             if (layout == null) return;
+            EnsureCacheVersion(context);
 
             var pubkeyHex = ResolvePubkeyHex(npubOrHex);
             if (string.IsNullOrEmpty(pubkeyHex))
@@ -353,13 +382,17 @@ namespace nokandro
 
         internal static Bitmap ApplyExifOrientation(Bitmap bitmap, byte[] bytes)
         {
+            string? tempFile = null;
             try
             {
-                using var ms = new System.IO.MemoryStream(bytes);
-                var exif = new Android.Media.ExifInterface(ms);
-                var orientation = exif.GetAttributeInt(Android.Media.ExifInterface.TagOrientation, 1);
-                var matrix = new Matrix();
+                tempFile = System.IO.Path.GetTempFileName();
+                System.IO.File.WriteAllBytes(tempFile, bytes);
 
+                var exif = new Android.Media.ExifInterface(tempFile);
+                var orientation = exif.GetAttributeInt(Android.Media.ExifInterface.TagOrientation, 1);
+                Android.Util.Log.Info("UserProfileLoader", $"ApplyExifOrientation: detected orientation = {orientation}, size = {bitmap.Width}x{bitmap.Height}");
+
+                var matrix = new Matrix();
                 switch (orientation)
                 {
                     case 6: // Rotate 90 CW
@@ -386,17 +419,29 @@ namespace nokandro
                         matrix.PostScale(-1, 1);
                         break;
                     default:
+                        Android.Util.Log.Info("UserProfileLoader", "ApplyExifOrientation: orientation is normal (1), no rotation needed");
                         return bitmap;
                 }
 
                 var rotated = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
                 if (rotated != null && rotated != bitmap)
                 {
+                    Android.Util.Log.Info("UserProfileLoader", $"ApplyExifOrientation: successfully rotated to {rotated.Width}x{rotated.Height}");
                     bitmap.Recycle();
                     return rotated;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Error("UserProfileLoader", $"ApplyExifOrientation failed: {ex.Message}");
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempFile))
+                {
+                    try { System.IO.File.Delete(tempFile); } catch { }
+                }
+            }
             return bitmap;
         }
     }
