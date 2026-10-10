@@ -185,13 +185,23 @@ namespace nokandro
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteStarBtn, ViewStates.Visible);
                     if (currentPost.IsReacted)
                     {
-                        remoteViews.SetImageViewResource(Resource.Id.liveNoteStarIcon, Resource.Drawable.ic_star_filled);
-                        remoteViews.SetTextViewText(Resource.Id.liveNoteStarText, "Reacted");
+                        remoteViews.SetTextViewText(Resource.Id.liveNoteStarBtn, "★ Reacted");
+                        try
+                        {
+                            var goldColor = new Android.Graphics.Color(context.GetColor(Resource.Color.update_available));
+                            remoteViews.SetTextColor(Resource.Id.liveNoteStarBtn, goldColor);
+                        }
+                        catch { }
                     }
                     else
                     {
-                        remoteViews.SetImageViewResource(Resource.Id.liveNoteStarIcon, Resource.Drawable.ic_star_outline);
-                        remoteViews.SetTextViewText(Resource.Id.liveNoteStarText, "React");
+                        remoteViews.SetTextViewText(Resource.Id.liveNoteStarBtn, "☆ React");
+                        try
+                        {
+                            var defaultColor = new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface));
+                            remoteViews.SetTextColor(Resource.Id.liveNoteStarBtn, defaultColor);
+                        }
+                        catch { }
                     }
 
                     var reactIntent = new Intent(context, typeof(LiveNoteWidget));
