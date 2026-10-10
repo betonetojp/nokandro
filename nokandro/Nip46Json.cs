@@ -1,25 +1,41 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace nokandro
 {
     internal static class Nip46Json
     {
-        private static readonly JsonWriterOptions CompactJsonOptions = new()
-        {
-            Indented = false,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        };
-
         public static string EscapeJsonString(string? text)
         {
             if (text == null) return "null";
-            return JsonSerializer.Serialize(text, new JsonSerializerOptions
+            var sb = new StringBuilder(text.Length + 16);
+            sb.Append('"');
+            foreach (var c in text)
             {
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ')
+                        {
+                            sb.AppendFormat("\\u{0:x4}", (int)c);
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                        break;
+                }
+            }
+            sb.Append('"');
+            return sb.ToString();
         }
 
         public static string BytesToHex(byte[] bytes)
@@ -70,33 +86,44 @@ namespace nokandro
             }
         }
 
+        public static string SerializeTags(List<List<string>> tags)
+        {
+            var sb = new StringBuilder();
+            sb.Append('[');
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append('[');
+                var tag = tags[i];
+                for (int j = 0; j < tag.Count; j++)
+                {
+                    if (j > 0) sb.Append(',');
+                    sb.Append(EscapeJsonString(tag[j] ?? ""));
+                }
+                sb.Append(']');
+            }
+            sb.Append(']');
+            return sb.ToString();
+        }
+
         public static byte[] ComputeEventId(string pubkey, long createdAt, int kind, List<List<string>> tags, string content)
         {
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
-            {
-                writer.WriteStartArray();
-                writer.WriteNumberValue(0);
-                writer.WriteStringValue(pubkey.ToLowerInvariant());
-                writer.WriteNumberValue(createdAt);
-                writer.WriteNumberValue(kind);
-                writer.WriteStartArray();
-                foreach (var tag in tags)
-                {
-                    writer.WriteStartArray();
-                    foreach (var elem in tag)
-                    {
-                        writer.WriteStringValue(elem ?? "");
-                    }
-                    writer.WriteEndArray();
-                }
-                writer.WriteEndArray();
-                writer.WriteStringValue(content ?? "");
-                writer.WriteEndArray();
-            }
+            var sb = new StringBuilder();
+            sb.Append("[0,\"");
+            sb.Append(pubkey.ToLowerInvariant());
+            sb.Append("\",");
+            sb.Append(createdAt);
+            sb.Append(',');
+            sb.Append(kind);
+            sb.Append(',');
+            sb.Append(SerializeTags(tags));
+            sb.Append(',');
+            sb.Append(EscapeJsonString(content ?? ""));
+            sb.Append(']');
 
+            var json = sb.ToString();
             using var sha = SHA256.Create();
-            return sha.ComputeHash(ms.ToArray());
+            return sha.ComputeHash(Encoding.UTF8.GetBytes(json));
         }
 
         public static byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
@@ -128,31 +155,16 @@ namespace nokandro
             var sigBytes = NostrCrypto.Sign(eventIdBytes, privKey);
             var sigHex = BytesToHex(sigBytes);
 
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
-            {
-                writer.WriteStartObject();
-                writer.WriteString("id", eventIdHex);
-                writer.WriteString("pubkey", eventPubkey);
-                writer.WriteNumber("created_at", createdAt);
-                writer.WriteNumber("kind", kind);
-                writer.WriteStartArray("tags");
-                foreach (var tag in tagsList)
-                {
-                    writer.WriteStartArray();
-                    foreach (var elem in tag)
-                    {
-                        writer.WriteStringValue(elem);
-                    }
-                    writer.WriteEndArray();
-                }
-                writer.WriteEndArray();
-                writer.WriteString("content", content);
-                writer.WriteString("sig", sigHex);
-                writer.WriteEndObject();
-            }
+            var sb = new StringBuilder();
+            sb.Append("{\"id\":\"").Append(eventIdHex).Append("\",");
+            sb.Append("\"pubkey\":\"").Append(eventPubkey).Append("\",");
+            sb.Append("\"created_at\":").Append(createdAt).Append(",");
+            sb.Append("\"kind\":").Append(kind).Append(",");
+            sb.Append("\"tags\":").Append(SerializeTags(tagsList)).Append(",");
+            sb.Append("\"content\":").Append(EscapeJsonString(content)).Append(",");
+            sb.Append("\"sig\":\"").Append(sigHex).Append("\"}");
 
-            return Encoding.UTF8.GetString(ms.ToArray());
+            return sb.ToString();
         }
 
         public static string BuildSignedKind24133(string signerPubkeyHex, string clientPubkeyHex, string encryptedContent, byte[] privKey)
@@ -162,25 +174,16 @@ namespace nokandro
             var eventId = ComputeEventId(signerPubkeyHex, createdAt, 24133, tags, encryptedContent);
             var sig = NostrCrypto.Sign(eventId, privKey);
 
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, CompactJsonOptions))
-            {
-                writer.WriteStartObject();
-                writer.WriteString("id", BytesToHex(eventId));
-                writer.WriteString("pubkey", signerPubkeyHex.ToLowerInvariant());
-                writer.WriteNumber("created_at", createdAt);
-                writer.WriteNumber("kind", 24133);
-                writer.WriteStartArray("tags");
-                writer.WriteStartArray();
-                writer.WriteStringValue("p");
-                writer.WriteStringValue(clientPubkeyHex);
-                writer.WriteEndArray();
-                writer.WriteEndArray();
-                writer.WriteString("content", encryptedContent);
-                writer.WriteString("sig", BytesToHex(sig));
-                writer.WriteEndObject();
-            }
-            return Encoding.UTF8.GetString(ms.ToArray());
+            var sb = new StringBuilder();
+            sb.Append("{\"id\":\"").Append(BytesToHex(eventId)).Append("\",");
+            sb.Append("\"pubkey\":\"").Append(signerPubkeyHex.ToLowerInvariant()).Append("\",");
+            sb.Append("\"created_at\":").Append(createdAt).Append(",");
+            sb.Append("\"kind\":24133,");
+            sb.Append("\"tags\":").Append(SerializeTags(tags)).Append(",");
+            sb.Append("\"content\":").Append(EscapeJsonString(encryptedContent)).Append(",");
+            sb.Append("\"sig\":\"").Append(BytesToHex(sig)).Append("\"}");
+
+            return sb.ToString();
         }
 
         public static string BuildBunkerUri(string pubkeyHex, IEnumerable<string> relays, string secret)

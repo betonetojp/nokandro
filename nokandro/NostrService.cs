@@ -1462,57 +1462,11 @@ namespace nokandro
             }
         }
 
-        private byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content)
-        {
-             var sb = new System.Text.StringBuilder();
-             sb.Append("[0,\"");
-             sb.Append(pubkey);
-             sb.Append("\",");
-             sb.Append(createdAt);
-             sb.Append(",");
-             sb.Append(kind);
-             sb.Append(",");
-             sb.Append(tagsJson);
-             sb.Append(",");
-             sb.Append(EscapeJsonString(content));
-             sb.Append("]");
-             
-             var raw = sb.ToString();
-             using var sha = SHA256.Create();
-             return sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
-        }
+        private byte[] ComputeEventId(string pubkey, long createdAt, int kind, string tagsJson, string content) =>
+            Nip46Json.ComputeEventId(pubkey, createdAt, kind, tagsJson, content);
 
-        private static string EscapeJsonString(string text)
-        {
-            if (text == null) return "null";
-            var sb = new System.Text.StringBuilder();
-            sb.Append('"');
-            foreach (var c in text)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"': sb.Append("\\\""); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < ' ')
-                        {
-                            sb.Append($"\\u{(int)c:x4}");
-                        }
-                        else
-                        {
-                            sb.Append(c);
-                        }
-                        break;
-                }
-            }
-            sb.Append('"');
-            return sb.ToString();
-        }
+        private static string EscapeJsonString(string text) =>
+            Nip46Json.EscapeJsonString(text);
 
         private void BroadcastMusicPostStatus(string status)
         {
