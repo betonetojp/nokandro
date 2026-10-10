@@ -985,6 +985,9 @@ namespace nokandro
             var tts = _tts;
             if (tts == null) { AppLog.W(TAG, "TTS is null"); return; }
 
+            // expand sexy gyouza (invisible Plane 14 tag characters) into speech text
+            text = ExpandSexyGyouzaForSpeech(text);
+
             // replace URLs so they are not spoken verbatim
             text = ReplaceUrlsForSpeech(text);
 
@@ -1138,6 +1141,57 @@ namespace nokandro
                 return string.Concat(replaced.AsSpan(0, _truncateLen), _truncateEllipsis);
             }
             return replaced;
+        }
+
+        private static string ExpandSexyGyouzaForSpeech(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            if (!text.Contains('\uDB40')) return text;
+
+            var sb = new System.Text.StringBuilder(text.Length + 32);
+            var tagBytes = new List<byte>();
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (char.IsSurrogatePair(text, i))
+                {
+                    int cp = char.ConvertToUtf32(text, i);
+                    if (cp >= 0xE0100 && cp <= 0xE01EF)
+                    {
+                        tagBytes.Add((byte)(cp - 0xE00F0));
+                        i++; // skip low surrogate
+                        continue;
+                    }
+                }
+
+                if (tagBytes.Count > 0)
+                {
+                    FlushSexyGyouzaBytes(sb, tagBytes);
+                }
+
+                sb.Append(text[i]);
+            }
+
+            if (tagBytes.Count > 0)
+            {
+                FlushSexyGyouzaBytes(sb, tagBytes);
+            }
+
+            return sb.ToString();
+        }
+
+        private static void FlushSexyGyouzaBytes(System.Text.StringBuilder sb, List<byte> tagBytes)
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(tagBytes.ToArray());
+                if (!string.IsNullOrWhiteSpace(decoded))
+                {
+                    sb.Append(" ").Append(decoded.Trim()).Append(" ");
+                }
+            }
+            catch { }
+            tagBytes.Clear();
         }
 
 

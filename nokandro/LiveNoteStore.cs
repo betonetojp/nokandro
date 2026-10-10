@@ -33,6 +33,7 @@ namespace nokandro
         private const string PREFS_NAME = "nokandro_live_note_prefs";
         private const string KEY_POSTS_JSON = "posts_json";
         private const int MAX_POSTS = 20;
+        private const int MAX_KEEP_POSTS = 50;
 
         private static readonly object Lock = new();
         private static readonly List<LiveNoteItem> Posts = new();
@@ -47,7 +48,14 @@ namespace nokandro
                 lock (Lock)
                 {
                     if (Posts.Count == 0) _currentIndex = 0;
-                    else _currentIndex = Math.Clamp(value, 0, Posts.Count - 1);
+                    else
+                    {
+                        _currentIndex = Math.Clamp(value, 0, Posts.Count - 1);
+                        if (_currentIndex == 0 && Posts.Count > MAX_POSTS)
+                        {
+                            Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
+                        }
+                    }
                 }
             }
         }
@@ -75,6 +83,11 @@ namespace nokandro
             {
                 EnsureInitialized(context);
 
+                // 最新以外を表示している場合は、表示中の投稿IDを記憶して表示位置をキープする
+                string? currentViewingId = (_currentIndex > 0 && _currentIndex < Posts.Count)
+                    ? Posts[_currentIndex].Id
+                    : null;
+
                 // Avoid duplicate if same event id
                 if (!string.IsNullOrEmpty(id))
                 {
@@ -92,12 +105,40 @@ namespace nokandro
                 };
 
                 Posts.Insert(0, item);
-                if (Posts.Count > MAX_POSTS)
+
+                if (currentViewingId != null)
                 {
-                    Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
+                    // 過去の投稿を表示中だった場合：表示中投稿の新しいインデックスに追従
+                    var newIndex = Posts.FindIndex(p => p.Id == currentViewingId);
+                    if (newIndex >= 0)
+                    {
+                        _currentIndex = newIndex;
+                    }
+                    else
+                    {
+                        _currentIndex = Math.Clamp(_currentIndex + 1, 0, Posts.Count - 1);
+                    }
+
+                    // 閲覧中の投稿が押し出されないよう MAX_KEEP_POSTS (50件) まで保持
+                    if (Posts.Count > MAX_KEEP_POSTS)
+                    {
+                        Posts.RemoveRange(MAX_KEEP_POSTS, Posts.Count - MAX_KEEP_POSTS);
+                        if (_currentIndex >= Posts.Count)
+                        {
+                            _currentIndex = Posts.Count - 1;
+                        }
+                    }
+                }
+                else
+                {
+                    // 最新を表示していた場合：そのまま最新（0）を表示し、通常の上限 MAX_POSTS (20件) にトリミング
+                    _currentIndex = 0;
+                    if (Posts.Count > MAX_POSTS)
+                    {
+                        Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
+                    }
                 }
 
-                _currentIndex = 0; // reset to latest
                 SaveToPrefs(context);
             }
         }
@@ -133,6 +174,12 @@ namespace nokandro
                 if (Posts.Count > 0)
                 {
                     _currentIndex = Math.Max(0, _currentIndex - 1);
+                    // 最新に戻ったときは、閲覧キープで超過した過去ログを MAX_POSTS (20件) にトリミング
+                    if (_currentIndex == 0 && Posts.Count > MAX_POSTS)
+                    {
+                        Posts.RemoveRange(MAX_POSTS, Posts.Count - MAX_POSTS);
+                        SaveToPrefs(context);
+                    }
                 }
             }
         }
