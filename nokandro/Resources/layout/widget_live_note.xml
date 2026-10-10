@@ -130,7 +130,7 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Bottom Bar: Relative Time (Left) + Navigation (< / >) & Quick Post (Right) -->
+    <!-- Bottom Bar: Relative Time (Left, weight 1) + Navigation (Center) + Quick Post (Right, weight 1) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -138,72 +138,89 @@
         android:gravity="center_vertical"
         android:layout_marginTop="2dp">
 
-        <!-- Relative Time String (Bottom-Left) -->
-        <TextView
-            android:id="@+id/liveNoteTime"
+        <!-- Left: Relative Time String (Bottom-Left) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="start|center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/liveNoteTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="11sp"
+                android:textColor="@color/on_surface_variant" />
+        </LinearLayout>
+
+        <!-- Center: Navigation Buttons (< / >) and Index (< 1/20 >) -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="11sp"
-            android:textColor="@color/on_surface_variant" />
+            android:gravity="center"
+            android:orientation="horizontal">
 
-        <!-- RemoteViews safe spacer -->
-        <FrameLayout
+            <TextView
+                android:id="@+id/liveNotePrevBtn"
+                android:layout_width="28dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingBottom="4dp"
+                android:text="‹"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_surface_variant" />
+
+            <TextView
+                android:id="@+id/liveNoteNavIndex"
+                android:layout_width="wrap_content"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingTop="1dp"
+                android:text=""
+                android:textSize="11sp"
+                android:textColor="@color/on_surface_variant"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp" />
+
+            <TextView
+                android:id="@+id/liveNoteNextBtn"
+                android:layout_width="28dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingBottom="4dp"
+                android:text="›"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_surface_variant" />
+        </LinearLayout>
+
+        <!-- Right: Quick Post Launch Button -->
+        <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end|center_vertical"
+            android:orientation="horizontal">
 
-        <!-- Navigation Buttons (< / >) with generous touch target and aligned baseline -->
-        <TextView
-            android:id="@+id/liveNotePrevBtn"
-            android:layout_width="28dp"
-            android:layout_height="24dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:paddingBottom="2dp"
-            android:text="‹"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/on_surface_variant" />
-
-        <TextView
-            android:id="@+id/liveNoteNavIndex"
-            android:layout_width="wrap_content"
-            android:layout_height="24dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text=""
-            android:textSize="11sp"
-            android:textColor="@color/on_surface_variant"
-            android:layout_marginStart="2dp"
-            android:layout_marginEnd="2dp" />
-
-        <TextView
-            android:id="@+id/liveNoteNextBtn"
-            android:layout_width="28dp"
-            android:layout_height="24dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:paddingBottom="2dp"
-            android:text="›"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/on_surface_variant" />
-
-        <!-- Quick Post Launch Button -->
-        <TextView
-            android:id="@+id/liveNoteQuickPostBtn"
-            android:layout_width="wrap_content"
-            android:layout_height="24dp"
-            android:gravity="center_vertical"
-            android:paddingStart="9dp"
-            android:paddingEnd="9dp"
-            android:text="Post"
-            android:textSize="11sp"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/primary"
-            android:background="@drawable/bg_status_chip"
-            android:layout_marginStart="5dp" />
+            <TextView
+                android:id="@+id/liveNoteQuickPostBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:paddingStart="9dp"
+                android:paddingEnd="9dp"
+                android:text="Post"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/primary"
+                android:background="@drawable/bg_status_chip" />
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>
