@@ -95,12 +95,9 @@ namespace nokandro
                     var pubkeyHex = BitConverter.ToString(pubkeyBytes).Replace("-", "").ToLowerInvariant();
                     var createdAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     
-                    var contentJson = EscapeJsonString(text);
+                    var contentJson = Nip46Json.EscapeJsonString(text);
                     var tagsJson = "[[\"client\",\"nokandro\",\"31990:21ac29561b5de90cdc21995fc0707525cd78c8a52d87721ab681d3d609d1e2df:1763998625847\",\"wss://yabu.me/\"]]";
-                    var rawEvent = $"[0,\"{pubkeyHex}\",{createdAt},1,{tagsJson},{contentJson}]";
-                    
-                    using var sha = SHA256.Create();
-                    var eventId = sha.ComputeHash(Encoding.UTF8.GetBytes(rawEvent));
+                    var eventId = Nip46Json.ComputeEventId(pubkeyHex, createdAt, 1, tagsJson, text);
                     var sig = NostrCrypto.Sign(eventId, _privKey);
                     var idHex = BitConverter.ToString(eventId).Replace("-", "").ToLowerInvariant();
                     var sigHex = BitConverter.ToString(sig).Replace("-", "").ToLowerInvariant();
@@ -138,33 +135,5 @@ namespace nokandro
                 });
             }
         }
-
-        private static string EscapeJsonString(string text)
-        {
-            if (text == null) return "null";
-            var sb = new StringBuilder();
-            sb.Append('"');
-            foreach (var c in text)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"': sb.Append("\\\""); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < ' ') sb.Append($"\\u{(int)c:x4}");
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            sb.Append('"');
-            return sb.ToString();
-        }
-
-
     }
 }
