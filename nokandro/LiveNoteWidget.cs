@@ -254,8 +254,8 @@ namespace nokandro
                     catch { }
 
                     var count = LiveNoteStore.Count;
-                    var idx = LiveNoteStore.CurrentIndex + 1;
-                    remoteViews.SetTextViewText(Resource.Id.liveNoteNavIndex, $"{idx}/{count}");
+                    var displayNum = count > 0 ? (count - LiveNoteStore.CurrentIndex) : 0;
+                    remoteViews.SetTextViewText(Resource.Id.liveNoteNavIndex, $"{displayNum}/{count}");
 
                     // Relative timestamp
                     var elapsed = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - currentPost.CreatedAt;
