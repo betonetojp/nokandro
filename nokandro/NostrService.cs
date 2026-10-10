@@ -1642,7 +1642,8 @@ namespace nokandro
 
             builder.SetContentTitle(title)
                    .SetContentText(text)
-                   .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                   .SetSmallIcon(Resource.Drawable.ic_stat_nokandro)
+                   .SetColor(new Android.Graphics.Color(Android.Graphics.Color.ParseColor("#FF4081")))
                    .SetContentIntent(mainPending)
                    .SetOngoing(true);
 

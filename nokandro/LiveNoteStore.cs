@@ -32,7 +32,7 @@ namespace nokandro
     {
         private const string PREFS_NAME = "nokandro_live_note_prefs";
         private const string KEY_POSTS_JSON = "posts_json";
-        private const int MAX_POSTS = 15;
+        private const int MAX_POSTS = 20;
 
         private static readonly object Lock = new();
         private static readonly List<LiveNoteItem> Posts = new();

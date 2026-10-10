@@ -152,9 +152,8 @@ namespace nokandro
                 var pendingIntentToggle = PendingIntent.GetBroadcast(context, 10, intentToggle, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppIcon, pendingIntentToggle);
 
-                // Update Icon color based on whether TTS (reading) is active
-                bool isTtsActive = NostrService.IsRunning && isTts;
-                if (isTtsActive)
+                // Update Icon color based on whether service is running (post retrieval on/off)
+                if (NostrService.IsRunning)
                 {
                     remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
                     remoteViews.SetInt(Resource.Id.liveNoteAppIcon, "setAlpha", 255);

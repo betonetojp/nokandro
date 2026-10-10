@@ -122,16 +122,15 @@ namespace nokandro
                 var pendingIntentToggle = PendingIntent.GetBroadcast(context, 0, intentToggle, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.widgetIcon, pendingIntentToggle);
 
-                // Update Icon Cleanliness
-                bool isTtsActive = NostrService.IsRunning && NostrService.IsTtsEnabled;
-                if (isTtsActive)
+                // Update Icon State based on whether service is running (post retrieval on/off)
+                if (NostrService.IsRunning)
                 {
                     remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 255);
                     remoteViews.SetImageViewResource(Resource.Id.widgetIcon, Resource.Mipmap.ic_launcher);
                 }
                 else
                 {
-                    // Stopped state or Muted -> Monochrome
+                    // Stopped state -> Monochrome
                     remoteViews.SetInt(Resource.Id.widgetIcon, "setAlpha", 128);
                     var bmp = WidgetIconHelper.GetGrayscaleLauncherIcon(context);
                     if (bmp != null)

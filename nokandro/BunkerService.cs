@@ -330,7 +330,8 @@ namespace nokandro
                 var notif = new Notification.Builder(this, chanId)
                     .SetContentTitle("Nostr Bunker")
                     .SetContentText(BuildNotificationStatusText())
-                    .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                    .SetSmallIcon(Resource.Drawable.ic_stat_nokandro)
+                    .SetColor(new Android.Graphics.Color(Android.Graphics.Color.ParseColor("#FF4081")))
                     .SetContentIntent(mainPending)
                     .SetOngoing(true);
 
@@ -351,7 +352,8 @@ namespace nokandro
                 var notif = new Notification.Builder(this)
                     .SetContentTitle("Nostr Bunker")
                     .SetContentText(BuildNotificationStatusText())
-                    .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                    .SetSmallIcon(Resource.Drawable.ic_stat_nokandro)
+                    .SetColor(new Android.Graphics.Color(Android.Graphics.Color.ParseColor("#FF4081")))
                     .SetContentIntent(mainPending)
                     .SetOngoing(true);
 
@@ -398,7 +400,8 @@ namespace nokandro
                     var notif = new Notification.Builder(this, chanId)
                         .SetContentTitle("Nostr Bunker")
                         .SetContentText(text)
-                        .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                        .SetSmallIcon(Resource.Drawable.ic_stat_nokandro)
+                        .SetColor(new Android.Graphics.Color(Android.Graphics.Color.ParseColor("#FF4081")))
                         .SetContentIntent(mainPending)
                         .SetOngoing(true);
                     try { notif.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending); } catch { }
@@ -410,7 +413,8 @@ namespace nokandro
                     var notif = new Notification.Builder(this)
                         .SetContentTitle("Nostr Bunker")
                         .SetContentText(text)
-                        .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                        .SetSmallIcon(Resource.Drawable.ic_stat_nokandro)
+                        .SetColor(new Android.Graphics.Color(Android.Graphics.Color.ParseColor("#FF4081")))
                         .SetContentIntent(mainPending)
                         .SetOngoing(true);
                     try { notif.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending); } catch { }
