@@ -156,7 +156,6 @@ namespace nokandro
                 if (NostrService.IsRunning)
                 {
                     remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
-                    remoteViews.SetInt(Resource.Id.liveNoteAppIcon, "setAlpha", 255);
                 }
                 else
                 {
@@ -169,7 +168,6 @@ namespace nokandro
                     {
                         remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
                     }
-                    remoteViews.SetInt(Resource.Id.liveNoteAppIcon, "setAlpha", 128);
                 }
 
                 // Title click opens Main App
@@ -178,21 +176,29 @@ namespace nokandro
                 var pendingIntentApp = PendingIntent.GetActivity(context, 11, intentApp, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppTitle, pendingIntentApp);
 
-                // TTS Toggle button beside app title
-                remoteViews.SetTextViewText(Resource.Id.liveNoteTtsBtn, isTts ? "TTS" : "Mute");
-                try
+                // TTS Toggle button beside app title (only visible while service is running)
+                if (NostrService.IsRunning)
                 {
-                    var ttsColor = isTts
-                        ? new Android.Graphics.Color(context.GetColor(Resource.Color.primary))
-                        : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
-                    remoteViews.SetTextColor(Resource.Id.liveNoteTtsBtn, ttsColor);
-                }
-                catch { }
+                    remoteViews.SetViewVisibility(Resource.Id.liveNoteTtsBtn, ViewStates.Visible);
+                    remoteViews.SetTextViewText(Resource.Id.liveNoteTtsBtn, isTts ? "TTS" : "Muted");
+                    try
+                    {
+                        var ttsColor = isTts
+                            ? new Android.Graphics.Color(context.GetColor(Resource.Color.primary))
+                            : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                        remoteViews.SetTextColor(Resource.Id.liveNoteTtsBtn, ttsColor);
+                    }
+                    catch { }
 
-                var intentTts = new Intent(context, typeof(LiveNoteWidget));
-                intentTts.SetAction(ACTION_TOGGLE_TTS);
-                var piTts = PendingIntent.GetBroadcast(context, 15, intentTts, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
-                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTtsBtn, piTts);
+                    var intentTts = new Intent(context, typeof(LiveNoteWidget));
+                    intentTts.SetAction(ACTION_TOGGLE_TTS);
+                    var piTts = PendingIntent.GetBroadcast(context, 15, intentTts, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                    remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTtsBtn, piTts);
+                }
+                else
+                {
+                    remoteViews.SetViewVisibility(Resource.Id.liveNoteTtsBtn, ViewStates.Gone);
+                }
 
                 // 2. Quick Post Launch
                 var intentQuickPost = new Intent(context, typeof(QuickPostActivity));
@@ -231,6 +237,21 @@ namespace nokandro
                     // Text & Navigation
                     var displayText = ShortenUrls(currentPost.Content);
                     remoteViews.SetTextViewText(Resource.Id.liveNoteText, displayText);
+                    try
+                    {
+                        var textColor = NostrService.IsRunning
+                            ? new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface))
+                            : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                        remoteViews.SetTextColor(Resource.Id.liveNoteText, textColor);
+
+                        var metaColor = new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                        remoteViews.SetTextColor(Resource.Id.liveNoteTime, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNoteNavIndex, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNotePrevBtn, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNoteNextBtn, metaColor);
+                        remoteViews.SetTextColor(Resource.Id.liveNoteQuickPostBtn, metaColor);
+                    }
+                    catch { }
 
                     var count = LiveNoteStore.Count;
                     var idx = LiveNoteStore.CurrentIndex + 1;
@@ -258,8 +279,10 @@ namespace nokandro
                         remoteViews.SetTextViewText(Resource.Id.liveNoteStarBtn, "☆ React");
                         try
                         {
-                            var defaultColor = new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface));
-                            remoteViews.SetTextColor(Resource.Id.liveNoteStarBtn, defaultColor);
+                            var starColor = NostrService.IsRunning
+                                ? new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface))
+                                : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                            remoteViews.SetTextColor(Resource.Id.liveNoteStarBtn, starColor);
                         }
                         catch { }
                     }
@@ -276,6 +299,14 @@ namespace nokandro
                     // Placeholder state
                     remoteViews.SetImageViewResource(Resource.Id.liveNoteAvatar, Resource.Mipmap.ic_launcher);
                     remoteViews.SetTextViewText(Resource.Id.liveNoteText, NostrService.IsRunning ? "Listening for posts on Nostr..." : "nokandro service is stopped");
+                    try
+                    {
+                        var textColor = NostrService.IsRunning
+                            ? new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface))
+                            : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                        remoteViews.SetTextColor(Resource.Id.liveNoteText, textColor);
+                    }
+                    catch { }
                     remoteViews.SetTextViewText(Resource.Id.liveNoteNavIndex, "");
                     remoteViews.SetTextViewText(Resource.Id.liveNoteTime, "");
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteStarBtn, ViewStates.Gone);

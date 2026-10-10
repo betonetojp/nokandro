@@ -212,6 +212,10 @@ namespace nokandro
             {
                 _enableTts = !_enableTts;
                 IsTtsEnabled = _enableTts;
+                if (!_enableTts && _tts != null)
+                {
+                    try { _tts.Stop(); } catch { }
+                }
                 try
                 {
                     var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
@@ -489,11 +493,8 @@ namespace nokandro
                         await SendTextAsync(reqFollowJson, ct);
                         AppLog.D(TAG, "Sending mute request: " + reqMuteJson);
                         await SendTextAsync(reqMuteJson, ct);
-                        if (_enableTts)
-                        {
-                            AppLog.D(TAG, "Sending events request: " + reqEventsJson);
-                            await SendTextAsync(reqEventsJson, ct);
-                        }
+                        AppLog.D(TAG, "Sending events request: " + reqEventsJson);
+                        await SendTextAsync(reqEventsJson, ct);
 
                         if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
                         {
