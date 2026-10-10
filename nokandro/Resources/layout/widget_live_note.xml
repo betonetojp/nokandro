@@ -48,34 +48,62 @@
             android:background="@drawable/bg_status_chip" />
     </LinearLayout>
 
-    <!-- Main Content: Left Avatar (with Petname Pill) + Right Post Text -->
-    <LinearLayout
-        android:id="@+id/liveNoteContentArea"
+    <!-- Main Content Container with Left/Right Touch Zones -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:layout_weight="1">
 
-        <ImageView
-            android:id="@+id/liveNoteAvatar"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:src="@mipmap/ic_launcher"
-            android:layout_marginEnd="10dp"
-            android:scaleType="fitCenter" />
+        <!-- Visual Content (Avatar + Text) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <TextView
-            android:id="@+id/liveNoteText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:maxLines="3"
-            android:ellipsize="end"
-            android:textSize="13sp"
-            android:textColor="@color/on_surface"
-            android:text="Listening for Nostr posts..." />
-    </LinearLayout>
+            <ImageView
+                android:id="@+id/liveNoteAvatar"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:src="@mipmap/ic_launcher"
+                android:layout_marginEnd="10dp"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/liveNoteText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:textSize="13sp"
+                android:textColor="@color/on_surface"
+                android:text="Listening for Nostr posts..." />
+        </LinearLayout>
+
+        <!-- Transparent Touch Targets (Left = Prev, Right = Next) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/liveNoteTouchPrev"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:background="@android:color/transparent" />
+
+            <FrameLayout
+                android:id="@+id/liveNoteTouchNext"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:background="@android:color/transparent" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- Bottom Bar: Relative Time (Left) + Navigation (< / >) & Quick Post (Right) -->
     <LinearLayout
@@ -100,12 +128,14 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- Navigation Buttons (< / >) with generous touch target -->
+        <!-- Navigation Buttons (< / >) with generous touch target and aligned baseline -->
         <TextView
             android:id="@+id/liveNotePrevBtn"
             android:layout_width="32dp"
             android:layout_height="28dp"
             android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingBottom="2dp"
             android:text="‹"
             android:textSize="20sp"
             android:textStyle="bold"
@@ -114,9 +144,11 @@
         <TextView
             android:id="@+id/liveNoteNavIndex"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
             android:text=""
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textColor="@color/on_surface_variant"
             android:layout_marginStart="2dp"
             android:layout_marginEnd="2dp" />
@@ -126,6 +158,8 @@
             android:layout_width="32dp"
             android:layout_height="28dp"
             android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingBottom="2dp"
             android:text="›"
             android:textSize="20sp"
             android:textStyle="bold"

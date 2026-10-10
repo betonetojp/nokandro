@@ -133,25 +133,24 @@ namespace nokandro
                 var pendingIntentApp = PendingIntent.GetActivity(context, 11, intentApp, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppTitle, pendingIntentApp);
 
-                // Content area click opens Main App
-                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteContentArea, pendingIntentApp);
-
                 // 2. Quick Post Launch
                 var intentQuickPost = new Intent(context, typeof(QuickPostActivity));
                 intentQuickPost.SetFlags(ActivityFlags.NewTask | ActivityFlags.ClearTask);
                 var pendingIntentQuickPost = PendingIntent.GetActivity(context, 12, intentQuickPost, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteQuickPostBtn, pendingIntentQuickPost);
 
-                // 3. Navigation Controls (< / >)
+                // 3. Navigation Controls (< / >) and Content Area Left/Right Touch Targets
                 var intentPrev = new Intent(context, typeof(LiveNoteWidget));
                 intentPrev.SetAction(ACTION_PREV_NOTE);
                 var piPrev = PendingIntent.GetBroadcast(context, 13, intentPrev, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNotePrevBtn, piPrev);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTouchPrev, piPrev);
 
                 var intentNext = new Intent(context, typeof(LiveNoteWidget));
                 intentNext.SetAction(ACTION_NEXT_NOTE);
                 var piNext = PendingIntent.GetBroadcast(context, 14, intentNext, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteNextBtn, piNext);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTouchNext, piNext);
 
                 if (currentPost != null)
                 {
