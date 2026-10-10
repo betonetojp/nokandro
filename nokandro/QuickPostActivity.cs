@@ -24,6 +24,7 @@ namespace nokandro
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
+            SupportRequestWindowFeature((int)WindowFeatures.NoTitle);
             base.OnCreate(savedInstanceState);
             SetContentView(Resource.Layout.activity_quick_post);
 
