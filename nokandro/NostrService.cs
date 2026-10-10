@@ -81,6 +81,7 @@ namespace nokandro
         private const string ACTION_MUTE_UPDATE = "nokandro.ACTION_MUTE_UPDATE";
         
         // Actions
+        public const string ACTION_TOGGLE_TTS = "nokandro.ACTION_TOGGLE_TTS";
         private const string ACTION_SET_MUSIC_STATUS = "nokandro.ACTION_SET_MUSIC_STATUS";
         private const string ACTION_TEST_POST = "nokandro.ACTION_TEST_POST";
 
@@ -207,6 +208,25 @@ namespace nokandro
                 return StartCommandResult.NotSticky;
             }
 
+            if (intent != null && ACTION_TOGGLE_TTS.Equals(intent.Action))
+            {
+                _enableTts = !_enableTts;
+                IsTtsEnabled = _enableTts;
+                try
+                {
+                    var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                    if (prefs != null) { prefs.PutBoolean("pref_enable_tts", _enableTts); prefs.Apply(); }
+                }
+                catch { }
+
+                UpdateForegroundNotification();
+                var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
+                w.SetPackage(PackageName);
+                SendBroadcast(w);
+                LiveNoteWidget.UpdateAllWidgets(this);
+                return StartCommandResult.Sticky;
+            }
+
             if (intent != null)
             {
                 _relay = intent.GetStringExtra("relay") ?? _relay;
@@ -281,81 +301,9 @@ namespace nokandro
                 // To be safe, we just leave the OnCreate registration as the source of truth for dynamic updates.
             }
 
-            // Compute PendingIntent flags once and reuse
-            PendingIntentFlags piFlags = PendingIntentFlags.UpdateCurrent;
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
-            {
-                // For Android 12+ require explicit immutability unless mutability is needed
-                piFlags |= PendingIntentFlags.Immutable;
-            }
-
-            // Notification APIs target Android O+; analyzer warns about platform compatibility.
-            // Surround these blocks with pragmas to suppress CA1416/CA1422 analyzer warnings because runtime checks exist.
-#pragma warning disable CA1416, CA1422
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-            {
-                var chanId = "nostr_tts_channel";
-                var chan = new NotificationChannel(chanId, "Nostr TTS", NotificationImportance.Low);
-                if (GetSystemService(NotificationService) is NotificationManager nm)
-                {
-                    nm.CreateNotificationChannel(chan);
-                }
-                else
-                {
-                    AppLog.W(TAG, "NotificationManager not available");
-                }
-
-                // PendingIntent to open app when tapping notification
-                var mainIntent = new Intent(this, typeof(MainActivity));
-                mainIntent.PutExtra("openTab", "main");
-                var mainPending = PendingIntent.GetActivity(this, 0, mainIntent, piFlags);
-
-                // PendingIntent to stop service
-                var stopIntent = new Intent(this, typeof(NostrService));
-                stopIntent.SetAction("STOP");
-                var stopPending = PendingIntent.GetService(this, 0, stopIntent, piFlags);
-
-                var notifBuilder = new Notification.Builder(this, chanId)
-                    .SetContentTitle("Nostr TTS")
-                    .SetContentText("Listening...")
-                    .SetSmallIcon(Resource.Mipmap.ic_launcher)
-                    .SetContentIntent(mainPending)
-                    .SetOngoing(true);
-
-                // Add a Stop action (use built-in alert icon)
-                try
-                {
-                    notifBuilder.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending);
-                }
-                catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); }
-
-                var notif = notifBuilder.Build();
-                StartForeground(NOTIF_ID, notif);
-                AppLog.D(TAG, "Started foreground notification");
-            }
-            else
-            {
-                // Pre-Oreo
-                var mainIntent = new Intent(this, typeof(MainActivity));
-                mainIntent.PutExtra("openTab", "main");
-                var mainPending = PendingIntent.GetActivity(this, 0, mainIntent, piFlags);
-                var stopIntent = new Intent(this, typeof(NostrService));
-                stopIntent.SetAction("STOP");
-                var stopPending = PendingIntent.GetService(this, 0, stopIntent, piFlags);
-
-                var notif = new Notification.Builder(this)
-                    .SetContentTitle("Nostr TTS")
-                    .SetContentText("Listening...")
-                    .SetSmallIcon(Resource.Mipmap.ic_launcher)
-                    .SetContentIntent(mainPending)
-                    .SetOngoing(true);
-
-                try { notif.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending); } catch (Exception ex) { AppLog.W(TAG, "AddAction failed: " + ex.Message); }
-
-                StartForeground(NOTIF_ID, notif.Build());
-                AppLog.D(TAG, "Started foreground notification (pre-O)");
-            }
-#pragma warning restore CA1416, CA1422
+            var notif = CreateNotification();
+            StartForeground(NOTIF_ID, notif);
+            AppLog.D(TAG, "Started foreground notification");
 
 
             Task.Run(() => RunAsync(_cts.Token));
@@ -1651,5 +1599,80 @@ namespace nokandro
         private static partial Regex NeventNoteRegex();
         [GeneratedRegex("npub1[0-9a-zA-Z]+", RegexOptions.IgnoreCase | RegexOptions.Compiled, "ja-JP")]
         private static partial Regex CreatePlainNpubRegex();
+#pragma warning disable CA1416, CA1422
+        private Notification CreateNotification()
+        {
+            PendingIntentFlags piFlags = PendingIntentFlags.UpdateCurrent;
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
+            {
+                piFlags |= PendingIntentFlags.Immutable;
+            }
+
+            var mainIntent = new Intent(this, typeof(MainActivity));
+            mainIntent.PutExtra("openTab", "main");
+            var mainPending = PendingIntent.GetActivity(this, 0, mainIntent, piFlags);
+
+            var stopIntent = new Intent(this, typeof(NostrService));
+            stopIntent.SetAction("STOP");
+            var stopPending = PendingIntent.GetService(this, 0, stopIntent, piFlags);
+
+            var ttsIntent = new Intent(this, typeof(NostrService));
+            ttsIntent.SetAction(ACTION_TOGGLE_TTS);
+            var ttsPending = PendingIntent.GetService(this, 102, ttsIntent, piFlags);
+
+            string title = _enableTts ? "nokandro TTS" : "nokandro (Silent)";
+            string text = _enableTts ? "Listening for Nostr posts..." : "Listening (Widget only)...";
+            string ttsActionTitle = _enableTts ? "Mute" : "Unmute";
+
+            Notification.Builder builder;
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+                var chanId = "nostr_tts_channel";
+                var chan = new NotificationChannel(chanId, "Nostr TTS", NotificationImportance.Low);
+                if (GetSystemService(NotificationService) is NotificationManager nm)
+                {
+                    nm.CreateNotificationChannel(chan);
+                }
+                builder = new Notification.Builder(this, chanId);
+            }
+            else
+            {
+                builder = new Notification.Builder(this);
+            }
+
+            builder.SetContentTitle(title)
+                   .SetContentText(text)
+                   .SetSmallIcon(Resource.Mipmap.ic_launcher)
+                   .SetContentIntent(mainPending)
+                   .SetOngoing(true);
+
+            try
+            {
+                builder.AddAction(Android.Resource.Drawable.IcLockSilentMode, ttsActionTitle, ttsPending);
+            }
+            catch { }
+
+            try
+            {
+                builder.AddAction(Android.Resource.Drawable.IcDialogAlert, "Stop", stopPending);
+            }
+            catch { }
+
+            return builder.Build();
+        }
+
+        private void UpdateForegroundNotification()
+        {
+            try
+            {
+                var notif = CreateNotification();
+                if (GetSystemService(NotificationService) is NotificationManager nm)
+                {
+                    nm.Notify(NOTIF_ID, notif);
+                }
+            }
+            catch { }
+        }
+#pragma warning restore CA1416, CA1422
     }
 }

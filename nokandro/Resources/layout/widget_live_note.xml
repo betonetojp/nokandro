@@ -4,16 +4,19 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="@dimen/spacing_md"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="7dp"
+    android:paddingBottom="7dp"
     android:background="@drawable/widget_live_note_background">
 
-    <!-- Top Bar: App branding (Left) + Star Reaction Button (Right) -->
+    <!-- Top Bar: App branding + TTS Toggle (Left) + Star Reaction Button (Right) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
+        android:layout_marginBottom="3dp">
 
         <ImageView
             android:id="@+id/liveNoteAppIcon"
@@ -25,19 +28,39 @@
 
         <TextView
             android:id="@+id/liveNoteAppTitle"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:text="nokandro"
             android:textSize="12sp"
             android:fontFamily="sans-serif-medium"
             android:textColor="@color/on_surface_variant" />
 
+        <!-- TTS / Mute Toggle Button (Right beside nokandro title) -->
+        <TextView
+            android:id="@+id/liveNoteTtsBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:gravity="center"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:layout_marginStart="6dp"
+            android:text="TTS"
+            android:textSize="10sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/primary"
+            android:background="@drawable/bg_status_chip" />
+
+        <!-- Spacer -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
         <!-- Star Reaction Button (Top-Right, easily reachable) -->
         <TextView
             android:id="@+id/liveNoteStarBtn"
             android:layout_width="wrap_content"
-            android:layout_height="24dp"
+            android:layout_height="22dp"
             android:gravity="center_vertical"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
@@ -63,10 +86,10 @@
 
             <ImageView
                 android:id="@+id/liveNoteAvatar"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:src="@mipmap/ic_launcher"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="8dp"
                 android:scaleType="fitCenter" />
 
             <TextView
@@ -76,7 +99,9 @@
                 android:layout_weight="1"
                 android:maxLines="3"
                 android:ellipsize="end"
-                android:textSize="13sp"
+                android:textSize="12sp"
+                android:lineSpacingMultiplier="1.05"
+                android:includeFontPadding="false"
                 android:textColor="@color/on_surface"
                 android:text="Listening for Nostr posts..." />
         </LinearLayout>
@@ -111,7 +136,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginTop="4dp">
+        android:layout_marginTop="2dp">
 
         <!-- Relative Time String (Bottom-Left) -->
         <TextView
@@ -131,20 +156,20 @@
         <!-- Navigation Buttons (< / >) with generous touch target and aligned baseline -->
         <TextView
             android:id="@+id/liveNotePrevBtn"
-            android:layout_width="32dp"
-            android:layout_height="28dp"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
             android:gravity="center"
             android:includeFontPadding="false"
             android:paddingBottom="2dp"
             android:text="‹"
-            android:textSize="20sp"
+            android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="@color/on_surface_variant" />
 
         <TextView
             android:id="@+id/liveNoteNavIndex"
             android:layout_width="wrap_content"
-            android:layout_height="28dp"
+            android:layout_height="24dp"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text=""
@@ -155,13 +180,13 @@
 
         <TextView
             android:id="@+id/liveNoteNextBtn"
-            android:layout_width="32dp"
-            android:layout_height="28dp"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
             android:gravity="center"
             android:includeFontPadding="false"
             android:paddingBottom="2dp"
             android:text="›"
-            android:textSize="20sp"
+            android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="@color/on_surface_variant" />
 
@@ -169,16 +194,16 @@
         <TextView
             android:id="@+id/liveNoteQuickPostBtn"
             android:layout_width="wrap_content"
-            android:layout_height="28dp"
+            android:layout_height="24dp"
             android:gravity="center_vertical"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
             android:text="Post"
             android:textSize="11sp"
             android:fontFamily="sans-serif-medium"
             android:textColor="@color/primary"
             android:background="@drawable/bg_status_chip"
-            android:layout_marginStart="6dp" />
+            android:layout_marginStart="5dp" />
     </LinearLayout>
 
 </LinearLayout>

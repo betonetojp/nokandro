@@ -19,6 +19,7 @@ namespace nokandro
         "android.appwidget.action.APPWIDGET_UPDATE",
         "nokandro.ACTION_UPDATE_LIVE_NOTE",
         "nokandro.ACTION_UPDATE_WIDGET",
+        "nokandro.ACTION_TOGGLE_TTS",
         "nokandro.ACTION_REACT_STAR",
         "nokandro.ACTION_PREV_NOTE",
         "nokandro.ACTION_NEXT_NOTE",
@@ -29,6 +30,7 @@ namespace nokandro
     {
         public const string ACTION_UPDATE_LIVE_NOTE = "nokandro.ACTION_UPDATE_LIVE_NOTE";
         public const string ACTION_UPDATE_WIDGET = "nokandro.ACTION_UPDATE_WIDGET";
+        public const string ACTION_TOGGLE_TTS = "nokandro.ACTION_TOGGLE_TTS";
         public const string ACTION_REACT_STAR = "nokandro.ACTION_REACT_STAR";
         public const string ACTION_PREV_NOTE = "nokandro.ACTION_PREV_NOTE";
         public const string ACTION_NEXT_NOTE = "nokandro.ACTION_NEXT_NOTE";
@@ -87,6 +89,23 @@ namespace nokandro
                     });
                 }
             }
+            else if (ACTION_TOGGLE_TTS.Equals(action))
+            {
+                if (NostrService.IsRunning)
+                {
+                    var ttsIntent = new Intent(context, typeof(NostrService));
+                    ttsIntent.SetAction(NostrService.ACTION_TOGGLE_TTS);
+                    context.StartService(ttsIntent);
+                }
+                else
+                {
+                    var p = context.GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                    var cur = p?.GetBoolean("pref_enable_tts", true) ?? true;
+                    var ep = p?.Edit();
+                    if (ep != null) { ep.PutBoolean("pref_enable_tts", !cur); ep.Apply(); }
+                    UpdateAllWidgets(context, mgr, ids);
+                }
+            }
             else if (ACTION_TOGGLE_SERVICE.Equals(action))
             {
                 ToggleService(context);
@@ -119,6 +138,10 @@ namespace nokandro
 
             var currentPost = LiveNoteStore.GetCurrentPost(context);
 
+            bool isTts = NostrService.IsRunning
+                ? NostrService.IsTtsEnabled
+                : (prefs?.GetBoolean("pref_enable_tts", true) ?? true);
+
             foreach (var widgetId in appWidgetIds)
             {
                 var remoteViews = new RemoteViews(context.PackageName, Resource.Layout.widget_live_note);
@@ -130,7 +153,7 @@ namespace nokandro
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppIcon, pendingIntentToggle);
 
                 // Update Icon color based on whether TTS (reading) is active
-                bool isTtsActive = NostrService.IsRunning && NostrService.IsTtsEnabled;
+                bool isTtsActive = NostrService.IsRunning && isTts;
                 if (isTtsActive)
                 {
                     remoteViews.SetImageViewResource(Resource.Id.liveNoteAppIcon, Resource.Mipmap.ic_launcher);
@@ -155,6 +178,22 @@ namespace nokandro
                 intentApp.SetFlags(ActivityFlags.NewTask);
                 var pendingIntentApp = PendingIntent.GetActivity(context, 11, intentApp, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppTitle, pendingIntentApp);
+
+                // TTS Toggle button beside app title
+                remoteViews.SetTextViewText(Resource.Id.liveNoteTtsBtn, isTts ? "TTS" : "Mute");
+                try
+                {
+                    var ttsColor = isTts
+                        ? new Android.Graphics.Color(context.GetColor(Resource.Color.primary))
+                        : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                    remoteViews.SetTextColor(Resource.Id.liveNoteTtsBtn, ttsColor);
+                }
+                catch { }
+
+                var intentTts = new Intent(context, typeof(LiveNoteWidget));
+                intentTts.SetAction(ACTION_TOGGLE_TTS);
+                var piTts = PendingIntent.GetBroadcast(context, 15, intentTts, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTtsBtn, piTts);
 
                 // 2. Quick Post Launch
                 var intentQuickPost = new Intent(context, typeof(QuickPostActivity));
