@@ -2031,8 +2031,10 @@ namespace nokandro
                                 StartBunkerService(bunkerRelayEdit, nsec);
                             }
                         }
+                        UpdateNostrConnectUIState(desiredChecked || BunkerService.NostrConnectSessionCount > 0);
                         UpdateBatteryOptimizationButton();
                     }
+                    RestoreNostrConnectClients(nsec);
                 }
                 catch { }
                 try { RefreshNip55PermissionList(); } catch { }
@@ -2571,19 +2573,12 @@ namespace nokandro
 
                 var nsecHex = BitConverter.ToString(privKey).Replace("-", "").ToLowerInvariant();
 
-                var intent = new Intent(this, typeof(BunkerService));
-                intent.SetAction("START_NOSTRCONNECT");
-                intent.PutExtra("connectUri", connectUri);
-                intent.PutExtra("nsecHex", nsecHex);
-                intent.PutExtra("preAuthenticated", preAuthenticated);
+                if (NostrConnectUri.TryParse(connectUri, out var parsed) && parsed != null)
+                {
+                    SignerApprovalNotifier.CancelNostrConnectNotification(this, parsed.ClientPubkey);
+                }
 
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-                    StartForegroundService(intent);
-                else
-                    StartService(intent);
-
-                // Persist the nostrconnect URI
-                PersistNostrConnectClient(connectUri);
+                SignerApprovalNotifier.StartAndPersistNostrConnectSession(this, connectUri, nsecHex, preAuthenticated);
             }
             catch (Exception ex)
             {
@@ -2608,30 +2603,7 @@ namespace nokandro
 
         private void PersistNostrConnectClient(string uri)
         {
-            try
-            {
-                var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                var existing = prefs?.GetString(PREF_NC_CLIENTS, "") ?? "";
-                var list = string.IsNullOrEmpty(existing)
-                    ? new List<string>()
-                    : new List<string>(existing.Split('\n', StringSplitOptions.RemoveEmptyEntries));
-
-                // Parse to get client pubkey for dedup
-                if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null)
-                {
-                    list.RemoveAll(u =>
-                    {
-                        if (NostrConnectUri.TryParse(u, out var p) && p != null)
-                            return p.ClientPubkey == parsed.ClientPubkey;
-                        return false;
-                    });
-                }
-
-                list.Add(uri);
-                var edit = prefs?.Edit();
-                if (edit != null) { edit.PutString(PREF_NC_CLIENTS, string.Join('\n', list)); edit.Apply(); }
-            }
-            catch { }
+            SignerApprovalNotifier.PersistNostrConnectClient(this, uri);
         }
 
         private void RemovePersistedNostrConnectClient(string clientPubkey)

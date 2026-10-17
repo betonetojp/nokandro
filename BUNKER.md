@@ -143,7 +143,7 @@ nostrconnect://<client_pubkey_hex>?name=AppName&relay=wss://...&secret=xxx
 **Signer タブ**で以下のいずれかの方法で接続します：
 
 - **貼り付け**: URI 入力欄に `nostrconnect://` URI を貼り付け、**Connect** ボタンをタップ。
-- **ディープリンク**: 他アプリから `nostrconnect://` を開くと Signer タブに URI が貼り付けられ、**接続確認ダイアログ**で Connect / Cancel を選べます（即接続はしません）。
+- **ディープリンク**: 他アプリやブラウザから `nostrconnect://` を開くと、nokandro本体へ画面遷移せずに呼び出し元の画面上に**オーバーレイ接続確認ダイアログ**（Connect / Cancel）を表示します。あわせて通知も発行されるため、通知バーからも確認ダイアログを再表示できます。
 - **QR スキャン**: **Scan QR** ボタンをタップし、クライアントが表示する QR コードをスキャン。URI を入力欄に入れたうえで、ディープリンクと同様の**接続確認ダイアログ**が表示されます。
 
 ### 4. セッション管理
@@ -177,7 +177,7 @@ NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須�
 nokandro は、Android 端末上の他アプリから安全に署名を行うための [NIP-55](https://github.com/nostr-protocol/nips/blob/master/55.md) 規格に対応しています。
 
 - **`nostrsigner:` Intent & ContentProvider**:
-  - 外部クライアントアプリからの署名呼び出し（`SIGN_EVENT`、`GET_PUBLIC_KEY`、`NIP04_DECRYPT`、`NIP44_DECRYPT` など）を受信し、ユーザー確認ダイアログ（Approve / Deny / Remember my choice）を表示します。
+  - 外部クライアントアプリからの署名呼び出し（`SIGN_EVENT`、`GET_PUBLIC_KEY`、`NIP04_DECRYPT`、`NIP44_DECRYPT` など）を受信し、呼び出し元アプリの上に**オーバーレイ確認ダイアログ**（Approve / Deny / Remember my choice）を表示するとともに、通知からもダイアログを再表示できるようにします。
 - **Signer タブの権限マネージャー**:
   - 「Remember my choice」で保存された許可・拒否設定を、呼び出し元アプリごとにカードでグループ化して一覧表示します。
   - 各アプリカードにはアプリアイコンとアプリ名、展開/折りたたみ可能なアコーディオンが備わっています。
@@ -222,7 +222,7 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 - **bunker://**: Bunker URI にはランダム生成されたシークレット（128ビット / 32桁hex）が含まれます。クライアントは `connect` リクエスト時にこのシークレットを提示する必要があります。
 - **nostrconnect://**: クライアントが生成した URI にシークレットが含まれます。nokandro が `connect` レスポンスを返す際にシークレットを提示します。
 - **bunker://** では、一度ペアリングしたクライアント（`BunkerClientStore` に保存）が再接続する場合、シークレットチェックをスキップして接続を許可します（Amber と同様の UX）。**新規クライアント**は bunker URI のグローバル secret が一致すれば自動的にペアリングされます。
-- **nostrconnect://** では、接続応答の `result` に URI の `secret` を返します。クライアント側で検証が必要です。ディープリンクは URI 貼り付け後に確認ダイアログを経て接続します。
+- **nostrconnect://** では、接続応答の `result` に URI の `secret` を返します。クライアント側で検証が必要です。ディープリンクはオーバーレイ確認ダイアログ（および通知）を経て接続します。
 - **bunker://** のグローバル secret は **新規ペア成功時**と **Remove** 時にローテします（**1 URI = 1 新規オンボード**。古い URI の secret で別 pubkey の新規ペアは不可）。画面上の bunker URI とコピーは `ACTION_BUNKER_URI_CHANGED` で即更新。既知クライアントは新 URI なしで再接続可能。**Reset Secret** で全ペア削除＋次回起動時に新 URI。
 
 ### 接続クライアント管理

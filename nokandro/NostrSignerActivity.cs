@@ -7,7 +7,13 @@ using AndroidUri = Android.Net.Uri;
 
 namespace nokandro
 {
-    [Activity(Label = "Nostr Signer", Exported = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop, Theme = "@style/AppTheme.Dialog")]
+    [Activity(
+        Label = "Nostr Signer",
+        Exported = true,
+        ExcludeFromRecents = true,
+        TaskAffinity = "",
+        LaunchMode = Android.Content.PM.LaunchMode.SingleTop,
+        Theme = "@style/AppTheme.TranslucentDialog")]
     [IntentFilter([Intent.ActionView], Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable], DataScheme = "nostrsigner")]
     public sealed class NostrSignerActivity : Activity
     {
@@ -21,28 +27,44 @@ namespace nokandro
         private string _returnType = "signature";
         private string _compressionType = "none";
         private string? _callerPackage;
+        private AndroidX.AppCompat.App.AlertDialog? _dialog;
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-            if (Intent?.DataString == null)
+            HandleIntent(Intent);
+        }
+
+        protected override void OnNewIntent(Intent? intent)
+        {
+            base.OnNewIntent(intent);
+            Intent = intent;
+            HandleIntent(intent);
+        }
+
+        private void HandleIntent(Intent? intent)
+        {
+            try { _dialog?.Dismiss(); } catch { }
+            _dialog = null;
+
+            if (intent?.DataString == null)
             {
                 FinishWithFailure("missing intent data");
                 return;
             }
 
-            _callerPackage = Intent.GetStringExtra("caller_package")
+            _callerPackage = intent.GetStringExtra("caller_package")
                 ?? CallingActivity?.PackageName
                 ?? Referrer?.Host;
-            _requestType = GetRequestType(Intent) ?? "";
-            _requestId = Intent.GetStringExtra("id") ?? GetQueryParameterFromDataString(Intent.DataString, "id") ?? Guid.NewGuid().ToString("N");
-            _callbackUrl = GetCallbackUrl(Intent);
-            _pubkeyParam = GetPubkey(Intent);
-            _currentUser = Intent.GetStringExtra("current_user") ?? GetQueryParameterFromDataString(Intent.DataString, "current_user");
-            _permissionsJson = Intent.GetStringExtra("permissions");
-            _returnType = Intent.GetStringExtra("returnType") ?? GetQueryParameterFromDataString(Intent.DataString, "returnType") ?? "signature";
-            _compressionType = Intent.GetStringExtra("compressionType") ?? GetQueryParameterFromDataString(Intent.DataString, "compressionType") ?? "none";
-            _payload = ExtractPayload(Intent.DataString);
+            _requestType = GetRequestType(intent) ?? "";
+            _requestId = intent.GetStringExtra("id") ?? GetQueryParameterFromDataString(intent.DataString, "id") ?? Guid.NewGuid().ToString("N");
+            _callbackUrl = GetCallbackUrl(intent);
+            _pubkeyParam = GetPubkey(intent);
+            _currentUser = intent.GetStringExtra("current_user") ?? GetQueryParameterFromDataString(intent.DataString, "current_user");
+            _permissionsJson = intent.GetStringExtra("permissions");
+            _returnType = intent.GetStringExtra("returnType") ?? GetQueryParameterFromDataString(intent.DataString, "returnType") ?? "signature";
+            _compressionType = intent.GetStringExtra("compressionType") ?? GetQueryParameterFromDataString(intent.DataString, "compressionType") ?? "none";
+            _payload = ExtractPayload(intent.DataString);
 
             if (string.IsNullOrWhiteSpace(_requestType))
             {
@@ -62,6 +84,7 @@ namespace nokandro
             {
                 try
                 {
+                    SignerApprovalNotifier.CancelNip55Notification(this, _callerPackage, _requestType);
                     ExecuteAndDeliver();
                     return;
                 }
@@ -72,6 +95,7 @@ namespace nokandro
                 }
             }
 
+            SignerApprovalNotifier.NotifyNip55Request(this, intent, _callerPackage, _requestType);
             ShowApprovalUi();
         }
 
@@ -80,8 +104,6 @@ namespace nokandro
             var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
             var pad = (int)(16 * Resources!.DisplayMetrics!.Density);
             root.SetPadding(pad, pad, pad, pad);
-
-
 
             var detail = new TextView(this)
             {
@@ -98,9 +120,10 @@ namespace nokandro
                 .SetTitle("nokandro")
                 .SetIcon(Resource.Mipmap.ic_launcher)
                 .SetView(root)
-                .SetCancelable(false)
+                .SetCancelable(true)
                 .SetPositiveButton("Approve", (s, e) => {
                     try {
+                        SignerApprovalNotifier.CancelNip55Notification(this, _callerPackage, _requestType);
                         if (remember.Checked)
                         {
                             if (_requestType == "get_public_key" && !string.IsNullOrEmpty(_permissionsJson))
@@ -112,11 +135,18 @@ namespace nokandro
                     } catch (Exception ex) { FinishWithFailure(ex.Message, _requestId, _callbackUrl); }
                 })
                 .SetNegativeButton("Deny", (s, e) => {
+                    SignerApprovalNotifier.CancelNip55Notification(this, _callerPackage, _requestType);
                     if (remember.Checked)
                         Nip55PermissionStore.SetAlwaysRejected(this, _callerPackage, _requestType);
                     DeliverRejection(_requestId, _callbackUrl);
                 })
+                .SetOnCancelListener(new DialogCancelListener(() =>
+                {
+                    // Dismissed via Back: keep notification in shade so user can reopen the prompt
+                    FinishQuietly();
+                }))
                 .Create();
+            _dialog = dlg;
             dlg.SetCanceledOnTouchOutside(false);
             dlg.Show();
             DialogHelper.ApplyThemeColors(dlg, this);
@@ -139,7 +169,7 @@ namespace nokandro
             catch { }
             finally
             {
-                Finish();
+                FinishQuietly();
             }
         }
 
@@ -256,7 +286,7 @@ namespace nokandro
             }
             finally
             {
-                Finish();
+                FinishQuietly();
             }
         }
 
@@ -283,8 +313,28 @@ namespace nokandro
             catch { }
             finally
             {
-                Finish();
+                FinishQuietly();
             }
+        }
+
+        private void FinishQuietly()
+        {
+            Finish();
+#pragma warning disable CA1422
+            try { OverridePendingTransition(0, 0); } catch { }
+#pragma warning restore CA1422
+        }
+
+        protected override void OnDestroy()
+        {
+            try { _dialog?.Dismiss(); } catch { }
+            _dialog = null;
+            base.OnDestroy();
+        }
+
+        private sealed class DialogCancelListener(Action onCancel) : Java.Lang.Object, IDialogInterfaceOnCancelListener
+        {
+            public void OnCancel(IDialogInterface? dialog) => onCancel();
         }
 
         private static AndroidUri BuildCallbackUri(string callbackUrl, string result, string requestId, string? signedEvent, string? packageName, string? error)

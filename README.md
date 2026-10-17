@@ -82,7 +82,7 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 
 ### nostrconnect:// (Client-initiated)
 
-- **Deep link**: Opening a `nostrconnect://` link from another app launches nokandro, switches to the Signer tab, fills the URI field, and shows a **confirmation dialog** before starting the session (`NostrConnectDeepLinkActivity`).
+- **Deep link**: Opening a `nostrconnect://` link from another app or browser displays an **overlay confirmation dialog** directly on top of the caller without switching to nokandro's main screen, and also posts a **notification** so you can reopen the confirmation dialog from the notification shade (`NostrConnectDeepLinkActivity`).
 - **nostrconnect:// URI input**: Paste a `nostrconnect://` URI provided by the client app.
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
@@ -93,7 +93,7 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 
 **Supported NIP-55 methods**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` (via `nostrsigner:` and content providers).
 
-For **ContentProvider** calls (`content://com.nokakoi.nokandro.*`): if the calling app is not yet authorized, nokandro opens the same approval dialog as the `nostrsigner:` intent path (Approve / Deny / Remember my choice) and returns **null** for that query (retry after granting). Permanent denial returns a cursor with a `rejected` column per NIP-55.
+For **ContentProvider** calls (`content://com.nokakoi.nokandro.*`) and `nostrsigner:` intents: if the calling app is not yet authorized, nokandro displays an overlay approval dialog over the calling app (Approve / Deny / Remember my choice), posts a notification to reopen the prompt if dismissed, and returns **null** for that query (retry after granting). Permanent denial returns a cursor with a `rejected` column per NIP-55.
 
 ### NIP-55 Signer Permissions
 
@@ -257,7 +257,7 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 
 ### nostrconnect://（クライアント起点）
 
-- **ディープリンク**: 他アプリから `nostrconnect://` を開くと Signer タブに URI が入り、**接続確認ダイアログ**（Connect / Cancel）が表示されます。
+- **ディープリンク**: 他アプリやブラウザから `nostrconnect://` を開くと、nokandro本体へ画面遷移せずに呼び出し元画面の上に**オーバーレイ接続確認ダイアログ**（Connect / Cancel）を表示します。あわせて通知も発行されるため、通知バーからも確認ダイアログを再度開くことができます。
 - **nostrconnect:// URI 入力欄**: クライアントアプリから提供された `nostrconnect://` URI を貼り付けます。
 - **Connect**: 指定したクライアントとのセッションを開始します。
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
@@ -268,7 +268,7 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 
 **対応 NIP-55 メソッド**: `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event`（`nostrsigner:` および ContentProvider 経由）
 
-**ContentProvider**（`content://com.nokakoi.nokandro.*`）: 呼び出し元アプリが未許可の場合、`nostrsigner:` 経路と同様の承認ダイアログ（Approve / Deny / Remember my choice）を表示し、当該 `query` は **null** を返します（許可後に再 `query` してください）。恒常拒否時は NIP-55 どおり `rejected` 列付きカーソルを返します。
+**ContentProvider**（`content://com.nokakoi.nokandro.*`）および `nostrsigner:` Intent: 呼び出し元アプリが未許可の場合、呼び出し元画面の上にオーバーレイ承認ダイアログ（Approve / Deny / Remember my choice）を表示するとともに再表示用の通知を発行し、当該 `query` は **null** を返します（許可後に再 `query` してください）。恒常拒否時は NIP-55 どおり `rejected` 列付きカーソルを返します。
 
 ### NIP-55 署名権限の管理
 

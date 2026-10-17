@@ -25,14 +25,16 @@ namespace nokandro
                 _lastUtcMs = now;
             }
 
+            var intent = BuildApprovalIntent(context, method, projection, callingPackage);
+            SignerApprovalNotifier.NotifyNip55Request(context, intent, callingPackage, method);
+
             try
             {
-                var intent = BuildApprovalIntent(context, method, projection, callingPackage);
                 context.StartActivity(intent);
             }
             catch
             {
-                // ignore if activity cannot start
+                // ignore if activity cannot start from background; notification remains available
             }
         }
 

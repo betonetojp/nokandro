@@ -47,13 +47,5 @@
       android:name="crc6437977a5f6f4ed3be.BunkerService"
       android:exported="false"
       android:foregroundServiceType="remoteMessaging" />
-      <activity android:name="nokandro.NostrConnectDeepLinkActivity" android:exported="true">
-        <intent-filter>
-          <action android:name="android.intent.action.VIEW" />
-          <category android:name="android.intent.category.DEFAULT" />
-          <category android:name="android.intent.category.BROWSABLE" />
-          <data android:scheme="nostrconnect" />
-        </intent-filter>
-      </activity>
     </application>
   </manifest>
