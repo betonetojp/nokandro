@@ -1194,6 +1194,22 @@ namespace nokandro
             }
 
             // --- nostrconnect:// ---
+            var ncSwitchRelaysEdit = FindViewById<EditText>(Resource.Id.ncSwitchRelaysEdit);
+            if (ncSwitchRelaysEdit != null)
+            {
+                ncSwitchRelaysEdit.Text = _settingsRepo.NostrConnectSwitchRelays;
+                ncSwitchRelaysEdit.FocusChange += (s, e) =>
+                {
+                    if (!e.HasFocus)
+                    {
+                        var val = ncSwitchRelaysEdit.Text?.Trim();
+                        if (string.IsNullOrWhiteSpace(val))
+                            val = SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
+                        _settingsRepo.NostrConnectSwitchRelays = val;
+                    }
+                };
+            }
+
             ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
             var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
             _ncStatusContainer = FindViewById<LinearLayout>(Resource.Id.ncStatusContainer);
@@ -2680,12 +2696,14 @@ namespace nokandro
 
         private void UpdateNostrConnectUIState(bool bunkerEnabled)
         {
+            var ncSwitchRelaysEdit = FindViewById<EditText>(Resource.Id.ncSwitchRelaysEdit);
             var ncUriEdit = FindViewById<EditText>(Resource.Id.ncUriEdit);
             var ncConnectBtn = FindViewById<Button>(Resource.Id.ncConnectBtn);
             var ncScanQrBtn = FindViewById<Button>(Resource.Id.ncScanQrBtn);
             var ncDisabledHint = FindViewById<TextView>(Resource.Id.ncDisabledHint);
             var ncStatusText = FindViewById<TextView>(Resource.Id.ncStatusText);
 
+            setControlEnabled(ncSwitchRelaysEdit, bunkerEnabled);
             setControlEnabled(ncUriEdit, bunkerEnabled);
             setControlEnabled(ncConnectBtn, bunkerEnabled);
             setControlEnabled(ncScanQrBtn, bunkerEnabled);
@@ -4092,6 +4110,7 @@ namespace nokandro
                 Resource.Id.truncateEllipsisEdit,
                 Resource.Id.offTimerMinutesEdit,
                 Resource.Id.bunkerRelayEdit,
+                Resource.Id.ncSwitchRelaysEdit,
                 Resource.Id.ncUriEdit,
                 Resource.Id.speechRateSeekBar,
                 Resource.Id.voiceLangSpinner,

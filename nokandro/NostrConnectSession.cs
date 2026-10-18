@@ -137,12 +137,16 @@ namespace nokandro
         private const string TAG = "NostrConnectSession";
         private readonly byte[] _privKey;
         private readonly string _signerPubkeyHex;
+        private readonly string[]? _switchRelays;
         private readonly NostrConnectUri _connectUri;
         private readonly Nip46Handler _handler;
         private CancellationTokenSource? _cts;
         private readonly List<NostrWebSocketClient> _wsClients = [];
+        private readonly HashSet<string> _connectAckSentRelays = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _processedEventIds = new();
         private bool _clientAuthenticated;
-        private bool _connectAckSent;
+        private readonly bool _preAuthenticated;
+        private string? _initialConnectResponseEvent;
 
         public bool IsRunning { get; private set; }
         public string ClientPubkey => _connectUri.ClientPubkey;
@@ -153,14 +157,16 @@ namespace nokandro
         /// <summary>pubkey, perms string</summary>
         public event Action<string, string?>? OnClientPaired;
 
-        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false, Nip46Permissions? initialPerms = null)
+        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false, Nip46Permissions? initialPerms = null, IEnumerable<string>? switchRelays = null)
         {
             _privKey = privKey;
             _connectUri = connectUri;
+            _switchRelays = switchRelays?.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToArray();
             _clientAuthenticated = preAuthenticated;
+            _preAuthenticated = preAuthenticated;
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _signerPubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
-            _handler = new Nip46Handler(_privKey, _signerPubkeyHex, _connectUri.Relays);
+            _handler = new Nip46Handler(_privKey, _signerPubkeyHex, _connectUri.Relays, _switchRelays);
             var perms = initialPerms ?? Nip46Permissions.Parse(_connectUri.Perms);
             if (preAuthenticated)
             {
@@ -176,10 +182,24 @@ namespace nokandro
             IsRunning = true;
             _cts = new CancellationTokenSource();
 
+            var targetRelays = new List<string>(_connectUri.Relays);
+            if (_switchRelays != null)
+            {
+                foreach (var relay in _switchRelays)
+                {
+                    if (!string.IsNullOrEmpty(relay) && !targetRelays.Any(r => string.Equals(r.TrimEnd('/'), relay.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                    {
+                        targetRelays.Add(relay);
+                    }
+                }
+            }
+
             lock (_wsClients)
             {
                 _wsClients.Clear();
-                foreach (var relay in _connectUri.Relays)
+                _connectAckSentRelays.Clear();
+                _initialConnectResponseEvent = null;
+                foreach (var relay in targetRelays)
                 {
                     var client = new NostrWebSocketClient(relay, $"NostrConnectSession_{relay.GetHashCode():x}");
                     _wsClients.Add(client);
@@ -204,10 +224,15 @@ namespace nokandro
                             var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"authors\":[\"{_connectUri.ClientPubkey}\"],\"#p\":[\"{_signerPubkeyHex}\"],\"since\":{since}}}]";
                             await SendTextAsync(client, reqJson, cToken);
 
-                            if (!_connectAckSent)
+                            bool shouldSendAck = false;
+                            lock (_connectAckSentRelays)
                             {
-                                _connectAckSent = true;
-                                await SendConnectResponseAsync(client, requestId: Guid.NewGuid().ToString("N")[..16], cToken);
+                                if (!_preAuthenticated && _connectAckSentRelays.Add(r))
+                                    shouldSendAck = true;
+                            }
+                            if (shouldSendAck)
+                            {
+                                await SendConnectResponseAsync(cToken);
                             }
                         }
                     };
@@ -230,18 +255,30 @@ namespace nokandro
                 }
                 _wsClients.Clear();
             }
+            lock (_connectAckSentRelays)
+            {
+                _connectAckSentRelays.Clear();
+            }
             _handler.DisconnectAll();
             _clientAuthenticated = false;
-            _connectAckSent = false;
+            _initialConnectResponseEvent = null;
         }
 
-        /// <summary>NIP-46: connect response result MUST be the URI secret.</summary>
-        private async Task SendConnectResponseAsync(NostrWebSocketClient client, string requestId, CancellationToken ct)
+        /// <summary>NIP-46: initial nostrconnect:// response result MUST be the URI secret.</summary>
+        private async Task SendConnectResponseAsync(CancellationToken ct)
         {
             try
             {
-                var signedEvent = _handler.BuildConnectResponseForClient(requestId, _connectUri.Secret, _connectUri.ClientPubkey);
-                await SendTextAsync(client, $"[\"EVENT\",{signedEvent}]", ct);
+                string signedEvent;
+                lock (_connectAckSentRelays)
+                {
+                    _initialConnectResponseEvent ??= _handler.BuildConnectResponseForClient(
+                        Guid.NewGuid().ToString("N")[..16],
+                        _connectUri.Secret,
+                        _connectUri.ClientPubkey);
+                    signedEvent = _initialConnectResponseEvent;
+                }
+                await BroadcastTextAsync($"[\"EVENT\",{signedEvent}]", ct);
                 _clientAuthenticated = true;
                 _handler.MarkConnected(_connectUri.ClientPubkey);
                 var perms = Nip46Permissions.Parse(_connectUri.Perms);
@@ -269,6 +306,19 @@ namespace nokandro
             var ev = root[2];
             if (!ev.TryGetProperty("kind", out var kEl) || kEl.GetInt32() != 24133) return;
 
+            if (ev.TryGetProperty("id", out var evIdEl))
+            {
+                var evId = evIdEl.GetString();
+                if (!string.IsNullOrEmpty(evId))
+                {
+                    lock (_processedEventIds)
+                    {
+                        if (!_processedEventIds.Add(evId)) return;
+                        if (_processedEventIds.Count > 1000) _processedEventIds.Clear();
+                    }
+                }
+            }
+
             if (!ev.TryGetProperty("pubkey", out var pkEl)) return;
             var senderPubkey = pkEl.GetString();
             if (string.IsNullOrEmpty(senderPubkey)) return;
@@ -283,7 +333,7 @@ namespace nokandro
                 var (sent, method, ok, err) = await _handler.ProcessRequestAsync(
                     senderPubkey,
                     encryptedContent,
-                    (text, token) => SendTextAsync(client, text, token),
+                    BroadcastTextAsync,
                     ct,
                     HandleConnect);
 
@@ -302,22 +352,23 @@ namespace nokandro
 
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)
         {
-            if (!string.IsNullOrEmpty(_connectUri.Secret))
+            if (!_clientAuthenticated
+                && !string.IsNullOrEmpty(_connectUri.Secret)
+                && paramsArr.ValueKind == JsonValueKind.Array
+                && paramsArr.GetArrayLength() >= 2
+                && paramsArr[1].ValueKind == JsonValueKind.String)
             {
-                var found = false;
-                if (paramsArr.ValueKind == JsonValueKind.Array)
+                var providedSecret = paramsArr[1].GetString();
+                if (!string.IsNullOrEmpty(providedSecret)
+                    && !providedSecret.Contains(',')
+                    && !providedSecret.StartsWith("sign_event", StringComparison.Ordinal)
+                    && !providedSecret.StartsWith("nip", StringComparison.Ordinal)
+                    && !string.Equals(providedSecret, senderPubkey, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(providedSecret, _signerPubkeyHex, StringComparison.OrdinalIgnoreCase)
+                    && providedSecret != _connectUri.Secret)
                 {
-                    foreach (var el in paramsArr.EnumerateArray())
-                    {
-                        if (el.ValueKind == JsonValueKind.String && el.GetString() == _connectUri.Secret)
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                if (!found)
                     throw new UnauthorizedAccessException("invalid secret");
+                }
             }
 
             _clientAuthenticated = true;
@@ -328,7 +379,24 @@ namespace nokandro
                 _handler.SetPermissions(senderPubkey, perms);
             OnClientPaired?.Invoke(senderPubkey, Nip46Permissions.ExtractPermsString(paramsArr) ?? _connectUri.Perms);
             Log($"Client connect accepted: {senderPubkey[..12]}...");
-            return _connectUri.Secret;
+            return "ack";
+        }
+
+        private async Task<bool> BroadcastTextAsync(string text, CancellationToken ct)
+        {
+            List<NostrWebSocketClient> clients;
+            lock (_wsClients) { clients = [.. _wsClients]; }
+            var anySent = false;
+            foreach (var c in clients)
+            {
+                try
+                {
+                    if (await c.SendTextAsync(text, ct))
+                        anySent = true;
+                }
+                catch { }
+            }
+            return anySent;
         }
 
         private async Task<bool> SendTextAsync(NostrWebSocketClient client, string text, CancellationToken ct)

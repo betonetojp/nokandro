@@ -16,13 +16,14 @@ namespace nokandro
         private const string KeyLegacyRequireApproval = "pref_bunker_require_approval";
         private const string KeyNostrConnectClients = "pref_nc_clients";
 
+        private readonly Context _context;
         private readonly ISharedPreferences _prefs;
 
         public BunkerClientStore(Context context)
         {
+            _context = context;
             _prefs = context.GetSharedPreferences(PrefsName, FileCreationMode.Private)
                 ?? throw new InvalidOperationException("SharedPreferences unavailable");
-            PurgeNostrConnectClients(context);
         }
 
         /// <summary>Pubkeys from persisted nostrconnect:// URIs (not bunker:// clients).</summary>
@@ -43,6 +44,24 @@ namespace nokandro
             return set;
         }
 
+        /// <summary>Permissions from persisted nostrconnect:// URIs.</summary>
+        public static string? LoadNostrConnectClientPerms(Context context, string pubkey)
+        {
+            try
+            {
+                var norm = Normalize(pubkey);
+                var prefs = context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                var raw = prefs?.GetString(KeyNostrConnectClients, "") ?? "";
+                foreach (var uri in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (NostrConnectUri.TryParse(uri, out var parsed) && parsed != null && Normalize(parsed.ClientPubkey) == norm)
+                        return parsed.Perms;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         /// <summary>Authorized bunker:// clients only (excludes nostrconnect://).</summary>
         public IReadOnlyCollection<string> GetBunkerAuthorized(Context context)
         {
@@ -52,28 +71,12 @@ namespace nokandro
                 .ToList();
         }
 
-        private void PurgeNostrConnectClients(Context context)
+        public bool IsAuthorized(string pubkey)
         {
-            var ncSet = LoadNostrConnectClientPubkeys(context);
-            if (ncSet.Count == 0) return;
-
-            var set = ReadAuthorizedSetFromPrefs();
-            var data = LoadClientsRoot();
-            var changed = false;
-            foreach (var pk in ncSet)
-            {
-                if (set.Remove(pk)) changed = true;
-                if (data.Clients.Remove(pk)) changed = true;
-            }
-            if (changed)
-            {
-                SaveAuthorizedSet(set);
-                SaveClientsRoot(data);
-            }
+            var norm = Normalize(pubkey);
+            if (GetAuthorizedSet().Contains(norm)) return true;
+            return LoadNostrConnectClientPubkeys(_context).Contains(norm);
         }
-
-        public bool IsAuthorized(string pubkey) =>
-            GetAuthorizedSet().Contains(Normalize(pubkey));
 
         public IReadOnlyCollection<string> GetAuthorized() => GetAuthorizedSet();
 
@@ -116,7 +119,13 @@ namespace nokandro
             SaveClientsRoot(data);
         }
 
-        public string? GetPermsString(string pubkey) => GetRecord(Normalize(pubkey))?.Perms;
+        public string? GetPermsString(string pubkey)
+        {
+            var norm = Normalize(pubkey);
+            var recPerms = GetRecord(norm)?.Perms;
+            if (!string.IsNullOrEmpty(recPerms)) return recPerms;
+            return LoadNostrConnectClientPerms(_context, norm);
+        }
 
         public Nip46Permissions? GetPermissions(string pubkey)
         {

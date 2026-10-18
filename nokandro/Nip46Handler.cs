@@ -8,14 +8,16 @@ namespace nokandro
         private readonly byte[] _privKey;
         private readonly string _signerPubkeyHex;
         private readonly string[] _relays;
+        private readonly string[]? _preferredRelays;
         private readonly HashSet<string> _connectedClients = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Nip46Permissions?> _clientPermissions = new(StringComparer.OrdinalIgnoreCase);
 
-        public Nip46Handler(byte[] privKey, string signerPubkeyHex, IEnumerable<string> relays)
+        public Nip46Handler(byte[] privKey, string signerPubkeyHex, IEnumerable<string> relays, IEnumerable<string>? preferredRelays = null)
         {
             _privKey = privKey;
             _signerPubkeyHex = signerPubkeyHex;
             _relays = relays.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToArray();
+            _preferredRelays = preferredRelays?.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToArray();
         }
 
         public bool IsClientConnected(string pubkey) => _connectedClients.Contains(pubkey);
@@ -41,9 +43,10 @@ namespace nokandro
             CancellationToken ct,
             Func<string, JsonElement, string>? handleConnect = null)
         {
-            var plaintext = NostrCrypto.DecryptNip44(encryptedContent, senderPubkey, _privKey);
+            var isNip04 = encryptedContent.Contains("?iv=", StringComparison.Ordinal);
+            var plaintext = NostrCrypto.Decrypt(encryptedContent, senderPubkey, _privKey);
             if (string.IsNullOrEmpty(plaintext))
-                throw new InvalidOperationException("Failed to decrypt NIP-46 request (NIP-44 required)");
+                throw new InvalidOperationException("Failed to decrypt NIP-46 request");
 
             using var reqDoc = JsonDocument.Parse(plaintext);
             var reqRoot = reqDoc.RootElement;
@@ -51,7 +54,7 @@ namespace nokandro
             var method = reqRoot.TryGetProperty("method", out var methodEl) ? methodEl.GetString() ?? "" : "";
             var paramsArr = reqRoot.TryGetProperty("params", out var pEl) && pEl.ValueKind == JsonValueKind.Array ? pEl : default;
 
-            if (method is not "connect" and not "ping" and not "get_public_key" and not "describe" && !_connectedClients.Contains(senderPubkey))
+            if (method is not "connect" and not "ping" and not "get_public_key" and not "describe" and not "switch_relays" and not "get_relays" && !_connectedClients.Contains(senderPubkey))
                 throw new UnauthorizedAccessException("client not connected");
 
             string result;
@@ -71,7 +74,7 @@ namespace nokandro
                     "nip44_decrypt" => HandleNip44Decrypt(senderPubkey, paramsArr),
                     "describe" => HandleDescribe(),
                     "get_relays" => HandleGetRelays(),
-                    "disconnect" => HandleDisconnect(senderPubkey),
+                    "disconnect" or "logout" => HandleDisconnect(senderPubkey),
                     "switch_relays" => HandleSwitchRelays(),
                     "ping" => "pong",
                     _ => throw new NotSupportedException($"Unknown method: {method}")
@@ -83,9 +86,12 @@ namespace nokandro
                 error = ex.Message;
             }
 
-            var errorJson = string.IsNullOrEmpty(error) ? "null" : Nip46Json.EscapeJsonString(error);
-            var responseJson = $"{{\"id\":{Nip46Json.EscapeJsonString(id)},\"result\":{Nip46Json.EscapeJsonString(result)},\"error\":{errorJson}}}";
-            var encrypted = NostrCrypto.EncryptNip44(responseJson, senderPubkey, _privKey);
+            var responseJson = string.IsNullOrEmpty(error)
+                ? $"{{\"id\":{Nip46Json.EscapeJsonString(id)},\"result\":{Nip46Json.EscapeJsonString(result)}}}"
+                : $"{{\"id\":{Nip46Json.EscapeJsonString(id)},\"result\":{Nip46Json.EscapeJsonString(result)},\"error\":{Nip46Json.EscapeJsonString(error)}}}";
+            var encrypted = isNip04
+                ? NostrCrypto.EncryptNip04(responseJson, senderPubkey, _privKey)
+                : NostrCrypto.EncryptNip44(responseJson, senderPubkey, _privKey);
             var signedEvent = Nip46Json.BuildSignedKind24133(_signerPubkeyHex, senderPubkey, encrypted, _privKey);
             var sent = await sendEventAsync($"[\"EVENT\",{signedEvent}]", ct);
             return (sent, method, string.IsNullOrEmpty(error), string.IsNullOrEmpty(error) ? null : error);
@@ -93,7 +99,7 @@ namespace nokandro
 
         public string BuildConnectResponseForClient(string requestId, string connectResult, string clientPubkey)
         {
-            var responseJson = $"{{\"id\":{Nip46Json.EscapeJsonString(requestId)},\"result\":{Nip46Json.EscapeJsonString(connectResult)},\"error\":null}}";
+            var responseJson = $"{{\"id\":{Nip46Json.EscapeJsonString(requestId)},\"result\":{Nip46Json.EscapeJsonString(connectResult)}}}";
             var encrypted = NostrCrypto.EncryptNip44(responseJson, clientPubkey, _privKey);
             return Nip46Json.BuildSignedKind24133(_signerPubkeyHex, clientPubkey, encrypted, _privKey);
         }
@@ -123,8 +129,9 @@ namespace nokandro
 
         private string HandleSwitchRelays()
         {
-            if (_relays.Length == 0) return "null";
-            var items = string.Join(",", _relays.Select(r => Nip46Json.EscapeJsonString(r)));
+            var targets = (_preferredRelays != null && _preferredRelays.Length > 0) ? _preferredRelays : _relays;
+            if (targets.Length == 0) return "null";
+            var items = string.Join(",", targets.Select(r => Nip46Json.EscapeJsonString(r)));
             return $"[{items}]";
         }
 

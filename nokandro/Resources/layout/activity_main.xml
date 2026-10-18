@@ -750,6 +750,37 @@
 						android:layout_marginBottom="@dimen/spacing_sm"
 						android:visibility="gone" />
 
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Switch relays"
+						style="@style/SectionTitle"
+						android:layout_marginBottom="@dimen/spacing_xs" />
+
+					<com.google.android.material.textfield.TextInputLayout
+						style="@style/AppTextInputLayout"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:hint="Switch relays (comma separated)"
+						app:startIconDrawable="@drawable/ic_globe"
+						android:layout_marginBottom="@dimen/spacing_sm">
+						<com.google.android.material.textfield.TextInputEditText
+							android:id="@+id/ncSwitchRelaysEdit"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:hint="wss://ephemeral.snowflare.cc/, wss://yabu.me/"
+							android:inputType="textUri"
+							android:singleLine="true"
+							android:textSize="13sp" />
+					</com.google.android.material.textfield.TextInputLayout>
+
+					<TextView
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="Connection URI"
+						style="@style/SectionTitle"
+						android:layout_marginBottom="@dimen/spacing_xs" />
+
 					<com.google.android.material.textfield.TextInputLayout
 						style="@style/AppTextInputLayout"
 						android:layout_width="match_parent"

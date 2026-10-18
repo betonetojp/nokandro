@@ -159,6 +159,15 @@ nostrconnect://<client_pubkey_hex>?name=AppName&relay=wss://...&secret=xxx
 
 NIP-46 に従い、URI には **relay**（1つ以上）と **secret** が必須です。
 
+### Switch relays（切り替え先リレー）の設定
+
+nostrconnect カード内の **Switch relays** 欄で、接続完了後にクライアントへ切り替え提案（`switch_relays`）として返すリレーを設定できます。
+
+- **カンマ区切りで複数指定可能**: デフォルトは `wss://ephemeral.snowflare.cc/, wss://yabu.me/`。
+- **Bunker relay との分離**: Bunker リレー（ローカルリレー等も設定可）とは独立して管理されるため、Bunker 待受にローカルリレーを使っていても外部 Web アプリがブラウザの Mixed Content 制約（HTTPS からの ws 遮断）等で通信不能になる心配がありません。
+- **冗長化**: 複数指定しておくことで、いずれかのリレーがダウン・メンテナンス中であっても安全に通信が継続されます。
+- **Web クライアント（Streets や nostr-login 等）の永続化**: Streets などのクライアントは接続完了後に `switch_relays` を呼び出し、サイナーから提案されたリレーをセッションに永続化してリロード後の再接続にも使用します。高速でブロックされていない専用リレーを返すことで、リロード時にも確実にセッションが復元されます。
+
 ---
 
 ## クライアントアイコンと表示名の管理
@@ -188,17 +197,19 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 
 ## 対応メソッド
 
-| メソッド | 説明 | パラメータ |
-|---|---|---|
-| `connect` | クライアントの接続認証 | `[client_pubkey, secret?]` |
-| `get_public_key` | Bunker の公開鍵を取得 | なし |
-| `sign_event` | イベントに署名 | `[unsigned_event_json]` |
-| `nip04_encrypt` | NIP-04 暗号化 | `[third_party_pubkey, plaintext]` |
-| `nip04_decrypt` | NIP-04 復号 | `[third_party_pubkey, ciphertext]` |
-| `nip44_encrypt` | NIP-44 暗号化 | `[third_party_pubkey, plaintext]` |
-| `nip44_decrypt` | NIP-44 復号 | `[third_party_pubkey, ciphertext]` |
-| `ping` | 接続確認 | なし -> `pong` |
-| `switch_relays` | リレー一覧の取得 | リレー URL 配列または `null` |
+| メソッド | 説明 | パラメータ | 戻り値 |
+|---|---|---|---|
+| `connect` | クライアントの接続認証 | `[client_pubkey, secret?]` | `"ack"` またはシークレット |
+| `get_public_key` | Bunker の公開鍵を取得 | なし | hex 公開鍵 |
+| `sign_event` | イベントに署名 | `[unsigned_event_json]` | 署名済みイベント JSON |
+| `nip04_encrypt` | NIP-04 暗号化 | `[third_party_pubkey, plaintext]` | 暗号化文字列 |
+| `nip04_decrypt` | NIP-04 復号 | `[third_party_pubkey, ciphertext]` | 復号平文 |
+| `nip44_encrypt` | NIP-44 暗号化 | `[third_party_pubkey, plaintext]` | 暗号化文字列 |
+| `nip44_decrypt` | NIP-44 復号 | `[third_party_pubkey, ciphertext]` | 復号平文 |
+| `ping` | 接続確認 | なし | `"pong"` |
+| `switch_relays` | 推奨リレーへの切り替え提案 | なし | リレー URL 配列または `"null"` |
+| `describe` | サポートメソッド一覧の取得 | なし | メソッド名配列 |
+| `disconnect` / `logout` | セッションの切断 | なし | `"ack"` |
 
 ### sign_event の動作
 

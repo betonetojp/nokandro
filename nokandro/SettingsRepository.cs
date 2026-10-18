@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Android.Content;
 
 namespace nokandro
@@ -51,6 +52,24 @@ namespace nokandro
         {
             get => _prefs.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
             set => _prefs.Edit()?.PutString(PREF_BUNKER_RELAY, value).Apply();
+        }
+
+        public const string PREF_NOSTRCONNECT_SWITCH_RELAYS = "pref_nostrconnect_switch_relays";
+        public const string DEFAULT_NOSTRCONNECT_SWITCH_RELAYS = "wss://ephemeral.snowflare.cc/, wss://yabu.me/";
+
+        public string NostrConnectSwitchRelays
+        {
+            get => _prefs.GetString(PREF_NOSTRCONNECT_SWITCH_RELAYS, DEFAULT_NOSTRCONNECT_SWITCH_RELAYS) ?? DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
+            set => _prefs.Edit()?.PutString(PREF_NOSTRCONNECT_SWITCH_RELAYS, value).Apply();
+        }
+
+        public string[] GetNostrConnectSwitchRelaysList()
+        {
+            var raw = NostrConnectSwitchRelays;
+            if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
+            return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                      .Where(r => !string.IsNullOrWhiteSpace(r))
+                      .ToArray();
         }
 
         public string? BunkerSecret

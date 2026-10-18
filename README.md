@@ -87,6 +87,7 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
 - **Client list**: Shows active nostrconnect sessions with client website icons (supports standard favicons, PWA apple-touch-icons, and repository subpaths). Tap a client name to edit its label; use **Remove** to disconnect.
+- **Switch relays (comma separated)**: Configures preferred relays to return when the client calls `switch_relays` upon finishing a `nostrconnect://` handshake (default: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`). Managed independently from Bunker relay to prevent local/private relay conflicts with HTTPS web apps and ensure reliable session persistence across page reloads.
 - The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`.
@@ -262,6 +263,7 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 - **Connect**: 指定したクライアントとのセッションを開始します。
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
 - **クライアントリスト**: アクティブな nostrconnect セッションをクライアント Web アイコン付き（PWA apple-touch-icon や GitHub Pages 等のサブパスにも対応）で表示します。名前をタップしてラベルを編集、**Remove** で切断できます。
+- **Switch relays（切り替え先リレー設定）**: クライアントが接続完了後に `switch_relays` を呼び出した際にサイナー側から推奨リレーとして返すリレーを設定できます（カンマ区切りで複数指定可能、デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`）。Bunker 通信用リレーとは独立して管理されるため、Bunker にローカルリレーを設定していても外部 Web アプリのブラウザ制約（HTTPS からの平文 ws 遮断など）による通信障害を防ぎ、ページリロード時にも確実にセッションが復元されます。
 - NIP-46に従い、URIには少なくとも1つ以上の `relay` と `secret` パラメータが必須です。
 
 **対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`

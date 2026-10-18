@@ -105,7 +105,7 @@ namespace nokandro
             var secret = intent?.GetStringExtra("secret") ?? prefs?.GetString("pref_bunker_secret", null);
 
             var bunkerOptions = CreateBunkerOptions(store);
-            var savedClients = store.GetBunkerAuthorized(this);
+            var savedClients = store.GetAuthorized().Concat(BunkerClientStore.LoadNostrConnectClientPubkeys(this)).Distinct().ToList();
             _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
             CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
@@ -153,10 +153,64 @@ namespace nokandro
             catch { }
 
             _bunker.Start();
+            RestorePersistedNostrConnectSessions(prefs, privKey);
             UpdateNotification();
             AppLog.D(TAG, "Bunker started");
 
             return StartCommandResult.Sticky;
+        }
+
+        private void RestorePersistedNostrConnectSessions(ISharedPreferences? prefs, byte[] privKey)
+        {
+            try
+            {
+                var existing = prefs?.GetString("pref_nc_clients", "") ?? "";
+                if (string.IsNullOrEmpty(existing)) return;
+
+                var list = existing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var addedAny = false;
+
+                lock (_ncLock)
+                {
+                    foreach (var uriStr in list)
+                    {
+                        if (!NostrConnectUri.TryParse(uriStr, out var connectUri) || connectUri == null)
+                            continue;
+                        if (_ncSessions.ContainsKey(connectUri.ClientPubkey))
+                            continue;
+
+                        var storedPerms = Nip46Permissions.Parse(connectUri.Perms);
+                        var switchRelaysRaw = prefs?.GetString(SettingsRepository.PREF_NOSTRCONNECT_SWITCH_RELAYS, SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS) ?? SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
+                        var switchRelays = switchRelaysRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        var session = new NostrConnectSession(privKey, connectUri, preAuthenticated: true, storedPerms, switchRelays);
+                        session.OnLog += msg =>
+                        {
+                            try
+                            {
+                                var b = new Intent("nokandro.ACTION_NC_LOG");
+                                b.PutExtra("clientPubkey", connectUri.ClientPubkey);
+                                b.PutExtra("message", msg);
+                                LocalBroadcast.SendBroadcast(this, b);
+                            }
+                            catch { }
+                        };
+
+                        _ncSessions[connectUri.ClientPubkey] = session;
+                        session.Start();
+                        addedAny = true;
+                        AppLog.D(TAG, $"Restored NostrConnect session for {connectUri.ClientPubkey[..12]}...");
+                    }
+                }
+
+                if (addedAny)
+                {
+                    BroadcastNostrConnectList();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.W(TAG, "Failed to restore NostrConnect sessions: " + ex.Message);
+            }
         }
 
         private StartCommandResult HandleStartNostrConnect(Intent intent)
@@ -195,7 +249,19 @@ namespace nokandro
 
                 var preAuth = intent.GetBooleanExtra("preAuthenticated", false);
                 var storedPerms = Nip46Permissions.Parse(connectUri.Perms);
-                var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms);
+                var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                var switchRelaysRaw = prefs?.GetString(SettingsRepository.PREF_NOSTRCONNECT_SWITCH_RELAYS, SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS) ?? SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
+                var switchRelays = switchRelaysRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms, switchRelays);
+                session.OnClientPaired += (pk, permsStr) =>
+                {
+                    try
+                    {
+                        var p = Nip46Permissions.Parse(permsStr);
+                        _bunker?.AddAuthorizedClient(pk, p);
+                    }
+                    catch { }
+                };
                 session.OnLog += msg =>
                 {
                     try
@@ -209,6 +275,7 @@ namespace nokandro
                 };
 
                 _ncSessions[connectUri.ClientPubkey] = session;
+                _bunker?.AddAuthorizedClient(connectUri.ClientPubkey, storedPerms);
                 session.Start();
             }
 

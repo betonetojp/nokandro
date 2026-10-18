@@ -36,6 +36,16 @@ namespace nokandro
 
         public IReadOnlyCollection<string> GetAuthorizedClientPubkeys() => _authorizedClients;
 
+        public void AddAuthorizedClient(string pubkey, Nip46Permissions? perms = null)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return;
+            _authorizedClients.Add(pubkey);
+            _handler.MarkConnected(pubkey);
+            if (perms != null)
+                _handler.SetPermissions(pubkey, perms);
+            Log($"Authorized client added: {pubkey[..Math.Min(12, pubkey.Length)]}...");
+        }
+
         public void RemoveAuthorizedClient(string pubkey)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
@@ -80,6 +90,7 @@ namespace nokandro
 
             foreach (var pk in _authorizedClients)
             {
+                _handler.MarkConnected(pk);
                 var perms = _options?.GetPermissions?.Invoke(pk);
                 if (perms != null)
                     _handler.SetPermissions(pk, perms);

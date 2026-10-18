@@ -125,7 +125,25 @@ namespace nokandro
                     if (notes.Length > 1500)
                         notes = notes[..1490] + "\n\n...(more on GitHub)";
 
-                    builder.SetMessage(FormatReleaseMessage(info, notes));
+                    var density = activity.Resources?.DisplayMetrics?.Density ?? 1f;
+                    var screenHeight = activity.Resources?.DisplayMetrics?.HeightPixels ?? (int)(640 * density);
+                    // Leave ample room for title and up to 3 vertically-stacked buttons (~144dp)
+                    var maxScrollHeight = Math.Min((int)(screenHeight * 0.32f), (int)(240 * density));
+                    var padH = (int)(24 * density);
+                    var padTop = (int)(10 * density);
+                    var padBottom = (int)(6 * density);
+
+                    var scrollView = new MaxHeightScrollView(activity, maxScrollHeight);
+                    var messageView = new TextView(activity)
+                    {
+                        TextFormatted = FormatReleaseMessage(info, notes),
+                        TextSize = 13.5f
+                    };
+                    messageView.SetTextColor(DialogHelper.OnSurfaceVariantColor(activity));
+                    messageView.SetPadding(padH, padTop, padH, padBottom);
+                    messageView.SetLineSpacing(0f, 1.15f);
+                    scrollView.AddView(messageView);
+                    builder.SetView(scrollView);
 
                     if (!string.IsNullOrEmpty(info.ApkDownloadUrl))
                     {
@@ -135,7 +153,7 @@ namespace nokandro
                         });
                     }
 
-                    builder.SetNeutralButton("View on GitHub", (s, e) =>
+                    builder.SetNeutralButton("GitHub", (s, e) =>
                     {
                         try
                         {
@@ -150,9 +168,65 @@ namespace nokandro
                     var dialog = builder.Create();
                     dialog.Show();
                     DialogHelper.ApplyThemeColors(dialog, activity);
+
+                    try
+                    {
+                        var btnPadH = (int)(8 * density);
+                        var secondary = DialogHelper.OnSurfaceVariantColor(activity);
+                        var neutralBtn = dialog.GetButton((int)DialogButtonType.Neutral);
+                        if (neutralBtn != null)
+                        {
+                            neutralBtn.SetTextColor(secondary);
+                            neutralBtn.SetSingleLine(true);
+                            neutralBtn.SetPadding(btnPadH, neutralBtn.PaddingTop, btnPadH, neutralBtn.PaddingBottom);
+                            neutralBtn.SetMinWidth(0);
+                            neutralBtn.SetMinimumWidth(0);
+                        }
+                        var negBtn = dialog.GetButton((int)DialogButtonType.Negative);
+                        if (negBtn != null)
+                        {
+                            negBtn.SetSingleLine(true);
+                            negBtn.SetPadding(btnPadH, negBtn.PaddingTop, btnPadH, negBtn.PaddingBottom);
+                            negBtn.SetMinWidth(0);
+                            negBtn.SetMinimumWidth(0);
+                        }
+                        var posBtn = dialog.GetButton((int)DialogButtonType.Positive);
+                        if (posBtn != null)
+                        {
+                            posBtn.SetSingleLine(true);
+                            posBtn.SetPadding(btnPadH, posBtn.PaddingTop, btnPadH, posBtn.PaddingBottom);
+                            posBtn.SetMinWidth(0);
+                            posBtn.SetMinimumWidth(0);
+                        }
+                    }
+                    catch { }
                 }
                 catch { }
             });
+        }
+
+        private sealed class MaxHeightScrollView : ScrollView
+        {
+            private readonly int _maxHeightPx;
+
+            public MaxHeightScrollView(Context context, int maxHeightPx) : base(context)
+            {
+                _maxHeightPx = maxHeightPx;
+            }
+
+            protected override void OnMeasure(int widthMeasureSpec, int heightMeasureSpec)
+            {
+                if (_maxHeightPx > 0)
+                {
+                    var mode = MeasureSpec.GetMode(heightMeasureSpec);
+                    var size = MeasureSpec.GetSize(heightMeasureSpec);
+                    if (mode == MeasureSpecMode.Unspecified || size > _maxHeightPx)
+                    {
+                        heightMeasureSpec = MeasureSpec.MakeMeasureSpec(_maxHeightPx, MeasureSpecMode.AtMost);
+                    }
+                }
+                base.OnMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
         }
 
         public static void StartDownloadAndInstall(Activity activity, AppUpdateInfo info)
