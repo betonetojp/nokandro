@@ -33,6 +33,8 @@ namespace nokandro
         public event Action<string>? OnClientAuthorized;
         /// <summary>Known client reconnected.</summary>
         public event Action<string>? OnClientReconnected;
+        /// <summary>Client activity performed (pubkey, method summary).</summary>
+        public event Action<string, string>? OnActivity;
 
         public IReadOnlyCollection<string> GetAuthorizedClientPubkeys() => _authorizedClients;
 
@@ -87,6 +89,7 @@ namespace nokandro
 
             _secret = !string.IsNullOrEmpty(secret) ? secret : GenerateSecret();
             _handler = new Nip46Handler(_privKey, _pubkeyHex, _relays);
+            _handler.OnActivity += (pk, summary) => OnActivity?.Invoke(pk, summary);
 
             foreach (var pk in _authorizedClients)
             {

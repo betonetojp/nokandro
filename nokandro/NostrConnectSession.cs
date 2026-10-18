@@ -156,6 +156,8 @@ namespace nokandro
         public event Action<string>? OnLog;
         /// <summary>pubkey, perms string</summary>
         public event Action<string, string?>? OnClientPaired;
+        /// <summary>Client activity performed (pubkey, method summary).</summary>
+        public event Action<string, string>? OnActivity;
 
         public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false, Nip46Permissions? initialPerms = null, IEnumerable<string>? switchRelays = null)
         {
@@ -167,6 +169,7 @@ namespace nokandro
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _signerPubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
             _handler = new Nip46Handler(_privKey, _signerPubkeyHex, _connectUri.Relays, _switchRelays);
+            _handler.OnActivity += (pk, summary) => OnActivity?.Invoke(pk, summary);
             var perms = initialPerms ?? Nip46Permissions.Parse(_connectUri.Perms);
             if (preAuthenticated)
             {

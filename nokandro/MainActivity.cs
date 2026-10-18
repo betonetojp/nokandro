@@ -62,6 +62,7 @@ namespace nokandro
         private string _lastMusicInfo = "Music: (waiting)"; // State holder for music info
 
         // NIP-46 Bunker
+        private LinearLayout? _bunkerStatusContainer;
         private View? _bunkerStatusDot;
         private TextView? _bunkerStatusText;
         private Android.Widget.Button? _bunkerBatteryOptBtn;
@@ -890,9 +891,20 @@ namespace nokandro
             var bunkerUriText = FindViewById<TextView>(Resource.Id.bunkerUriText);
             var bunkerCopyBtn = FindViewById<Button>(Resource.Id.bunkerCopyBtn);
             var bunkerResetSecretBtn = FindViewById<Button>(Resource.Id.bunkerResetSecretBtn);
+            _bunkerStatusContainer = FindViewById<LinearLayout>(Resource.Id.bunkerStatusContainer);
             _bunkerStatusDot = FindViewById<View>(Resource.Id.bunkerStatusDot);
             _bunkerStatusText = FindViewById<TextView>(Resource.Id.bunkerStatusText);
             _bunkerBatteryOptBtn = FindViewById<Button>(Resource.Id.bunkerBatteryOptBtn);
+
+            if (_bunkerStatusContainer != null)
+            {
+                _bunkerStatusContainer.Clickable = true;
+                _bunkerStatusContainer.Focusable = true;
+                _bunkerStatusContainer.Click += (s, e) =>
+                {
+                    ShowLogHistoryDialog("Bunker Log History", BunkerService.GetBunkerLogs, BunkerService.ClearBunkerLogs);
+                };
+            }
 
             // restore bunker relay from prefs
             if (bunkerRelayEdit != null)
@@ -1001,7 +1013,8 @@ namespace nokandro
                 }
                 else if (intent.Action == "nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED"
                     || intent.Action == "nokandro.ACTION_BUNKER_CLIENTS_CHANGED"
-                    || intent.Action == "nokandro.ACTION_BUNKER_CLIENT_RECONNECTED")
+                    || intent.Action == "nokandro.ACTION_BUNKER_CLIENT_RECONNECTED"
+                    || intent.Action == "nokandro.ACTION_BUNKER_CLIENT_ACTIVITY")
                 {
                     try { RunOnUiThread(() => RefreshBunkerAuthorizedList()); } catch { }
                 }
@@ -1017,6 +1030,7 @@ namespace nokandro
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENTS_CHANGED");
                 bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_RECONNECTED");
+                bunkerFilter.AddAction("nokandro.ACTION_BUNKER_CLIENT_ACTIVITY");
                 LocalBroadcast.RegisterReceiver(_bunkerReceiver, bunkerFilter);
             }
             catch { }
@@ -1219,6 +1233,16 @@ namespace nokandro
             _nip55ClientList = FindViewById<LinearLayout>(Resource.Id.nip55ClientList);
             try { RefreshNip55PermissionList(); } catch { }
 
+            if (_ncStatusContainer != null)
+            {
+                _ncStatusContainer.Clickable = true;
+                _ncStatusContainer.Focusable = true;
+                _ncStatusContainer.Click += (s, e) =>
+                {
+                    ShowLogHistoryDialog("NostrConnect Log History", BunkerService.GetNcLogs, BunkerService.ClearNcLogs);
+                };
+            }
+
             if (ncConnectBtn != null)
             {
                 ncConnectBtn.Click += (s, e) =>
@@ -1301,12 +1325,21 @@ namespace nokandro
                             _ncStatusText.Text = $"[{label}] {msg}";
                     });
                 }
+                else if (intent.Action == "nokandro.ACTION_NC_CLIENT_ACTIVITY")
+                {
+                    RunOnUiThread(() =>
+                    {
+                        RefreshNostrConnectClientList(_lastNcPubkeys ?? [], _lastNcUris ?? []);
+                        RefreshBunkerAuthorizedList();
+                    });
+                }
             };
             try
             {
                 var ncFilter = new IntentFilter();
                 ncFilter.AddAction("nokandro.ACTION_NC_LIST");
                 ncFilter.AddAction("nokandro.ACTION_NC_LOG");
+                ncFilter.AddAction("nokandro.ACTION_NC_CLIENT_ACTIVITY");
                 LocalBroadcast.RegisterReceiver(_ncReceiver, ncFilter);
             }
             catch { }
@@ -2367,6 +2400,67 @@ namespace nokandro
             catch { }
         }
 
+        private void ShowLogHistoryDialog(string title, Func<IReadOnlyList<string>> getLogs, Action clearLogs)
+        {
+            var logs = getLogs();
+            var density = Resources?.DisplayMetrics?.Density ?? 1.0f;
+
+            var scrollView = new ScrollView(this)
+            {
+                LayoutParameters = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            };
+            var padH = (int)(16 * density);
+            var padV = (int)(10 * density);
+            scrollView.SetPadding(padH, padV, padH, padV);
+
+            var tv = new TextView(this)
+            {
+                TextSize = 11.5f,
+                LayoutParameters = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            };
+            try { tv.SetTextIsSelectable(true); } catch { }
+            tv.SetTypeface(Android.Graphics.Typeface.Monospace, Android.Graphics.TypefaceStyle.Normal);
+            try { tv.SetTextColor(DialogHelper.OnSurfaceColor(this)); } catch { }
+
+            if (logs.Count == 0)
+            {
+                tv.Text = "No logs recorded yet.";
+                try { tv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this)); } catch { }
+            }
+            else
+            {
+                tv.Text = string.Join("\n", logs);
+            }
+            scrollView.AddView(tv);
+
+            scrollView.Post(() => scrollView.FullScroll(Android.Views.FocusSearchDirection.Down));
+
+            var dialog = DialogHelper.CreateBuilder(this)
+                .SetTitle(title)
+                .SetView(scrollView)
+                .SetPositiveButton("Copy", (s, e) =>
+                {
+                    var textToCopy = logs.Count == 0 ? "" : string.Join("\n", logs);
+                    if (!string.IsNullOrEmpty(textToCopy))
+                    {
+                        var clipboard = (Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
+                        if (clipboard != null)
+                            clipboard.PrimaryClip = Android.Content.ClipData.NewPlainText(title, textToCopy);
+                        Toast.MakeText(this, "Logs copied to clipboard", ToastLength.Short)?.Show();
+                    }
+                })
+                .SetNeutralButton("Clear", (s, e) =>
+                {
+                    clearLogs();
+                    Toast.MakeText(this, "Logs cleared", ToastLength.Short)?.Show();
+                })
+                .SetNegativeButton("Close", (s, e) => { })
+                .Create();
+
+            dialog.Show();
+            DialogHelper.ApplyThemeColors(dialog, this);
+        }
+
         private string ResolveBunkerClientDisplayName(string pk, BunkerClientStore store)
         {
             var name = store.GetName(pk);
@@ -2438,7 +2532,13 @@ namespace nokandro
                         "#2196F3", "#009688", "#4CAF50", "#FF9800"
                     };
 
-                    foreach (var pk in items.Distinct())
+                    var sortedItems = items.Distinct()
+                        .OrderBy(pk => ResolveBunkerClientDisplayName(pk, store), StringComparer.CurrentCultureIgnoreCase)
+                        .ThenByDescending(pk => store.GetActivity(pk).lastUsedAt)
+                        .ThenByDescending(pk => store.GetActivity(pk).createdAt)
+                        .ToList();
+
+                    foreach (var pk in sortedItems)
                     {
                         var row = LayoutInflater.From(this)!.Inflate(Resource.Layout.list_item_client, list, false);
 
@@ -2479,6 +2579,35 @@ namespace nokandro
                         {
                             var formattedPk = pk.Length >= 16 ? pk[..8] + "..." + pk[^6..] : pk;
                             subTv.Text = $"Authorized • {formattedPk}";
+                        }
+
+                        var actTv = row.FindViewById<TextView>(Resource.Id.clientActivityText);
+                        if (actTv != null)
+                        {
+                            var activity = store.GetActivity(pk);
+                            if (activity.lastUsedAt > 0)
+                            {
+                                var rel = BunkerClientStore.FormatRelativeTime(activity.lastUsedAt);
+                                var method = !string.IsNullOrEmpty(activity.lastMethod) ? $" • {activity.lastMethod}" : "";
+                                actTv.Text = $"Last active: {rel}{method}";
+
+                                var diff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - activity.lastUsedAt;
+                                if (diff < 3600)
+                                    actTv.SetTextColor(new Android.Graphics.Color(0x4C, 0xAF, 0x50));
+                                else
+                                    actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                            }
+                            else if (activity.createdAt > 0)
+                            {
+                                var rel = BunkerClientStore.FormatRelativeTime(activity.createdAt);
+                                actTv.Text = $"Never active • Paired {rel}";
+                                actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                            }
+                            else
+                            {
+                                actTv.Text = "Never active";
+                                actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                            }
                         }
 
                         var infoLayout = row.FindViewById<LinearLayout>(Resource.Id.clientInfoLayout);
@@ -2937,12 +3066,18 @@ namespace nokandro
                 clientItems.Add((pk, uri, displayName ?? "", labelText));
             }
 
-            // Sort by display name (A -> Z), then by label text
+            var store = new BunkerClientStore(this);
+
+            // Sort by display name (A -> Z), then by last active desc, then paired date desc
             clientItems.Sort((a, b) =>
             {
                 var comp = string.Compare(a.displayName, b.displayName, StringComparison.CurrentCultureIgnoreCase);
                 if (comp != 0) return comp;
-                return string.Compare(a.labelText, b.labelText, StringComparison.CurrentCultureIgnoreCase);
+                var actA = store.GetActivity(a.pk);
+                var actB = store.GetActivity(b.pk);
+                if (actA.lastUsedAt != actB.lastUsedAt)
+                    return actB.lastUsedAt.CompareTo(actA.lastUsedAt);
+                return actB.createdAt.CompareTo(actA.createdAt);
             });
 
             var avatarColors = new[]
@@ -2994,6 +3129,35 @@ namespace nokandro
                     subText.Text = $"Active • {shortPk}";
                 }
 
+                var actTv = row.FindViewById<TextView>(Resource.Id.clientActivityText);
+                if (actTv != null)
+                {
+                    var activity = store.GetActivity(clientPk);
+                    if (activity.lastUsedAt > 0)
+                    {
+                        var rel = BunkerClientStore.FormatRelativeTime(activity.lastUsedAt);
+                        var method = !string.IsNullOrEmpty(activity.lastMethod) ? $" • {activity.lastMethod}" : "";
+                        actTv.Text = $"Last active: {rel}{method}";
+
+                        var diff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - activity.lastUsedAt;
+                        if (diff < 3600)
+                            actTv.SetTextColor(new Android.Graphics.Color(0x4C, 0xAF, 0x50));
+                        else
+                            actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                    }
+                    else if (activity.createdAt > 0)
+                    {
+                        var rel = BunkerClientStore.FormatRelativeTime(activity.createdAt);
+                        actTv.Text = $"Never active • Paired {rel}";
+                        actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                    }
+                    else
+                    {
+                        actTv.Text = "Never active";
+                        actTv.SetTextColor(DialogHelper.OnSurfaceVariantColor(this));
+                    }
+                }
+
                 var infoLayout = row.FindViewById<LinearLayout>(Resource.Id.clientInfoLayout);
                 if (infoLayout != null)
                 {
@@ -3015,6 +3179,7 @@ namespace nokandro
                             {
                                 RemoveNcClientName(clientPk);
                                 StopNostrConnectSession(clientPk);
+                                store.Revoke(clientPk);
                             })
                             .SetNegativeButton("Cancel", (sender, args) => { })
                             .Create();

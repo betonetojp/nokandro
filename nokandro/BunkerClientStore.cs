@@ -90,16 +90,26 @@ namespace nokandro
             UpdateClientRecord(pubkey, name, perms);
         }
 
+        private static readonly object _clientsLock = new();
+
         public void Revoke(string pubkey)
         {
             pubkey = Normalize(pubkey);
             var set = GetAuthorizedSet();
-            if (!set.Remove(pubkey)) return;
-            SaveAuthorizedSet(set);
+            var removed = set.Remove(pubkey);
+            if (removed)
+            {
+                SaveAuthorizedSet(set);
+            }
 
-            var data = LoadClientsRoot();
-            data.Clients.Remove(pubkey);
-            SaveClientsRoot(data);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (data.Clients.Remove(pubkey))
+                {
+                    SaveClientsRoot(data);
+                }
+            }
         }
 
         public string? GetName(string pubkey)
@@ -111,12 +121,20 @@ namespace nokandro
         public void SetName(string pubkey, string? name)
         {
             pubkey = Normalize(pubkey);
-            var data = LoadClientsRoot();
-            if (!data.Clients.TryGetValue(pubkey, out var rec))
-                rec = new ClientRecord();
-            rec.Name = name;
-            data.Clients[pubkey] = rec;
-            SaveClientsRoot(data);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                rec.Name = name;
+                data.Clients[pubkey] = rec;
+                SaveClientsRoot(data);
+            }
         }
 
         public string? GetPermsString(string pubkey)
@@ -138,6 +156,78 @@ namespace nokandro
             UpdateClientRecord(Normalize(pubkey), null, perms);
         }
 
+        public void RecordActivity(string pubkey, string methodSummary)
+        {
+            pubkey = Normalize(pubkey);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                else if (rec.CreatedAt == 0)
+                {
+                    rec.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+                rec.LastUsedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                rec.LastMethod = methodSummary;
+                data.Clients[pubkey] = rec;
+                SaveClientsRoot(data);
+            }
+        }
+
+        public (long lastUsedAt, string? lastMethod, long createdAt) GetActivity(string pubkey)
+        {
+            var rec = GetRecord(Normalize(pubkey));
+            if (rec == null) return (0, null, 0);
+            return (rec.LastUsedAt, rec.LastMethod, rec.CreatedAt);
+        }
+
+        public void RecordPairing(string pubkey, string? name = null)
+        {
+            pubkey = Normalize(pubkey);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                else if (rec.CreatedAt == 0)
+                {
+                    rec.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+                if (!string.IsNullOrEmpty(name))
+                    rec.Name = name;
+                data.Clients[pubkey] = rec;
+                SaveClientsRoot(data);
+            }
+        }
+
+        public static string FormatRelativeTime(long unixSeconds)
+        {
+            if (unixSeconds <= 0) return "never";
+            var diff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - unixSeconds;
+            if (diff < 0) diff = 0;
+
+            if (diff < 60) return "just now";
+            var mins = diff / 60;
+            if (mins < 60) return $"{mins}m ago";
+            var hours = mins / 60;
+            if (hours < 24) return $"{hours}h ago";
+            var days = hours / 24;
+            if (days < 30) return $"{days}d ago";
+            var dt = DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime();
+            return dt.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         public void ClearAllPairings()
         {
             _prefs.Edit()?
@@ -150,19 +240,34 @@ namespace nokandro
 
         private void UpdateClientRecord(string pubkey, string? name, string? perms)
         {
-            var data = LoadClientsRoot();
-            if (!data.Clients.TryGetValue(pubkey, out var rec))
-                rec = new ClientRecord();
-            if (name != null) rec.Name = name;
-            if (perms != null) rec.Perms = perms;
-            data.Clients[pubkey] = rec;
-            SaveClientsRoot(data);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                else if (rec.CreatedAt == 0)
+                {
+                    rec.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+                if (name != null) rec.Name = name;
+                if (perms != null) rec.Perms = perms;
+                data.Clients[pubkey] = rec;
+                SaveClientsRoot(data);
+            }
         }
 
         private ClientRecord? GetRecord(string pubkey)
         {
-            var data = LoadClientsRoot();
-            return data.Clients.TryGetValue(pubkey, out var rec) ? rec : null;
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                return data.Clients.TryGetValue(pubkey, out var rec) ? rec : null;
+            }
         }
 
         private ClientsRoot LoadClientsRoot()
@@ -228,6 +333,9 @@ namespace nokandro
         {
             public string? Name { get; set; }
             public string? Perms { get; set; }
+            public long CreatedAt { get; set; }
+            public long LastUsedAt { get; set; }
+            public string? LastMethod { get; set; }
         }
     }
 }

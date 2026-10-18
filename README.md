@@ -18,6 +18,7 @@ Package name: `com.nokakoi.nokandro`
 - **Text-to-Speech (TTS)**: Reads incoming posts from followed users (configurable).
 - **Now Playing**: Detects music playing on your device (via notification listener) and publishes it as a Nostr status (kind: 30315).
 - **NIP-46 Remote Signer**: Acts as a remote signer (`bunker://` and `nostrconnect://`) so external Nostr clients can request event signing and encryption/decryption without exposing private keys. Multiple concurrent sessions and client website icon fetching (including PWA and GitHub Pages subpaths) are supported.
+- **Client Activity Tracking & Status Log History**: Tap the Bunker or NostrConnect status chips to view recent in-memory communication logs with Copy and Clear options. Client cards display relative last-used timestamps (e.g. `5m ago`, `Never active • Paired 3d ago`) and the last executed method (e.g. `sign_event (kind 1)`), automatically sorting active sessions above inactive or obsolete ones for easy cleanup.
 - **NIP-55 Signer**: Handles `nostrsigner:` intents and NIP-55 content provider methods (`SIGN_EVENT`, `NIP04_DECRYPT`, etc.) for external signer-compatible clients.
 - **NIP-55 Permission Manager**: Organizes remembered permissions grouped by caller application with app icons and names, collapsible permission cards, human-readable kind annotations, Allowed/Rejected badges, and batch clear per application.
 - **Modern UI & Sticky Footer**: Material Design 3 styling with a persistent sticky footer showing real-time service status (Running/Stopped badges), off timer remaining time, and quick controls.
@@ -77,8 +78,8 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 - **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running. The secret is **one-time for each new pairing** (URI updates after each successful new client connect and when you **Remove** a client). Share the latest URI from the screen for the next new client.
 - **Copy bunker URI**: Copies the current URI (including the active secret) to the clipboard.
 - **Reset Secret**: Resets the bunker secret, removes **all** paired clients, and stops the bunker. After you turn the bunker on again, share the new URI with every client.
-- **Authorized clients**: Lists paired clients with website icons and names. Tap a name to edit its label; use **Remove** to revoke one client (rotates the bunker URI secret and updates the display/copy; other paired clients can reconnect without the new URI).
-- **Status**: Shows bunker connection status and client activity.
+- **Authorized clients**: Lists paired clients with website icons, names, and recent activity (relative time and last method). Tap a name to edit its label; use **Remove** to revoke one client (rotates the bunker URI secret and updates the display/copy; other paired clients can reconnect without the new URI). Sessions are sorted with recently active clients on top to help identify abandoned or reset clients.
+- **Status**: Shows bunker connection status and client activity. Tap the status chip to open a scrollable in-memory log history dialog with Copy and Clear controls.
 
 ### nostrconnect:// (Client-initiated)
 
@@ -86,7 +87,8 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 - **nostrconnect:// URI input**: Paste a `nostrconnect://` URI provided by the client app.
 - **Connect**: Starts a session with the specified client.
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
-- **Client list**: Shows active nostrconnect sessions with client website icons (supports standard favicons, PWA apple-touch-icons, and repository subpaths). Tap a client name to edit its label; use **Remove** to disconnect.
+- **Client list**: Shows active nostrconnect sessions with client website icons (supports standard favicons, PWA apple-touch-icons, and repository subpaths) and recent activity details. Tap a client name to edit its label; use **Remove** to disconnect. Sessions are sorted by recent activity so obsolete entries stay at the bottom.
+- **Status**: Tap the status chip to inspect recent NostrConnect logs with Copy and Clear options.
 - **Switch relays (comma separated)**: Configures preferred relays to return when the client calls `switch_relays` upon finishing a `nostrconnect://` handshake (default: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`). Managed independently from Bunker relay to prevent local/private relay conflicts with HTTPS web apps and ensure reliable session persistence across page reloads.
 - The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
@@ -195,6 +197,7 @@ When installing an update directly from within nokandro for the first time, Andr
 - **読み上げ (TTS)**: フォロー中のユーザー等の投稿を読み上げます（有効時）。
 - **Now Playing**: 端末で再生中の音楽（通知リスナー経由）を検知し、Nostrステータス (kind: 30315) として投稿します。
 - **NIP-46 リモート署名**: 外部の Nostr クライアントからの署名・暗号化/復号リクエストに応答するリモート署名機能です（`bunker://` および `nostrconnect://` に対応）。クライアントの Web アイコン取得（PWA apple-touch-icon や GitHub Pages サブパス対応）や表示名のインライン編集が可能です。
+- **クライアント活動履歴とステータスログ履歴**: Bunker および NostrConnect のステータス表示をタップして直近の通信・接続ログをダイアログ（Copy / Clear 対応）で確認可能。また、クライアントカードには直近の活動日時（例: `5m ago`, `Never active • Paired 3d ago`）と最後に実行されたメソッド（例: `sign_event (kind 1)`）が表示され、直近利用順に自動ソートされるため、放置された不要なクライアントを簡単に判別・削除できます。
 - **NIP-55 Signer**: 外部署名対応クライアント向けに `nostrsigner:` と NIP-55 ContentProvider（`SIGN_EVENT`, `NIP04_DECRYPT` など）をサポートします。
 - **NIP-55 権限マネージャー**: 保存された権限を呼び出し元アプリごとにアプリアイコン・名前付きカードでグループ化。展開/折りたたみ、わかりやすいイベント種別注釈、Allowed/Rejected バッジ、アプリ単位の一括削除（Clear）に対応しています。
 - **モダンUI & スティッキーフッター**: Material Design 3 に準拠。画面下部に常駐するフッターにリアルタイムのサービス稼働状況（Running/Stopped バッジ）やオフタイマー残時間を表示します。
@@ -253,8 +256,8 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 - **Bunker URI**: NIP-46 対応クライアントに貼り付ける `bunker://` URI。Bunker 実行中に表示されます。**新規ペア成功ごと**に secret がローテし URI が更新されます（1 URI = 1 新規クライアント。次の新規には画面の最新 URI を Copy）。**Remove** 時も同様に更新されます。
 - **Copy bunker URI**: 現在の URI（secret 含む）をクリップボードにコピーします。
 - **Reset Secret**: シークレットをリセットし、**すべて**のペア済みクライアントを削除して Bunker を停止します。再度 ON にしたら全クライアントに新 URI を共有してください。
-- **Authorized clients**: 認証済みクライアントを Web アイコン・名前付きで一覧表示します。名前タップでラベル編集、**Remove** で当該クライアントのみ削除（bunker URI の secret がローテし表示・コピーも更新。他のペア済みクライアントは新 URI なしで再接続可能）。
-- **Status**: Bunker の接続状態やクライアントの動作状況を表示します。
+- **Authorized clients**: 認証済みクライアントを Web アイコン・名前・直近活動状況（相対時間と実行メソッド）付きで一覧表示します。名前タップでラベル編集、**Remove** で当該クライアントのみ削除（bunker URI の secret がローテし表示・コピーも更新。他のペア済みクライアントは新 URI なしで再接続可能）。直近に活動のあったクライアントが上位に整列されます。
+- **Status**: Bunker の接続状態やクライアントの動作状況を表示します。ステータス表示をタップすると、直近の送受信・接続遷移ログをダイアログ（Copy / Clear 対応）で確認できます。
 
 ### nostrconnect://（クライアント起点）
 
@@ -262,7 +265,8 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 - **nostrconnect:// URI 入力欄**: クライアントアプリから提供された `nostrconnect://` URI を貼り付けます。
 - **Connect**: 指定したクライアントとのセッションを開始します。
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
-- **クライアントリスト**: アクティブな nostrconnect セッションをクライアント Web アイコン付き（PWA apple-touch-icon や GitHub Pages 等のサブパスにも対応）で表示します。名前をタップしてラベルを編集、**Remove** で切断できます。
+- **クライアントリスト**: アクティブな nostrconnect セッションをクライアント Web アイコンおよび直近活動状況付きで表示します。名前をタップしてラベルを編集、**Remove** で切断できます。直近に活動のあったクライアントが上位に整列されます。
+- **Status**: NostrConnect のステータス表示をタップすると、直近の送受信・接続遷移ログをダイアログ（Copy / Clear 対応）で確認できます。
 - **Switch relays（切り替え先リレー設定）**: クライアントが接続完了後に `switch_relays` を呼び出した際にサイナー側から推奨リレーとして返すリレーを設定できます（カンマ区切りで複数指定可能、デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`）。Bunker 通信用リレーとは独立して管理されるため、Bunker にローカルリレーを設定していても外部 Web アプリのブラウザ制約（HTTPS からの平文 ws 遮断など）による通信障害を防ぎ、ページリロード時にも確実にセッションが復元されます。
 - NIP-46に従い、URIには少なくとも1つ以上の `relay` と `secret` パラメータが必須です。
 

@@ -25,6 +25,60 @@ namespace nokandro
         private static readonly Lock _ncLock = new();
         private static readonly Dictionary<string, NostrConnectSession> _ncSessions = [];
 
+        // In-memory log buffers
+        private static readonly List<string> _bunkerLogs = [];
+        private static readonly List<string> _ncLogs = [];
+        private static readonly object _logLock = new();
+        private const int MaxLogCount = 100;
+
+        public static void AddBunkerLog(string msg)
+        {
+            lock (_logLock)
+            {
+                var timestamp = DateTime.Now.ToString("HH:mm:ss");
+                _bunkerLogs.Add($"[{timestamp}] {msg}");
+                if (_bunkerLogs.Count > MaxLogCount)
+                    _bunkerLogs.RemoveAt(0);
+            }
+        }
+
+        public static void AddNcLog(string? clientPubkey, string msg)
+        {
+            lock (_logLock)
+            {
+                var timestamp = DateTime.Now.ToString("HH:mm:ss");
+                var label = !string.IsNullOrEmpty(clientPubkey) && clientPubkey.Length >= 12
+                    ? clientPubkey[..12] + "..."
+                    : clientPubkey;
+                var entry = string.IsNullOrEmpty(label)
+                    ? $"[{timestamp}] {msg}"
+                    : $"[{timestamp}] [{label}] {msg}";
+                _ncLogs.Add(entry);
+                if (_ncLogs.Count > MaxLogCount)
+                    _ncLogs.RemoveAt(0);
+            }
+        }
+
+        public static IReadOnlyList<string> GetBunkerLogs()
+        {
+            lock (_logLock) { return _bunkerLogs.ToList(); }
+        }
+
+        public static IReadOnlyList<string> GetNcLogs()
+        {
+            lock (_logLock) { return _ncLogs.ToList(); }
+        }
+
+        public static void ClearBunkerLogs()
+        {
+            lock (_logLock) { _bunkerLogs.Clear(); }
+        }
+
+        public static void ClearNcLogs()
+        {
+            lock (_logLock) { _ncLogs.Clear(); }
+        }
+
         public override IBinder? OnBind(Intent? intent) => null;
 
         public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -110,6 +164,7 @@ namespace nokandro
             CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
             {
+                AddBunkerLog(msg);
                 try
                 {
                     var b = new Intent("nokandro.ACTION_BUNKER_LOG");
@@ -120,6 +175,7 @@ namespace nokandro
             };
             _bunker.OnClientAuthorized += pubkey =>
             {
+                AddBunkerLog($"Client authorized: {pubkey[..Math.Min(12, pubkey.Length)]}...");
                 try
                 {
                     var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_AUTHORIZED");
@@ -131,10 +187,23 @@ namespace nokandro
             };
             _bunker.OnClientReconnected += pubkey =>
             {
+                AddBunkerLog($"Client reconnected: {pubkey[..Math.Min(12, pubkey.Length)]}...");
                 try
                 {
                     var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_RECONNECTED");
                     b.PutExtra("clientPubkey", pubkey);
+                    LocalBroadcast.SendBroadcast(this, b);
+                }
+                catch { }
+            };
+            _bunker.OnActivity += (pubkey, methodSummary) =>
+            {
+                try
+                {
+                    store.RecordActivity(pubkey, methodSummary);
+                    var b = new Intent("nokandro.ACTION_BUNKER_CLIENT_ACTIVITY");
+                    b.PutExtra("clientPubkey", pubkey);
+                    b.PutExtra("method", methodSummary);
                     LocalBroadcast.SendBroadcast(this, b);
                 }
                 catch { }
@@ -168,6 +237,7 @@ namespace nokandro
                 if (string.IsNullOrEmpty(existing)) return;
 
                 var list = existing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var store = new BunkerClientStore(this);
                 var addedAny = false;
 
                 lock (_ncLock)
@@ -185,6 +255,7 @@ namespace nokandro
                         var session = new NostrConnectSession(privKey, connectUri, preAuthenticated: true, storedPerms, switchRelays);
                         session.OnLog += msg =>
                         {
+                            AddNcLog(connectUri.ClientPubkey, msg);
                             try
                             {
                                 var b = new Intent("nokandro.ACTION_NC_LOG");
@@ -194,9 +265,22 @@ namespace nokandro
                             }
                             catch { }
                         };
+                        session.OnActivity += (pubkey, methodSummary) =>
+                        {
+                            try
+                            {
+                                store.RecordActivity(pubkey, methodSummary);
+                                var b = new Intent("nokandro.ACTION_NC_CLIENT_ACTIVITY");
+                                b.PutExtra("clientPubkey", pubkey);
+                                b.PutExtra("method", methodSummary);
+                                LocalBroadcast.SendBroadcast(this, b);
+                            }
+                            catch { }
+                        };
 
                         _ncSessions[connectUri.ClientPubkey] = session;
                         session.Start();
+                        AddNcLog(connectUri.ClientPubkey, "Session restored and started");
                         addedAny = true;
                         AppLog.D(TAG, $"Restored NostrConnect session for {connectUri.ClientPubkey[..12]}...");
                     }
@@ -247,6 +331,7 @@ namespace nokandro
                     _ncSessions.Remove(connectUri.ClientPubkey);
                 }
 
+                var store = new BunkerClientStore(this);
                 var preAuth = intent.GetBooleanExtra("preAuthenticated", false);
                 var storedPerms = Nip46Permissions.Parse(connectUri.Perms);
                 var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
@@ -264,6 +349,7 @@ namespace nokandro
                 };
                 session.OnLog += msg =>
                 {
+                    AddNcLog(connectUri.ClientPubkey, msg);
                     try
                     {
                         var b = new Intent("nokandro.ACTION_NC_LOG");
@@ -273,10 +359,23 @@ namespace nokandro
                     }
                     catch { }
                 };
+                session.OnActivity += (pubkey, methodSummary) =>
+                {
+                    try
+                    {
+                        store.RecordActivity(pubkey, methodSummary);
+                        var b = new Intent("nokandro.ACTION_NC_CLIENT_ACTIVITY");
+                        b.PutExtra("clientPubkey", pubkey);
+                        b.PutExtra("method", methodSummary);
+                        LocalBroadcast.SendBroadcast(this, b);
+                    }
+                    catch { }
+                };
 
                 _ncSessions[connectUri.ClientPubkey] = session;
                 _bunker?.AddAuthorizedClient(connectUri.ClientPubkey, storedPerms);
                 session.Start();
+                AddNcLog(connectUri.ClientPubkey, "Session started");
             }
 
             IsRunning = true;
@@ -292,6 +391,7 @@ namespace nokandro
         private StartCommandResult HandleStopBunker()
         {
             // Stop only the bunker:// part, keep nostrconnect sessions alive
+            AddBunkerLog("Bunker stopped");
             try { _bunker?.Stop(); } catch { }
             _bunker = null;
             CurrentBunkerInstance = null;
@@ -324,6 +424,7 @@ namespace nokandro
 
         private void RemoveNostrConnectSession(string clientPubkey)
         {
+            AddNcLog(clientPubkey, "Session stopped");
             lock (_ncLock)
             {
                 if (_ncSessions.TryGetValue(clientPubkey, out var session))
@@ -496,6 +597,8 @@ namespace nokandro
         public override void OnDestroy()
         {
             AppLog.D(TAG, "OnDestroy");
+            AddBunkerLog("Service destroyed");
+            AddNcLog(null, "Service destroyed");
             IsRunning = false;
             IsBunkerActive = false;
             LastBunkerUri = null;

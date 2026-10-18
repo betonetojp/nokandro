@@ -36,6 +36,8 @@ namespace nokandro
             return removed;
         }
 
+        public event Action<string, string>? OnActivity;
+
         public async Task<(bool sent, string method, bool ok, string? error)> ProcessRequestAsync(
             string senderPubkey,
             string encryptedContent,
@@ -84,6 +86,27 @@ namespace nokandro
             {
                 result = "";
                 error = ex.Message;
+            }
+
+            if (string.IsNullOrEmpty(error) && method != "ping")
+            {
+                try
+                {
+                    var summary = method;
+                    if (method == "sign_event" && paramsArr.ValueKind == JsonValueKind.Array && paramsArr.GetArrayLength() > 0)
+                    {
+                        var eventParam = paramsArr[0];
+                        using var evDoc = eventParam.ValueKind == JsonValueKind.String
+                            ? JsonDocument.Parse(eventParam.GetString() ?? "")
+                            : JsonDocument.Parse(eventParam.GetRawText());
+                        if (evDoc.RootElement.TryGetProperty("kind", out var kindProp) && kindProp.TryGetInt32(out var kind))
+                        {
+                            summary = $"sign_event (kind {kind})";
+                        }
+                    }
+                    OnActivity?.Invoke(senderPubkey, summary);
+                }
+                catch { }
             }
 
             var responseJson = string.IsNullOrEmpty(error)

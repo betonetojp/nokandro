@@ -703,7 +703,9 @@
 							android:paddingTop="3dp"
 							android:paddingBottom="3dp"
 							android:layout_marginTop="@dimen/spacing_xs"
-							android:background="@drawable/bg_status_chip">
+							android:background="@drawable/bg_status_chip"
+							android:clickable="true"
+							android:focusable="true">
 
 							<View
 								android:id="@+id/bunkerStatusDot"
@@ -829,7 +831,9 @@
 						android:paddingTop="3dp"
 						android:paddingBottom="3dp"
 						android:layout_marginBottom="@dimen/spacing_xs"
-						android:background="@drawable/bg_status_chip">
+						android:background="@drawable/bg_status_chip"
+						android:clickable="true"
+						android:focusable="true">
 
 						<View
 							android:id="@+id/ncStatusDot"

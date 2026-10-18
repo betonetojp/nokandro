@@ -207,6 +207,13 @@ namespace nokandro
                             return p.ClientPubkey == parsed.ClientPubkey;
                         return false;
                     });
+
+                    try
+                    {
+                        var store = new BunkerClientStore(context);
+                        store.RecordPairing(parsed.ClientPubkey, parsed.GetClientName());
+                    }
+                    catch { }
                 }
 
                 list.Add(uri);
