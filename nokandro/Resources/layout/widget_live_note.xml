@@ -56,6 +56,21 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
+        <!-- Open in nokakoi Button (Left of Star Reaction Button) -->
+        <TextView
+            android:id="@+id/liveNoteOpenBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="6dp"
+            android:text="Open"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/on_surface"
+            android:background="@drawable/bg_status_chip" />
+
         <!-- Star Reaction Button (Top-Right, easily reachable) -->
         <TextView
             android:id="@+id/liveNoteStarBtn"

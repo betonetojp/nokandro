@@ -59,6 +59,8 @@ namespace nokandro
                 serviceIntent.PutExtra("allowOthers", prefs.GetBoolean("pref_allow_others", false));
                 serviceIntent.PutExtra("enableTts", prefs.GetBoolean("pref_enable_tts", true));
                 serviceIntent.PutExtra("skipContentWarning", prefs.GetBoolean("pref_skip_cw", false));
+                serviceIntent.PutExtra("speakReaction", prefs.GetBoolean("pref_speak_reaction", true));
+                serviceIntent.PutExtra("reactionText", prefs.GetString("pref_reaction_text", "[リアクション]") ?? "[リアクション]");
                 serviceIntent.PutExtra("autoStop", prefs.GetBoolean("pref_auto_stop", true));
                 serviceIntent.PutExtra("truncateLen", prefs.GetInt("pref_truncate_len", 50));
                 serviceIntent.PutExtra("truncateEllipsis", prefs.GetString("pref_truncate_ellipsis", " ...") ?? " ...");

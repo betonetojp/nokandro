@@ -332,6 +332,44 @@
 									android:layout_height="wrap_content" />
 							</LinearLayout>
 
+							<LinearLayout
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:orientation="horizontal"
+								android:gravity="center_vertical"
+								android:minHeight="@dimen/row_min_height">
+								<TextView
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:layout_weight="1"
+									android:text="Speak reactions" />
+								<Switch
+									android:id="@+id/speakReactionSwitch"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:checked="true" />
+							</LinearLayout>
+
+							<LinearLayout
+								android:orientation="horizontal"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:layout_marginBottom="@dimen/spacing_xs">
+								<TextView
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Reaction text:" />
+								<EditText
+									android:id="@+id/reactionTextEdit"
+									android:layout_width="160dp"
+									android:layout_height="wrap_content"
+									android:hint="[リアクション]"
+									android:text="[リアクション]"
+									android:singleLine="true"
+									android:layout_marginStart="@dimen/spacing_sm" />
+							</LinearLayout>
+
 							<TextView
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"

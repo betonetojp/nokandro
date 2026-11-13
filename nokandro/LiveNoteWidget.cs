@@ -305,6 +305,35 @@ namespace nokandro
                     var timeStr = elapsed < 60 ? "Just now" : elapsed < 3600 ? $"{elapsed / 60}m ago" : $"{elapsed / 3600}h ago";
                     remoteViews.SetTextViewText(Resource.Id.liveNoteTime, timeStr);
 
+                    // Open in nokakoi Button
+                    var effectiveRelay = !string.IsNullOrWhiteSpace(currentPost.Relay) ? currentPost.Relay : relayUrl;
+                    var postKind = currentPost.Kind > 0 ? currentPost.Kind : 1;
+                    var bech32Ref = NostrKeyDecoder.EncodeNevent(currentPost.Id, effectiveRelay, currentPost.Pubkey, postKind)
+                        ?? NostrKeyDecoder.EncodeHexToNote(currentPost.Id);
+
+                    if (!string.IsNullOrEmpty(bech32Ref))
+                    {
+                        remoteViews.SetViewVisibility(Resource.Id.liveNoteOpenBtn, ViewStates.Visible);
+                        try
+                        {
+                            var openColor = NostrService.IsRunning
+                                ? new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface))
+                                : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                            remoteViews.SetTextColor(Resource.Id.liveNoteOpenBtn, openColor);
+                        }
+                        catch { }
+
+                        var openUrl = $"https://nokakoi.com/app/{bech32Ref}";
+                        var openIntent = new Intent(Intent.ActionView, Android.Net.Uri.Parse(openUrl));
+                        openIntent.SetFlags(ActivityFlags.NewTask);
+                        var piOpen = PendingIntent.GetActivity(context, 200 + widgetId, openIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                        remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteOpenBtn, piOpen);
+                    }
+                    else
+                    {
+                        remoteViews.SetViewVisibility(Resource.Id.liveNoteOpenBtn, ViewStates.Gone);
+                    }
+
                     // Star Reaction Button
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteStarBtn, ViewStates.Visible);
                     if (currentPost.IsReacted)
@@ -352,6 +381,7 @@ namespace nokandro
                     catch { }
                     remoteViews.SetTextViewText(Resource.Id.liveNoteNavIndex, "");
                     remoteViews.SetTextViewText(Resource.Id.liveNoteTime, "");
+                    remoteViews.SetViewVisibility(Resource.Id.liveNoteOpenBtn, ViewStates.Gone);
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteStarBtn, ViewStates.Gone);
                 }
 
@@ -384,6 +414,8 @@ namespace nokandro
                     var enableTts = prefs.GetBoolean("pref_enable_tts", true);
                     var autoStop = prefs.GetBoolean("pref_auto_stop", true);
                     var skipContentWarning = prefs.GetBoolean("pref_skip_cw", false);
+                    var speakReaction = prefs.GetBoolean("pref_speak_reaction", true);
+                    var reactionText = prefs.GetString("pref_reaction_text", "[リアクション]") ?? "[リアクション]";
                     var speakPetname = prefs.GetBoolean("pref_speak_petname", false);
                     var truncateLen = prefs.GetInt("pref_truncate_len", 50);
                     var truncateEllipsis = prefs.GetString("pref_truncate_ellipsis", " ...");
@@ -399,6 +431,8 @@ namespace nokandro
                     startIntent.PutExtra("enableTts", enableTts);
                     startIntent.PutExtra("autoStop", autoStop);
                     startIntent.PutExtra("skipContentWarning", skipContentWarning);
+                    startIntent.PutExtra("speakReaction", speakReaction);
+                    startIntent.PutExtra("reactionText", reactionText);
                     startIntent.PutExtra("speakPetname", speakPetname);
                     startIntent.PutExtra("truncateLen", truncateLen);
                     startIntent.PutExtra("truncateEllipsis", truncateEllipsis);

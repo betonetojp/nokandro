@@ -170,5 +170,80 @@ namespace nokandro
             var data = ConvertBits(bytes, 8, 5, true) ?? throw new ArgumentException("Invalid hex");
             return Bech32Encode("npub", data);
         }
+
+        public static string? EncodeHexToNote(string hexEventId)
+        {
+            try
+            {
+                var norm = NormalizeHexPubkey(hexEventId);
+                if (norm == null) return null;
+                var bytes = new byte[32];
+                for (int i = 0; i < 32; i++) bytes[i] = Convert.ToByte(norm.Substring(i * 2, 2), 16);
+                var data = ConvertBits(bytes, 8, 5, true);
+                if (data == null) return null;
+                return Bech32Encode("note", data);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static string? EncodeNevent(string hexEventId, string? relayUrl = null, string? authorHex = null, int? kind = 1)
+        {
+            try
+            {
+                var normId = NormalizeHexPubkey(hexEventId);
+                if (normId == null) return null;
+
+                var tlv = new List<byte>();
+
+                // Type 0: special (32-byte event id)
+                tlv.Add(0);
+                tlv.Add(32);
+                for (int i = 0; i < 32; i++) tlv.Add(Convert.ToByte(normId.Substring(i * 2, 2), 16));
+
+                // Type 1: relay (ASCII)
+                if (!string.IsNullOrWhiteSpace(relayUrl))
+                {
+                    var relayBytes = Encoding.ASCII.GetBytes(relayUrl.Trim());
+                    if (relayBytes.Length > 0 && relayBytes.Length <= 255)
+                    {
+                        tlv.Add(1);
+                        tlv.Add((byte)relayBytes.Length);
+                        tlv.AddRange(relayBytes);
+                    }
+                }
+
+                // Type 2: author (32-byte pubkey)
+                var normAuthor = !string.IsNullOrWhiteSpace(authorHex) ? NormalizeHexPubkey(authorHex!) : null;
+                if (normAuthor != null)
+                {
+                    tlv.Add(2);
+                    tlv.Add(32);
+                    for (int i = 0; i < 32; i++) tlv.Add(Convert.ToByte(normAuthor.Substring(i * 2, 2), 16));
+                }
+
+                // Type 3: kind (32-bit unsigned integer, big-endian)
+                if (kind.HasValue && kind.Value >= 0)
+                {
+                    uint k = (uint)kind.Value;
+                    tlv.Add(3);
+                    tlv.Add(4);
+                    tlv.Add((byte)((k >> 24) & 0xFF));
+                    tlv.Add((byte)((k >> 16) & 0xFF));
+                    tlv.Add((byte)((k >> 8) & 0xFF));
+                    tlv.Add((byte)(k & 0xFF));
+                }
+
+                var data = ConvertBits([.. tlv], 8, 5, true);
+                if (data == null) return null;
+                return Bech32Encode("nevent", data);
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
 }

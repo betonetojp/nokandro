@@ -58,6 +58,9 @@ namespace nokandro
         // Auto Stop Status
         private bool _autoStop = true;
         private bool _skipContentWarning = false;
+        private bool _speakReaction = true;
+        private string _reactionText = "[リアクション]";
+        private readonly HashSet<string> _seenReactionIds = [];
         private BroadcastReceiver? _noisyReceiver;
 
         // Off timer
@@ -269,6 +272,13 @@ namespace nokandro
                 catch { }
                 try { _autoStop = intent.GetBooleanExtra("autoStop", true); } catch { }
                 try { _skipContentWarning = intent.GetBooleanExtra("skipContentWarning", false); } catch { }
+                try { _speakReaction = intent.GetBooleanExtra("speakReaction", true); } catch { }
+                try
+                {
+                    var rt = intent.GetStringExtra("reactionText");
+                    _reactionText = !string.IsNullOrWhiteSpace(rt) ? rt : "[リアクション]";
+                }
+                catch { }
                 try { _offTimerMinutes = intent.GetIntExtra("offTimerMinutes", 0); } catch { }
                 try { _offTimerDisableOnEnd = intent.GetBooleanExtra("offTimerDisableOnEnd", false); } catch { }
 
@@ -488,6 +498,7 @@ namespace nokandro
                         var reqFollowJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[3],\"authors\":[\"{authorFilter}\"]}}]";
                         var reqMuteJson = $"[\"REQ\",\"{subId}m\",{{\"kinds\":[10000],\"authors\":[\"{authorFilter}\"]}}]";
                         var reqEventsJson = $"[\"REQ\",\"{subId}ev\",{{\"kinds\":[1],\"since\":{since}}}]";
+                        var reqReactionsJson = $"[\"REQ\",\"{subId}rx\",{{\"kinds\":[7],\"#p\":[\"{authorFilter}\"],\"since\":{since}}}]";
 
                         AppLog.D(TAG, "Sending follow request: " + reqFollowJson);
                         await SendTextAsync(reqFollowJson, ct);
@@ -495,6 +506,8 @@ namespace nokandro
                         await SendTextAsync(reqMuteJson, ct);
                         AppLog.D(TAG, "Sending events request: " + reqEventsJson);
                         await SendTextAsync(reqEventsJson, ct);
+                        AppLog.D(TAG, "Sending reactions request: " + reqReactionsJson);
+                        await SendTextAsync(reqReactionsJson, ct);
 
                         if (_enableMusicStatus && _isMusicPlaying && !string.IsNullOrEmpty(_currentTitle))
                         {
@@ -561,6 +574,11 @@ namespace nokandro
                         {
                             AppLog.D(TAG, "Received kind=1 event");
                             HandleNoteEvent(eventObj);
+                        }
+                        else if (eventObj.TryGetProperty("kind", out kindEl) && kindEl.GetInt32() == 7)
+                        {
+                            AppLog.D(TAG, "Received kind=7 event (reaction)");
+                            HandleReactionEvent(eventObj);
                         }
                     }
                 }
@@ -964,7 +982,7 @@ namespace nokandro
                 var createdAt = eventObj.TryGetProperty("created_at", out var createdEl) && createdEl.TryGetInt64(out var ca) ? ca : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 if (!string.IsNullOrEmpty(eventId))
                 {
-                    LiveNoteStore.AddPost(this, eventId, pubkey, content, petname, createdAt);
+                    LiveNoteStore.AddPost(this, eventId, pubkey, content, petname, createdAt, _relay);
                     LiveNoteWidget.UpdateAllWidgets(this);
                 }
             }
@@ -977,6 +995,103 @@ namespace nokandro
             else
             {
                 AppLog.D(TAG, "Speech skipped (TTS disabled)");
+            }
+        }
+
+        private void HandleReactionEvent(JsonElement eventObj)
+        {
+            var eventId = eventObj.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            if (!string.IsNullOrEmpty(eventId))
+            {
+                lock (_seenReactionIds)
+                {
+                    if (!_seenReactionIds.Add(eventId)) return;
+                    if (_seenReactionIds.Count > 500) _seenReactionIds.Clear();
+                }
+            }
+
+            if (!eventObj.TryGetProperty("pubkey", out var pubkeyEl)) return;
+            var pubkey = (pubkeyEl.GetString() ?? string.Empty).ToLowerInvariant();
+            if (string.IsNullOrEmpty(pubkey)) return;
+
+            var selfPubkey = NormalizeAuthorFilter();
+            if (string.IsNullOrEmpty(selfPubkey)) return;
+
+            // Verify that tags include ["p", selfPubkey]
+            bool targetsMe = false;
+            try
+            {
+                if (eventObj.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var tag in tagsEl.EnumerateArray())
+                    {
+                        if (tag.ValueKind == JsonValueKind.Array && tag.GetArrayLength() >= 2 && tag[0].GetString() == "p")
+                        {
+                            var pVal = tag[1].GetString();
+                            if (!string.IsNullOrEmpty(pVal) && string.Equals(pVal, selfPubkey, StringComparison.OrdinalIgnoreCase))
+                            {
+                                targetsMe = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (!targetsMe) return;
+
+            // Respect public mute list
+            if (_muted.Contains(pubkey))
+            {
+                AppLog.D(TAG, $"Skipping reaction from muted author: {pubkey}");
+                return;
+            }
+
+            var rawContent = eventObj.TryGetProperty("content", out var contentEl)
+                ? (contentEl.GetString() ?? string.Empty).Trim()
+                : string.Empty;
+
+            var prefix = !string.IsNullOrWhiteSpace(_reactionText) ? _reactionText.Trim() : "[リアクション]";
+            var isPlusOrEmpty = string.IsNullOrEmpty(rawContent) || rawContent == "+";
+            var widgetContent = isPlusOrEmpty ? $"{prefix} ★" : $"{prefix} {rawContent}";
+
+            var isFollowed = _followed.Contains(pubkey);
+            var pitch = isFollowed ? 1.2f : 0.9f;
+            var speechRate = _speechRate;
+
+            string? petname = null;
+            try { if (_petnames != null && _petnames.TryGetValue(pubkey, out var pn)) petname = pn; } catch { }
+
+            // Broadcast latest content for UI
+            try
+            {
+                var b = new Intent("nokandro.ACTION_LAST_CONTENT");
+                b.PutExtra("content", widgetContent);
+                b.PutExtra("isFollowed", isFollowed);
+                if (!string.IsNullOrEmpty(petname)) b.PutExtra("petname", petname);
+                LocalBroadcast.SendBroadcast(this, b);
+            }
+            catch (Exception ex) { AppLog.W(TAG, "LocalBroadcast failed: " + ex.Message); }
+
+            // Store for LiveNoteWidget
+            try
+            {
+                var createdAt = eventObj.TryGetProperty("created_at", out var createdEl) && createdEl.TryGetInt64(out var ca)
+                    ? ca
+                    : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (!string.IsNullOrEmpty(eventId))
+                {
+                    LiveNoteStore.AddPost(this, eventId, pubkey, widgetContent, petname, createdAt, _relay, 7);
+                    LiveNoteWidget.UpdateAllWidgets(this);
+                }
+            }
+            catch (Exception ex) { AppLog.W(TAG, "LiveNoteStore.AddPost (reaction) failed: " + ex.Message); }
+
+            if (_speakReaction && _enableTts)
+            {
+                var textToSpeak = isPlusOrEmpty ? prefix : $"{prefix} {rawContent}";
+                SpeakText(textToSpeak, pitch, speechRate, isFollowed, petname);
             }
         }
 

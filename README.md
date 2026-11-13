@@ -28,7 +28,7 @@ Package name: `com.nokakoi.nokandro`
 - **Off timer**: Automatically stops the service after a configurable number of minutes.
 - **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires.
 - **Relay list fetch**: Fetches your relay list (kind: 10002) from known relays and lets you pick one.
-- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars with automatic EXIF orientation correction, kind 7 star reactions, 50-post history navigation (expandable up to 100 posts while retaining viewed position on new arrivals, with auto-trimming upon returning to latest), one-tap jump buttons to earliest (`«`) and latest (`»`) posts, accidental-tap prevention on margins, independent service toggle, and dedicated TTS/Muted controls.
+- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars with automatic EXIF orientation correction, kind 7 star reactions, one-tap button (`Open`) to open the displayed note in `nokakoi` (`https://nokakoi.com/app/nevent1...`), 50-post history navigation (expandable up to 100 posts while retaining viewed position on new arrivals, with auto-trimming upon returning to latest), one-tap jump buttons to earliest (`«`) and latest (`»`) posts, accidental-tap prevention on margins, independent service toggle, and dedicated TTS/Muted controls.
 - **Steganography TTS decoding**: Automatically decodes and speaks hidden text embedded with Unicode Plane 14 tag characters (sexy gyouza) during text-to-speech without extra overhead.
 - **Monochrome Notification Icon**: Silhouette notification vector icon (`ic_stat_nokandro`) with dynamic tinting for full compatibility with modern Android versions (Google Pixel, Android 12-15) without solid circular masking.
 - **Tasker / automation support**: Start and stop the service via broadcast intents.
@@ -53,6 +53,7 @@ Package name: `com.nokakoi.nokandro`
   - **Ellipsis**: String to append when text is truncated.
   - **Speak petname**: Reads the petname (nickname) of the user before the message.
   - **Skip content-warning**: Skips posts that have a content-warning tag.
+  - **Speak reactions / Reaction text**: Speaks incoming reactions (`kind: 7`) targeting your `npub` using the configured phrase (default: `[リアクション]`) followed by the reaction content (standard `+` / empty likes speak only the prefix; emojis or custom shortcodes speak e.g. `[リアクション] ⭐`). Incoming reactions are also displayed on the **Nostr Live Note widget** (`[リアクション] ★` or `[リアクション] ⭐`). When **Speak petname** is enabled, the reactor's petname is also spoken.
   - **TTS language**: Filter available voices by language.
   - **Voice for followed users**: Select voice for followed users.
   - **Allow non-followed posts**: Toggle to also read posts from users you don't follow.
@@ -206,7 +207,7 @@ When installing an update directly from within nokandro for the first time, Andr
 - **オフタイマー**: 指定時間後にサービスを自動停止します。
 - **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。
 - **リレーリスト取得**: リレーリスト (kind: 10002) を取得して接続先を選択できます。
-- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示（Exif向き自動補正対応）、通常50件（過去投稿閲覧中に新着を受信した場合は最大100件キープ、最新復帰時に自動トリミング）の履歴ナビゲーション、最古（`«`）および最新（`»`）への一括ジャンプボタン、下部余白の誤タップ防止、スターリアクション（★/☆ React）、サービス稼働（投稿受信）と音声読み上げ（TTS/Muted）の個別切り替えに対応しています。
+- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示（Exif向き自動補正対応）、通常50件（過去投稿閲覧中に新着を受信した場合は最大100件キープ、最新復帰時に自動トリミング）の履歴ナビゲーション、最古（`«`）および最新（`»`）への一括ジャンプボタン、下部余白の誤タップ防止、nokakoiのイベント詳細モーダルで開くボタン（`Open`）、スターリアクション（★/☆ React）、サービス稼働（投稿受信）と音声読み上げ（TTS/Muted）の個別切り替えに対応しています。
 - **セクシー餃子の読み上げ対応**: Unicode Plane 14 タグ文字で不可視埋め込みされた隠しテキスト（セクシー餃子）を自動復号し、音声合成（TTS）で自然に読み上げます。
 - **通知アイコンのシルエット対応**: Google Pixel や Android 12〜15 などの新しい端末で通知アイコンが丸く塗りつぶされる問題に対応した、背景透明・単色ストロークのベクターアイコン（`ic_stat_nokandro`）を搭載。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスの開始・停止を制御できます。
@@ -231,6 +232,7 @@ When installing an update directly from within nokandro for the first time, Andr
   - **Ellipsis**: テキスト省略時に末尾に追加される文字列。
   - **Speak petname**: メッセージの前にユーザーのペットネーム（ニックネーム）を読み上げます。
   - **Skip content-warning**: コンテンツ警告タグのある投稿をスキップします。
+  - **Speak reactions / Reaction text**: 自分宛てのリアクション（`kind: 7`）を受信した際に設定したテキスト（初期値: `[リアクション]`）に続けてリアクション内容を読み上げます（標準の `+` や空文字のときは `[リアクション]` のみ、絵文字や文字がある場合は `[リアクション] ⭐` のように読み上げ）。受信したリアクションは **Nostr Live Note ウィジェット**にも表示されます（`[リアクション] ★` または `[リアクション] ⭐`）。**Speak petname** が有効な場合はリアクションした相手のペットネームも読み上げます。
   - **TTS language**: ボイス選択リストの言語フィルタ。
   - **Voice for followed users**: フォロー済みユーザー用の声。
   - **Allow non-followed posts**: フォローしていないユーザーの投稿も読み上げるかどうかの設定。

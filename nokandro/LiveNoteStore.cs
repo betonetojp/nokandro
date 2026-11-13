@@ -26,6 +26,12 @@ namespace nokandro
 
         [JsonPropertyName("isReacted")]
         public bool IsReacted { get; set; }
+
+        [JsonPropertyName("relay")]
+        public string? Relay { get; set; }
+
+        [JsonPropertyName("kind")]
+        public int Kind { get; set; } = 1;
     }
 
     public static class LiveNoteStore
@@ -75,7 +81,7 @@ namespace nokandro
             }
         }
 
-        public static void AddPost(Context context, string id, string pubkey, string content, string? petname, long createdAt)
+        public static void AddPost(Context context, string id, string pubkey, string content, string? petname, long createdAt, string? relay = null, int kind = 1)
         {
             if (string.IsNullOrWhiteSpace(id) && string.IsNullOrWhiteSpace(content)) return;
 
@@ -101,7 +107,9 @@ namespace nokandro
                     Content = content ?? string.Empty,
                     Petname = string.IsNullOrWhiteSpace(petname) ? null : petname,
                     CreatedAt = createdAt > 0 ? createdAt : DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    IsReacted = false
+                    IsReacted = false,
+                    Relay = string.IsNullOrWhiteSpace(relay) ? null : relay.Trim(),
+                    Kind = kind > 0 ? kind : 1
                 };
 
                 Posts.Insert(0, item);

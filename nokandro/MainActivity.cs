@@ -36,6 +36,9 @@ namespace nokandro
         const string PREF_ENABLE_TTS = "pref_enable_tts";
         const string PREF_AUTO_STOP = "pref_auto_stop";
         const string PREF_SKIP_CW = "pref_skip_cw";
+        const string PREF_SPEAK_REACTION = "pref_speak_reaction";
+        const string PREF_REACTION_TEXT = "pref_reaction_text";
+        const string DEFAULT_REACTION_TEXT = "[リアクション]";
         const string PREF_OFF_TIMER_ENABLED = "pref_off_timer_enabled";
         const string PREF_OFF_TIMER_MINUTES = "pref_off_timer_minutes";
         const string PREF_OFF_TIMER_DISABLE_ON_END = "pref_off_timer_disable_on_end";
@@ -331,6 +334,8 @@ namespace nokandro
             var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
             var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
             var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
+            var speakReactionSwitch = FindViewById<Switch>(Resource.Id.speakReactionSwitch);
+            var reactionTextEdit = FindViewById<EditText>(Resource.Id.reactionTextEdit);
             var testPostBtn = FindViewById<Button>(Resource.Id.testPostBtn);
             var grantBtn = FindViewById<Button>(Resource.Id.grantListenerBtn);
             var offTimerSwitch = FindViewById<Switch>(Resource.Id.offTimerSwitch);
@@ -733,6 +738,67 @@ namespace nokandro
                         }
                     }
                     catch { }
+                };
+            }
+
+            // save speakReaction and reactionText preferences
+            if (speakReactionSwitch != null)
+            {
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    speakReactionSwitch.Checked = prefs?.GetBoolean(PREF_SPEAK_REACTION, true) ?? true;
+                }
+                catch { }
+
+                speakReactionSwitch.CheckedChange += (s, e) =>
+                {
+                    try
+                    {
+                        SetControlEnabled(reactionTextEdit, !NostrService.IsRunning && e.IsChecked);
+                        var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                        var edit = prefs?.Edit();
+                        if (edit != null)
+                        {
+                            edit.PutBoolean(PREF_SPEAK_REACTION, e.IsChecked);
+                            edit.Apply();
+                        }
+                    }
+                    catch { }
+                };
+            }
+
+            if (reactionTextEdit != null)
+            {
+                try
+                {
+                    var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    reactionTextEdit.Text = prefs?.GetString(PREF_REACTION_TEXT, DEFAULT_REACTION_TEXT) ?? DEFAULT_REACTION_TEXT;
+                }
+                catch { reactionTextEdit.Text = DEFAULT_REACTION_TEXT; }
+
+                reactionTextEdit.FocusChange += (s, e) =>
+                {
+                    if (!e.HasFocus)
+                    {
+                        try
+                        {
+                            var val = reactionTextEdit.Text?.Trim();
+                            if (string.IsNullOrEmpty(val))
+                            {
+                                val = DEFAULT_REACTION_TEXT;
+                                reactionTextEdit.Text = val;
+                            }
+                            var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                            var edit = prefs?.Edit();
+                            if (edit != null)
+                            {
+                                edit.PutString(PREF_REACTION_TEXT, val);
+                                edit.Apply();
+                            }
+                        }
+                        catch { }
+                    }
                 };
             }
 
@@ -1478,6 +1544,8 @@ namespace nokandro
                 try { setControlEnabled(musicSwitch, !NostrService.IsRunning && IsNsecValid()); } catch { }
                 try { setControlEnabled(ttsSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(skipContentWarningSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(speakReactionSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(reactionTextEdit, !NostrService.IsRunning && (speakReactionSwitch?.Checked ?? true)); } catch { }
                 try { setControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
@@ -1544,6 +1612,10 @@ namespace nokandro
                 intent.PutExtra("allowOthers", allowOthers.Checked);
                 intent.PutExtra("enableTts", ttsSwitch?.Checked ?? true);
                 intent.PutExtra("skipContentWarning", skipContentWarningSwitch?.Checked ?? false);
+                intent.PutExtra("speakReaction", speakReactionSwitch?.Checked ?? true);
+                var rxText = reactionTextEdit?.Text?.Trim();
+                if (string.IsNullOrEmpty(rxText)) rxText = DEFAULT_REACTION_TEXT;
+                intent.PutExtra("reactionText", rxText);
                 intent.PutExtra("autoStop", autoStopSwitch?.Checked ?? true);
                 intent.PutExtra("truncateLen", truncateLen);
                 // include user-configured ellipsis for truncation
@@ -1596,6 +1668,8 @@ namespace nokandro
                         SecurePreferences.SaveNsec(this, nsecToSave);
                     edit.PutInt(PREF_TRUNCATE_LEN, truncateLen);
                     edit.PutBoolean(PREF_ALLOW_OTHERS, allowOthers.Checked);
+                    edit.PutBoolean(PREF_SPEAK_REACTION, speakReactionSwitch?.Checked ?? true);
+                    edit.PutString(PREF_REACTION_TEXT, rxText);
                     // persist speech rate as mapped value (0.50..1.50)
                     try { edit.PutFloat("pref_speech_rate", speechRate); } catch { }
                     // persist selected language
@@ -1641,6 +1715,9 @@ namespace nokandro
                 SetControlEnabled(voiceLang, false);
                 try { SetControlEnabled(musicSwitch, false); } catch { }
                 try { SetControlEnabled(ttsSwitch, false); } catch { }
+                try { SetControlEnabled(skipContentWarningSwitch, false); } catch { }
+                try { SetControlEnabled(speakReactionSwitch, false); } catch { }
+                try { SetControlEnabled(reactionTextEdit, false); } catch { }
                 try { SetControlEnabled(autoStopSwitch, false); } catch { }
                 try { SetControlEnabled(offTimerSwitch, false); } catch { }
                 try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
@@ -1681,6 +1758,8 @@ namespace nokandro
                             try { SetControlEnabled(voiceOther, false); } catch { }
                             try { SetControlEnabled(ttsSwitch, false); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, false); } catch { }
+                            try { SetControlEnabled(speakReactionSwitch, false); } catch { }
+                            try { SetControlEnabled(reactionTextEdit, false); } catch { }
                             try { SetControlEnabled(autoStopSwitch, false); } catch { }
                             try { SetControlEnabled(offTimerSwitch, false); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
@@ -1730,6 +1809,8 @@ namespace nokandro
                             try { SetControlEnabled(refreshVoices, true); } catch { }
                             try { SetControlEnabled(ttsSwitch, true); } catch { }
                             try { SetControlEnabled(skipContentWarningSwitch, true); } catch { }
+                            try { SetControlEnabled(speakReactionSwitch, true); } catch { }
+                            try { SetControlEnabled(reactionTextEdit, speakReactionSwitch?.Checked ?? true); } catch { }
                             try { SetControlEnabled(autoStopSwitch, true); } catch { }
                             try { SetControlEnabled(offTimerSwitch, true); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, offTimerSwitch?.Checked ?? false); } catch { }
@@ -1919,6 +2000,8 @@ namespace nokandro
                 var musicSwitch = FindViewById<Switch>(Resource.Id.musicStatusSwitch);
                 var ttsSwitch = FindViewById<Switch>(Resource.Id.ttsSwitch);
                 var skipContentWarningSwitch = FindViewById<Switch>(Resource.Id.skipContentWarningSwitch);
+                var speakReactionSwitch = FindViewById<Switch>(Resource.Id.speakReactionSwitch);
+                var reactionTextEdit = FindViewById<EditText>(Resource.Id.reactionTextEdit);
                 var voiceLang = FindViewById<Spinner>(Resource.Id.voiceLangSpinner);
                 var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
                 var offTimerSwitch = FindViewById<Switch>(Resource.Id.offTimerSwitch);
@@ -2000,6 +2083,8 @@ namespace nokandro
                 try { SetControlEnabled(musicSwitch, !running && IsNsecValid()); } catch { }
                 try { SetControlEnabled(ttsSwitch, !running); } catch { }
                 try { SetControlEnabled(skipContentWarningSwitch, !running); } catch { }
+                try { SetControlEnabled(speakReactionSwitch, !running); } catch { }
+                try { SetControlEnabled(reactionTextEdit, !running && (speakReactionSwitch?.Checked ?? true)); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !running); } catch { }
                 try { SetControlEnabled(offTimerSwitch, !running); } catch { }
                 try { SetControlEnabled(offTimerMinutesEdit, !running && (offTimerSwitch?.Checked ?? false)); } catch { }

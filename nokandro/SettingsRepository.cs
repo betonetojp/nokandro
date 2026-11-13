@@ -16,6 +16,9 @@ namespace nokandro
         public const string PREF_BUNKER_AUTOSTART_BOOT = "pref_bunker_autostart_boot";
         public const string PREF_BUNKER_BATTERY_PROMPT_SHOWN = "pref_bunker_battery_prompt_shown";
         public const string PREF_SKIP_CW = "pref_skip_cw";
+        public const string PREF_SPEAK_REACTION = "pref_speak_reaction";
+        public const string PREF_REACTION_TEXT = "pref_reaction_text";
+        public const string DEFAULT_REACTION_TEXT = "[リアクション]";
         public const string PREF_TRUNCATE_LEN = "pref_truncate_len";
         public const string PREF_SPEECH_RATE = "pref_speech_rate";
         public const string PREF_SPEAK_PETNAME = "pref_speak_petname";
@@ -94,6 +97,18 @@ namespace nokandro
         {
             get => _prefs.GetBoolean(PREF_SKIP_CW, false);
             set => _prefs.Edit()?.PutBoolean(PREF_SKIP_CW, value).Apply();
+        }
+
+        public bool SpeakReaction
+        {
+            get => _prefs.GetBoolean(PREF_SPEAK_REACTION, true);
+            set => _prefs.Edit()?.PutBoolean(PREF_SPEAK_REACTION, value).Apply();
+        }
+
+        public string ReactionText
+        {
+            get => _prefs.GetString(PREF_REACTION_TEXT, DEFAULT_REACTION_TEXT) ?? DEFAULT_REACTION_TEXT;
+            set => _prefs.Edit()?.PutString(PREF_REACTION_TEXT, value).Apply();
         }
 
         public int TruncateLength
