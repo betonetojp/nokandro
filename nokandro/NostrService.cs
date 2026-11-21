@@ -28,6 +28,7 @@ namespace nokandro
         // indicate service running state for Activity UI
         public static bool IsRunning { get; private set; } = false;
         public static bool IsTtsEnabled { get; private set; } = true;
+        public static bool IsOffTimerActive { get; private set; } = false;
         private const string TAG = "NostrService";
         private const int NOTIF_ID = 1001;
         private NostrWebSocketClient? _wsClient;
@@ -85,6 +86,9 @@ namespace nokandro
         
         // Actions
         public const string ACTION_TOGGLE_TTS = "nokandro.ACTION_TOGGLE_TTS";
+        public const string ACTION_TOGGLE_OFF_TIMER = "nokandro.ACTION_TOGGLE_OFF_TIMER";
+        public const string ACTION_SET_OFF_TIMER = "nokandro.ACTION_SET_OFF_TIMER";
+        public const string ACTION_OFF_TIMER_CHANGED = "nokandro.ACTION_OFF_TIMER_CHANGED";
         private const string ACTION_SET_MUSIC_STATUS = "nokandro.ACTION_SET_MUSIC_STATUS";
         private const string ACTION_TEST_POST = "nokandro.ACTION_TEST_POST";
 
@@ -174,9 +178,11 @@ namespace nokandro
                 try
                 {
                     var offTimerExpired = intent.GetBooleanExtra("offTimerExpired", false);
-                    if (offTimerExpired && _offTimerDisableOnEnd)
+                    var rPrefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                    var disableOnEnd = rPrefs?.GetBoolean("pref_off_timer_disable_on_end", _offTimerDisableOnEnd) ?? _offTimerDisableOnEnd;
+                    if (offTimerExpired && disableOnEnd)
                     {
-                        var p = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                        var p = rPrefs?.Edit();
                         if (p != null) { p.PutBoolean("pref_off_timer_enabled", false); p.Apply(); }
                     }
                 }
@@ -231,6 +237,65 @@ namespace nokandro
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
                 LiveNoteWidget.UpdateAllWidgets(this);
+                return StartCommandResult.Sticky;
+            }
+
+            if (intent != null && ACTION_TOGGLE_OFF_TIMER.Equals(intent.Action))
+            {
+                try
+                {
+                    var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                    if (IsOffTimerActive)
+                    {
+                        var ep = prefs?.Edit();
+                        if (ep != null) { ep.PutBoolean("pref_off_timer_enabled", false); ep.Apply(); }
+                        CancelOffTimer();
+                    }
+                    else
+                    {
+                        var mins = prefs?.GetInt("pref_off_timer_minutes", 60) ?? 60;
+                        if (mins < 1) mins = 1;
+                        _offTimerDisableOnEnd = prefs?.GetBoolean("pref_off_timer_disable_on_end", false) ?? false;
+                        var ep = prefs?.Edit();
+                        if (ep != null) { ep.PutBoolean("pref_off_timer_enabled", true); ep.Apply(); }
+                        StartOffTimer(mins);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.W(TAG, "ACTION_TOGGLE_OFF_TIMER error: " + ex.Message);
+                }
+
+                NotifyOffTimerChanged();
+                return StartCommandResult.Sticky;
+            }
+
+            if (intent != null && ACTION_SET_OFF_TIMER.Equals(intent.Action))
+            {
+                try
+                {
+                    var enabled = intent.GetBooleanExtra("enabled", false);
+                    var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                    if (enabled)
+                    {
+                        var defaultMins = prefs?.GetInt("pref_off_timer_minutes", 60) ?? 60;
+                        var mins = intent.GetIntExtra("minutes", defaultMins);
+                        if (mins < 1) mins = 1;
+                        var defaultDisableOnEnd = prefs?.GetBoolean("pref_off_timer_disable_on_end", false) ?? false;
+                        _offTimerDisableOnEnd = intent.GetBooleanExtra("disableOnEnd", defaultDisableOnEnd);
+                        StartOffTimer(mins);
+                    }
+                    else
+                    {
+                        CancelOffTimer();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.W(TAG, "ACTION_SET_OFF_TIMER error: " + ex.Message);
+                }
+
+                NotifyOffTimerChanged();
                 return StartCommandResult.Sticky;
             }
 
@@ -324,43 +389,13 @@ namespace nokandro
             AppLog.D(TAG, "Spawned RunAsync task");
 
             // Start off-timer if configured
-            _offTimerCts?.Cancel();
-            _offTimerCts = null;
             if (_offTimerMinutes > 0)
             {
-                var offCts = new CancellationTokenSource();
-                _offTimerCts = offCts;
-                var mins = _offTimerMinutes;
-                try
-                {
-                    var endTicks = DateTime.UtcNow.AddMinutes(mins).Ticks;
-                    var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
-                    if (ep != null) { ep.PutLong("pref_off_timer_end_ticks", endTicks); ep.Apply(); }
-                }
-                catch { }
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(TimeSpan.FromMinutes(mins), offCts.Token);
-                        var stopIntent = new Intent(this, typeof(NostrService));
-                        stopIntent.SetAction("STOP");
-                        if (_offTimerDisableOnEnd) stopIntent.PutExtra("offTimerExpired", true);
-                        StartService(stopIntent);
-                    }
-                    catch (System.OperationCanceledException) { }
-                    catch (Exception ex) { AppLog.W(TAG, "Off-timer error: " + ex.Message); }
-                });
-                AppLog.D(TAG, $"Off-timer started: {mins} min");
+                StartOffTimer(_offTimerMinutes);
             }
             else
             {
-                try
-                {
-                    var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
-                    if (ep != null) { ep.Remove("pref_off_timer_end_ticks"); ep.Apply(); }
-                }
-                catch { }
+                CancelOffTimer();
             }
 
             // notify UI that service started
@@ -387,11 +422,86 @@ namespace nokandro
             return StartCommandResult.Sticky;
         }
 
+        private void StartOffTimer(int minutes)
+        {
+            _offTimerCts?.Cancel();
+            _offTimerCts = null;
+            if (minutes <= 0)
+            {
+                CancelOffTimer();
+                return;
+            }
+
+            _offTimerMinutes = minutes;
+            var offCts = new CancellationTokenSource();
+            _offTimerCts = offCts;
+            IsOffTimerActive = true;
+            try
+            {
+                var endTicks = DateTime.UtcNow.AddMinutes(minutes).Ticks;
+                var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                if (ep != null) { ep.PutLong("pref_off_timer_end_ticks", endTicks); ep.Apply(); }
+            }
+            catch { }
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(minutes), offCts.Token);
+                    var stopIntent = new Intent(this, typeof(NostrService));
+                    stopIntent.SetAction("STOP");
+                    bool disableOnEnd = _offTimerDisableOnEnd;
+                    try
+                    {
+                        var rPrefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                        disableOnEnd = rPrefs?.GetBoolean("pref_off_timer_disable_on_end", _offTimerDisableOnEnd) ?? _offTimerDisableOnEnd;
+                    }
+                    catch { }
+                    if (disableOnEnd) stopIntent.PutExtra("offTimerExpired", true);
+                    StartService(stopIntent);
+                }
+                catch (System.OperationCanceledException) { }
+                catch (Exception ex) { AppLog.W(TAG, "Off-timer error: " + ex.Message); }
+            });
+            AppLog.D(TAG, $"Off-timer started: {minutes} min");
+        }
+
+        private void CancelOffTimer()
+        {
+            try { _offTimerCts?.Cancel(); _offTimerCts = null; } catch { }
+            _offTimerMinutes = 0;
+            IsOffTimerActive = false;
+            try
+            {
+                var ep = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private)?.Edit();
+                if (ep != null) { ep.Remove("pref_off_timer_end_ticks"); ep.Apply(); }
+            }
+            catch { }
+            AppLog.D(TAG, "Off-timer cancelled");
+        }
+
+        private void NotifyOffTimerChanged()
+        {
+            try
+            {
+                var b = new Intent(ACTION_OFF_TIMER_CHANGED);
+                LocalBroadcast.SendBroadcast(this, b);
+
+                var w = new Intent("nokandro.ACTION_UPDATE_WIDGET");
+                w.SetPackage(PackageName);
+                SendBroadcast(w);
+                LiveNoteWidget.UpdateAllWidgets(this);
+            }
+            catch { }
+        }
+
         public override void OnDestroy()
         {
             AppLog.D(TAG, "OnDestroy");
             IsRunning = false;
             IsTtsEnabled = false;
+            IsOffTimerActive = false;
             try { _offTimerCts?.Cancel(); _offTimerCts = null; } catch { }
             try
             {

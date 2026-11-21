@@ -25,10 +25,10 @@ Package name: `com.nokakoi.nokandro`
 - **Boot auto-start (optional)**: Bunker can be auto-started after device reboot via a switch in the Signer tab.
 - Retrieves the follow list, public mute list, and muted words list for filtering.
 - Different TTS voices can be specified for followed users and others.
-- **Off timer**: Automatically stops the service after a configurable number of minutes.
+- **Off timer**: Automatically stops the service after a configurable number of minutes. Can be toggled ON/OFF even while the service is running (duration can be edited while stopped).
 - **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires.
 - **Relay list fetch**: Fetches your relay list (kind: 10002) from known relays and lets you pick one.
-- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars with automatic EXIF orientation correction, kind 7 star reactions, one-tap button (`Open`) to open the displayed note in `nokakoi` (`https://nokakoi.com/app/nevent1...`), 50-post history navigation (expandable up to 100 posts while retaining viewed position on new arrivals, with auto-trimming upon returning to latest), one-tap jump buttons to earliest (`«`) and latest (`»`) posts, accidental-tap prevention on margins, independent service toggle, and dedicated TTS/Muted controls.
+- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars with automatic EXIF orientation correction, kind 7 star reactions, one-tap button (`Open`) to open the displayed note in `nokakoi` (`https://nokakoi.com/app/nevent1...`), 50-post history navigation (expandable up to 100 posts while retaining viewed position on new arrivals, with auto-trimming upon returning to latest), one-tap jump buttons to earliest (`«`) and latest (`»`) posts, accidental-tap prevention on margins, independent service toggle, dedicated TTS/Muted controls, and a `Timer` button to toggle the Off timer on/off while running.
 - **Steganography TTS decoding**: Automatically decodes and speaks hidden text embedded with Unicode Plane 14 tag characters (sexy gyouza) during text-to-speech without extra overhead.
 - **Monochrome Notification Icon**: Silhouette notification vector icon (`ic_stat_nokandro`) with dynamic tinting for full compatibility with modern Android versions (Google Pixel, Android 12-15) without solid circular masking.
 - **Tasker / automation support**: Start and stop the service via broadcast intents.
@@ -62,7 +62,7 @@ Package name: `com.nokakoi.nokandro`
   - **Speech rate**: Adjust reading speed (0.50x - 1.50x). Can be changed while the service is running.
 - **Stop on audio disconnect**: Automatically stops the service when audio output is disconnected (e.g., Bluetooth).
 - **Broadcast Now Playing**: Toggle to enable publishing your current music track to Nostr. Requires "Notification Listener" permission and a valid nsec.
-- **Off timer**: When enabled, the service will automatically stop after the specified number of minutes. A countdown is displayed while running.
+- **Off timer**: When enabled, the service will automatically stop after the specified number of minutes. A countdown is displayed while running, and you can toggle Off timer ON/OFF even while the service is running (minutes can be changed while stopped).
 - **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires.
 - **Sticky Footer**: Stays pinned at the bottom of the screen. Shows live service state badges (Running / Stopped), off timer countdown, and the Start / Stop button.
 - **(Last Content)**: Displays the most recent message received.
@@ -204,10 +204,10 @@ When installing an update directly from within nokandro for the first time, Andr
 - **モダンUI & スティッキーフッター**: Material Design 3 に準拠。画面下部に常駐するフッターにリアルタイムのサービス稼働状況（Running/Stopped バッジ）やオフタイマー残時間を表示します。
 - **端末再起動時の自動起動（任意）**: Signer タブのスイッチで、端末再起動後に Bunker を自動起動できます。
 - 指定した `npub` に基づくフォローリスト・ミュートリスト・ミュートワードを取得し、読み上げの判定やフィルタリングを行います。
-- **オフタイマー**: 指定時間後にサービスを自動停止します。
+- **オフタイマー**: 指定時間後にサービスを自動停止します。サービス起動中でもオン/オフを切り替えられます（分数の変更は停止中のみ）。
 - **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。
 - **リレーリスト取得**: リレーリスト (kind: 10002) を取得して接続先を選択できます。
-- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示（Exif向き自動補正対応）、通常50件（過去投稿閲覧中に新着を受信した場合は最大100件キープ、最新復帰時に自動トリミング）の履歴ナビゲーション、最古（`«`）および最新（`»`）への一括ジャンプボタン、下部余白の誤タップ防止、nokakoiのイベント詳細モーダルで開くボタン（`Open`）、スターリアクション（★/☆ React）、サービス稼働（投稿受信）と音声読み上げ（TTS/Muted）の個別切り替えに対応しています。
+- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示（Exif向き自動補正対応）、通常50件（過去投稿閲覧中に新着を受信した場合は最大100件キープ、最新復帰時に自動トリミング）の履歴ナビゲーション、最古（`«`）および最新（`»`）への一括ジャンプボタン、下部余白の誤タップ防止、nokakoiのイベント詳細モーダルで開くボタン（`Open`）、スターリアクション（★/☆ React）、サービス稼働（投稿受信）・音声読み上げ（TTS/Muted）・オフタイマー（`Timer`）の個別切り替えに対応しています。
 - **セクシー餃子の読み上げ対応**: Unicode Plane 14 タグ文字で不可視埋め込みされた隠しテキスト（セクシー餃子）を自動復号し、音声合成（TTS）で自然に読み上げます。
 - **通知アイコンのシルエット対応**: Google Pixel や Android 12〜15 などの新しい端末で通知アイコンが丸く塗りつぶされる問題に対応した、背景透明・単色ストロークのベクターアイコン（`ic_stat_nokandro`）を搭載。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスの開始・停止を制御できます。
@@ -241,7 +241,7 @@ When installing an update directly from within nokandro for the first time, Andr
   - **Speech rate**: 読み上げ速度の調整（0.50x - 1.50x）。サービス実行中でも変更可能です。
 - **Stop on audio disconnect**: オーディオ機器（Bluetoothなど）の切断検知時に自動停止します。
 - **Broadcast Now Playing**: 再生中の音楽情報を Nostr に投稿する機能の ON/OFF。ON にするには通知リスナー権限と nsec が必要です。
-- **Off timer**: 有効にすると、指定した分数の経過後にサービスを自動停止します。実行中はカウントダウンが表示されます。
+- **Off timer**: 有効にすると、指定した分数の経過後にサービスを自動停止します。実行中はカウントダウンが表示され、サービス起動中でもオン/オフの切り替えが可能です（分数の変更は停止中のみ）。
 - **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。
 - **スティッキーフッター**: 画面下部に固定表示。各サービスのリアルタイム稼働状況（Running / Stopped バッジ）、タイマー残時間、Start / Stop ボタンを配置。
 - **(Last Content)**: 最後に受信したメッセージが表示されます。

@@ -52,6 +52,7 @@ namespace nokandro
         private TextView? _musicDebugText;
         private TextView? _offTimerCountdownView;
         private System.Threading.Timer? _countdownTimer;
+        private bool _isUpdatingOffTimerUi = false;
         private BroadcastReceiver? _receiver;
         private BroadcastReceiver? _serviceStateReceiver;
         // keep references to EditText fields used elsewhere
@@ -878,13 +879,43 @@ namespace nokandro
             {
                 offTimerSwitch.CheckedChange += (s, e) =>
                 {
+                    if (_isUpdatingOffTimerUi) return;
                     try
                     {
-                        SetControlEnabled(offTimerMinutesEdit, e.IsChecked);
+                        SetControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && e.IsChecked);
                         SetControlEnabled(offTimerDisableOnEndSwitch, e.IsChecked);
                         var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                         var edit = prefs?.Edit();
-                        if (edit != null) { edit.PutBoolean(PREF_OFF_TIMER_ENABLED, e.IsChecked); edit.Apply(); }
+                        var val = int.TryParse(offTimerMinutesEdit?.Text, out var v) ? v : (prefs?.GetInt(PREF_OFF_TIMER_MINUTES, 60) ?? 60);
+                        if (val < 1) val = 1;
+                        if (edit != null)
+                        {
+                            edit.PutBoolean(PREF_OFF_TIMER_ENABLED, e.IsChecked);
+                            edit.PutInt(PREF_OFF_TIMER_MINUTES, val);
+                            edit.Apply();
+                        }
+
+                        if (NostrService.IsRunning)
+                        {
+                            var timerIntent = new Intent(this, typeof(NostrService));
+                            timerIntent.SetAction(NostrService.ACTION_SET_OFF_TIMER);
+                            timerIntent.PutExtra("enabled", e.IsChecked);
+                            timerIntent.PutExtra("minutes", val);
+                            timerIntent.PutExtra("disableOnEnd", offTimerDisableOnEndSwitch?.Checked ?? false);
+                            StartService(timerIntent);
+
+                            if (e.IsChecked)
+                            {
+                                var endTime = DateTime.UtcNow.AddMinutes(val);
+                                SaveCountdownEndTime(endTime);
+                                StartCountdown(endTime);
+                            }
+                            else
+                            {
+                                StopCountdown();
+                                ClearCountdownEndTime();
+                            }
+                        }
                     }
                     catch { }
                 };
@@ -893,6 +924,7 @@ namespace nokandro
             {
                 offTimerDisableOnEndSwitch.CheckedChange += (s, e) =>
                 {
+                    if (_isUpdatingOffTimerUi) return;
                     try
                     {
                         var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
@@ -1547,8 +1579,9 @@ namespace nokandro
                 try { setControlEnabled(speakReactionSwitch, !NostrService.IsRunning); } catch { }
                 try { setControlEnabled(reactionTextEdit, !NostrService.IsRunning && (speakReactionSwitch?.Checked ?? true)); } catch { }
                 try { setControlEnabled(autoStopSwitch, !NostrService.IsRunning); } catch { }
-                try { setControlEnabled(offTimerSwitch, !NostrService.IsRunning); } catch { }
+                try { setControlEnabled(offTimerSwitch, true); } catch { }
                 try { setControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && (offTimerSwitch?.Checked ?? false)); } catch { }
+                try { setControlEnabled(offTimerDisableOnEndSwitch, offTimerSwitch?.Checked ?? false); } catch { }
                 try { UpdateServiceStatusFooter(); } catch { }
             }
             catch { }
@@ -1719,9 +1752,9 @@ namespace nokandro
                 try { SetControlEnabled(speakReactionSwitch, false); } catch { }
                 try { SetControlEnabled(reactionTextEdit, false); } catch { }
                 try { SetControlEnabled(autoStopSwitch, false); } catch { }
-                try { SetControlEnabled(offTimerSwitch, false); } catch { }
+                try { SetControlEnabled(offTimerSwitch, true); } catch { }
                 try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
-                try { SetControlEnabled(offTimerDisableOnEndSwitch, false); } catch { }
+                try { SetControlEnabled(offTimerDisableOnEndSwitch, offTimerSwitch?.Checked ?? false); } catch { }
                 try { UpdateServiceStatusFooter(); } catch { }
             };
 
@@ -1761,9 +1794,9 @@ namespace nokandro
                             try { SetControlEnabled(speakReactionSwitch, false); } catch { }
                             try { SetControlEnabled(reactionTextEdit, false); } catch { }
                             try { SetControlEnabled(autoStopSwitch, false); } catch { }
-                            try { SetControlEnabled(offTimerSwitch, false); } catch { }
+                            try { SetControlEnabled(offTimerSwitch, true); } catch { }
                             try { SetControlEnabled(offTimerMinutesEdit, false); } catch { }
-                            try { SetControlEnabled(offTimerDisableOnEndSwitch, false); } catch { }
+                            try { SetControlEnabled(offTimerDisableOnEndSwitch, offTimerSwitch?.Checked ?? false); } catch { }
                             try { UpdateServiceStatusFooter(); } catch { }
                         });
                         // Start countdown if off-timer was set (e.g. via Tasker or Widget)
@@ -1780,6 +1813,46 @@ namespace nokandro
                         }
                         catch { }
                     }
+                    else if (intent.Action == NostrService.ACTION_OFF_TIMER_CHANGED)
+                    {
+                        RunOnUiThread(() =>
+                        {
+                            try
+                            {
+                                var rPrefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                                var isOn = NostrService.IsRunning
+                                    ? NostrService.IsOffTimerActive
+                                    : (rPrefs?.GetBoolean(PREF_OFF_TIMER_ENABLED, false) ?? false);
+                                _isUpdatingOffTimerUi = true;
+                                try
+                                {
+                                    if (offTimerSwitch != null) offTimerSwitch.Checked = isOn;
+                                }
+                                finally
+                                {
+                                    _isUpdatingOffTimerUi = false;
+                                }
+                                SetControlEnabled(offTimerSwitch, true);
+                                SetControlEnabled(offTimerMinutesEdit, !NostrService.IsRunning && isOn);
+                                SetControlEnabled(offTimerDisableOnEndSwitch, isOn);
+
+                                var endTicks = rPrefs?.GetLong(PREF_OFF_TIMER_END_TICKS, 0L) ?? 0L;
+                                if (NostrService.IsRunning && isOn && endTicks > 0)
+                                {
+                                    var endTime = new DateTime(endTicks, DateTimeKind.Utc);
+                                    if (endTime > DateTime.UtcNow)
+                                        StartCountdown(endTime);
+                                    else
+                                        StopCountdown();
+                                }
+                                else
+                                {
+                                    StopCountdown();
+                                }
+                            }
+                            catch { }
+                        });
+                    }
                     else if (intent.Action == "nokandro.ACTION_SERVICE_STOPPED")
                     {
                         StopCountdown();
@@ -1789,9 +1862,17 @@ namespace nokandro
                             try
                             {
                                 var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                                if (offTimerSwitch != null) offTimerSwitch.Checked = prefs?.GetBoolean(PREF_OFF_TIMER_ENABLED, false) ?? false;
-                                if (offTimerMinutesEdit != null) offTimerMinutesEdit.Text = (prefs?.GetInt(PREF_OFF_TIMER_MINUTES, 60) ?? 60).ToString();
-                                if (offTimerDisableOnEndSwitch != null) offTimerDisableOnEndSwitch.Checked = prefs?.GetBoolean(PREF_OFF_TIMER_DISABLE_ON_END, false) ?? false;
+                                _isUpdatingOffTimerUi = true;
+                                try
+                                {
+                                    if (offTimerSwitch != null) offTimerSwitch.Checked = prefs?.GetBoolean(PREF_OFF_TIMER_ENABLED, false) ?? false;
+                                    if (offTimerMinutesEdit != null) offTimerMinutesEdit.Text = (prefs?.GetInt(PREF_OFF_TIMER_MINUTES, 60) ?? 60).ToString();
+                                    if (offTimerDisableOnEndSwitch != null) offTimerDisableOnEndSwitch.Checked = prefs?.GetBoolean(PREF_OFF_TIMER_DISABLE_ON_END, false) ?? false;
+                                }
+                                finally
+                                {
+                                    _isUpdatingOffTimerUi = false;
+                                }
                             }
                             catch { }
 
@@ -1823,6 +1904,7 @@ namespace nokandro
                 var svcFilter = new IntentFilter();
                 svcFilter.AddAction("nokandro.ACTION_SERVICE_STARTED");
                 svcFilter.AddAction("nokandro.ACTION_SERVICE_STOPPED");
+                svcFilter.AddAction(NostrService.ACTION_OFF_TIMER_CHANGED);
                 LocalBroadcast.RegisterReceiver(_serviceStateReceiver, svcFilter);
             }
             catch { }
@@ -2006,6 +2088,7 @@ namespace nokandro
                 var autoStopSwitch = FindViewById<Switch>(Resource.Id.autoStopSwitch);
                 var offTimerSwitch = FindViewById<Switch>(Resource.Id.offTimerSwitch);
                 var offTimerMinutesEdit = FindViewById<EditText>(Resource.Id.offTimerMinutesEdit);
+                var offTimerDisableOnEndSwitch = FindViewById<Switch>(Resource.Id.offTimerDisableOnEndSwitch);
 
             // Helper to set Enabled + visual appearance
             void SetControlEnabled(View? v, bool enabled)
@@ -2086,8 +2169,26 @@ namespace nokandro
                 try { SetControlEnabled(speakReactionSwitch, !running); } catch { }
                 try { SetControlEnabled(reactionTextEdit, !running && (speakReactionSwitch?.Checked ?? true)); } catch { }
                 try { SetControlEnabled(autoStopSwitch, !running); } catch { }
-                try { SetControlEnabled(offTimerSwitch, !running); } catch { }
-                try { SetControlEnabled(offTimerMinutesEdit, !running && (offTimerSwitch?.Checked ?? false)); } catch { }
+                try
+                {
+                    var rPrefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
+                    var offOn = running
+                        ? NostrService.IsOffTimerActive
+                        : (rPrefs?.GetBoolean(PREF_OFF_TIMER_ENABLED, false) ?? false);
+                    _isUpdatingOffTimerUi = true;
+                    try
+                    {
+                        if (offTimerSwitch != null) offTimerSwitch.Checked = offOn;
+                    }
+                    finally
+                    {
+                        _isUpdatingOffTimerUi = false;
+                    }
+                    SetControlEnabled(offTimerSwitch, true);
+                    SetControlEnabled(offTimerMinutesEdit, !running && offOn);
+                    SetControlEnabled(offTimerDisableOnEndSwitch, offOn);
+                }
+                catch { }
                 try { UpdateServiceStatusFooter(); } catch { }
             }
 
@@ -2114,8 +2215,8 @@ namespace nokandro
                         if (grantBtn != null) grantBtn.Visibility = ViewStates.Gone;
                     }
                 }
-                // Resume countdown if service is running with an active off-timer
-                if (NostrService.IsRunning)
+                // Resume or stop countdown based on current off-timer state
+                if (NostrService.IsRunning && NostrService.IsOffTimerActive)
                 {
                     try
                     {
@@ -2126,9 +2227,19 @@ namespace nokandro
                             var endTime = new DateTime(endTicks, DateTimeKind.Utc);
                             if (endTime > DateTime.UtcNow)
                                 StartCountdown(endTime);
+                            else
+                                StopCountdown();
+                        }
+                        else
+                        {
+                            StopCountdown();
                         }
                     }
                     catch { }
+                }
+                else
+                {
+                    StopCountdown();
                 }
 
                 // Sync bunker switch with service state

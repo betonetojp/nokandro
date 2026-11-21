@@ -20,6 +20,7 @@ namespace nokandro
         "nokandro.ACTION_UPDATE_LIVE_NOTE",
         "nokandro.ACTION_UPDATE_WIDGET",
         "nokandro.ACTION_TOGGLE_TTS",
+        "nokandro.ACTION_TOGGLE_OFF_TIMER",
         "nokandro.ACTION_REACT_STAR",
         "nokandro.ACTION_PREV_NOTE",
         "nokandro.ACTION_NEXT_NOTE",
@@ -34,6 +35,7 @@ namespace nokandro
         public const string ACTION_UPDATE_LIVE_NOTE = "nokandro.ACTION_UPDATE_LIVE_NOTE";
         public const string ACTION_UPDATE_WIDGET = "nokandro.ACTION_UPDATE_WIDGET";
         public const string ACTION_TOGGLE_TTS = "nokandro.ACTION_TOGGLE_TTS";
+        public const string ACTION_TOGGLE_OFF_TIMER = "nokandro.ACTION_TOGGLE_OFF_TIMER";
         public const string ACTION_REACT_STAR = "nokandro.ACTION_REACT_STAR";
         public const string ACTION_PREV_NOTE = "nokandro.ACTION_PREV_NOTE";
         public const string ACTION_NEXT_NOTE = "nokandro.ACTION_NEXT_NOTE";
@@ -127,6 +129,23 @@ namespace nokandro
                     UpdateAllWidgets(context, mgr, ids);
                 }
             }
+            else if (ACTION_TOGGLE_OFF_TIMER.Equals(action))
+            {
+                if (NostrService.IsRunning)
+                {
+                    var timerIntent = new Intent(context, typeof(NostrService));
+                    timerIntent.SetAction(NostrService.ACTION_TOGGLE_OFF_TIMER);
+                    context.StartService(timerIntent);
+                }
+                else
+                {
+                    var p = context.GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+                    var cur = p?.GetBoolean("pref_off_timer_enabled", false) ?? false;
+                    var ep = p?.Edit();
+                    if (ep != null) { ep.PutBoolean("pref_off_timer_enabled", !cur); ep.Apply(); }
+                    UpdateAllWidgets(context, mgr, ids);
+                }
+            }
             else if (ACTION_TOGGLE_SERVICE.Equals(action))
             {
                 ToggleService(context);
@@ -163,6 +182,10 @@ namespace nokandro
                 ? NostrService.IsTtsEnabled
                 : (prefs?.GetBoolean("pref_enable_tts", true) ?? true);
 
+            bool isOffTimer = NostrService.IsRunning
+                ? NostrService.IsOffTimerActive
+                : (prefs?.GetBoolean("pref_off_timer_enabled", false) ?? false);
+
             foreach (var widgetId in appWidgetIds)
             {
                 var remoteViews = new RemoteViews(context.PackageName, Resource.Layout.widget_live_note);
@@ -197,7 +220,7 @@ namespace nokandro
                 var pendingIntentApp = PendingIntent.GetActivity(context, 11, intentApp, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteAppTitle, pendingIntentApp);
 
-                // TTS Toggle button beside app title (only visible while service is running)
+                // TTS & Timer Toggle buttons beside app title (only visible while service is running)
                 if (NostrService.IsRunning)
                 {
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteTtsBtn, ViewStates.Visible);
@@ -215,10 +238,27 @@ namespace nokandro
                     intentTts.SetAction(ACTION_TOGGLE_TTS);
                     var piTts = PendingIntent.GetBroadcast(context, 15, intentTts, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
                     remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTtsBtn, piTts);
+
+                    remoteViews.SetViewVisibility(Resource.Id.liveNoteTimerBtn, ViewStates.Visible);
+                    remoteViews.SetTextViewText(Resource.Id.liveNoteTimerBtn, "Timer");
+                    try
+                    {
+                        var timerColor = isOffTimer
+                            ? new Android.Graphics.Color(context.GetColor(Resource.Color.primary))
+                            : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                        remoteViews.SetTextColor(Resource.Id.liveNoteTimerBtn, timerColor);
+                    }
+                    catch { }
+
+                    var intentTimer = new Intent(context, typeof(LiveNoteWidget));
+                    intentTimer.SetAction(ACTION_TOGGLE_OFF_TIMER);
+                    var piTimer = PendingIntent.GetBroadcast(context, 19, intentTimer, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                    remoteViews.SetOnClickPendingIntent(Resource.Id.liveNoteTimerBtn, piTimer);
                 }
                 else
                 {
                     remoteViews.SetViewVisibility(Resource.Id.liveNoteTtsBtn, ViewStates.Gone);
+                    remoteViews.SetViewVisibility(Resource.Id.liveNoteTimerBtn, ViewStates.Gone);
                 }
 
                 // 2. Quick Post Launch

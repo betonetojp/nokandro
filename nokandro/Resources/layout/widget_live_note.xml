@@ -50,6 +50,21 @@
             android:textColor="@color/primary"
             android:background="@drawable/bg_status_chip" />
 
+        <!-- Off Timer Toggle Button (Right beside TTS button) -->
+        <TextView
+            android:id="@+id/liveNoteTimerBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:gravity="center"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:layout_marginStart="4dp"
+            android:text="Timer"
+            android:textSize="10sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/on_surface_variant"
+            android:background="@drawable/bg_status_chip" />
+
         <!-- Spacer -->
         <FrameLayout
             android:layout_width="0dp"
