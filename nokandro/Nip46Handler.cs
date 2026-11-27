@@ -128,7 +128,7 @@ namespace nokandro
         }
 
         private static string HandleDescribe() =>
-            "[\"describe\",\"get_public_key\",\"sign_event\",\"connect\",\"disconnect\",\"nip04_encrypt\",\"nip04_decrypt\",\"nip44_encrypt\",\"nip44_decrypt\",\"ping\",\"get_relays\"]";
+            "[\"describe\",\"get_public_key\",\"sign_event\",\"connect\",\"disconnect\",\"nip04_encrypt\",\"nip04_decrypt\",\"nip44_encrypt\",\"nip44_decrypt\",\"ping\",\"get_relays\",\"switch_relays\"]";
 
         private string HandleGetRelays()
         {

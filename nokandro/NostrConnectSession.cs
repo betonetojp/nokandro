@@ -70,7 +70,10 @@ namespace nokandro
                         var eqIdx = param.IndexOf('=');
                         if (eqIdx < 0) continue;
                         var key = param[..eqIdx];
-                        var val = Uri.UnescapeDataString(param[(eqIdx + 1)..]);
+                        var rawVal = param[(eqIdx + 1)..];
+                        var val = key is "name" or "metadata"
+                            ? Uri.UnescapeDataString(rawVal.Replace('+', ' '))
+                            : Uri.UnescapeDataString(rawVal);
                         switch (key)
                         {
                             case "relay":
