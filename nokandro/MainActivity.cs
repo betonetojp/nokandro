@@ -87,6 +87,8 @@ namespace nokandro
         private string? _pendingNostrConnectDeepLinkUri;
         private SettingsRepository _settingsRepo = null!;
         private BunkerSessionController _bunkerController = null!;
+        private TextView? _versionTextView;
+        private string _currentVersionName = "v0.0.0";
 
         // Swipe gesture switching
         private GestureDetector? _gestureDetector;
@@ -156,6 +158,8 @@ namespace nokandro
                     toolbar.AddView(custom, new Toolbar.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
                     var titleTv = custom.FindViewById<TextView>(Resource.Id.appTitleText);
                     var verTv = custom.FindViewById<TextView>(Resource.Id.versionText);
+                    _versionTextView = verTv;
+                    _currentVersionName = versionName ?? "v0.0.0";
                     titleTv?.Text = GetString(Resource.String.app_name);
                     verTv?.Text = versionName;
                     if (verTv != null)
@@ -205,7 +209,8 @@ namespace nokandro
                                 });
                             }
                         };
-                        _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0");
+                        var openUpdateFromNotif = Intent?.GetBooleanExtra(AppUpdateNotifier.ExtraOpenUpdateDialog, false) == true;
+                        _ = CheckForUpdateAsync(verTv, versionName ?? "v0.0.0", showDialogIfAvailable: openUpdateFromNotif);
                     }
                 }
                 else
@@ -240,6 +245,9 @@ namespace nokandro
                 }
                 catch { }
             }
+
+            AppUpdateNotifier.EnsureChannel(this);
+            AppUpdateNotifier.SchedulePeriodicCheck(this);
 
             // --- Tab switching ---
             var tabLayout = FindViewById<TabLayout>(Resource.Id.tabLayout);
@@ -2329,6 +2337,20 @@ namespace nokandro
             {
                 TryPinWidget(typeof(PostWidget));
             }
+
+            if (intent.GetBooleanExtra(AppUpdateNotifier.ExtraOpenUpdateDialog, false))
+            {
+                AppUpdateNotifier.CancelNotification(this);
+                var cached = AppUpdater.LatestUpdateInfo;
+                if (cached != null && cached.HasUpdate)
+                {
+                    AppUpdater.ShowUpdateDialog(this, cached);
+                }
+                else
+                {
+                    _ = CheckForUpdateAsync(_versionTextView, _currentVersionName, showDialogIfAvailable: true);
+                }
+            }
         }
 
         private void TryPinWidget(Type widgetType)
@@ -4353,7 +4375,7 @@ namespace nokandro
             });
         }
 
-        private async Task CheckForUpdateAsync(TextView verTv, string currentVer)
+        private async Task CheckForUpdateAsync(TextView? verTv, string currentVer, bool showDialogIfAvailable = false)
         {
             try
             {
@@ -4364,12 +4386,23 @@ namespace nokandro
                     {
                         try
                         {
-                            verTv.Text = $"{currentVer} -> {info.LatestVersion}";
-                            verTv.SetTextColor(new Android.Graphics.Color(GetColor(Resource.Color.update_available)));
-                            verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
+                            if (verTv != null)
+                            {
+                                verTv.Text = $"{currentVer} -> {info.LatestVersion}";
+                                verTv.SetTextColor(new Android.Graphics.Color(GetColor(Resource.Color.update_available)));
+                                verTv.SetTypeface(verTv.Typeface, Android.Graphics.TypefaceStyle.Bold);
+                            }
+                            if (showDialogIfAvailable)
+                            {
+                                AppUpdater.ShowUpdateDialog(this, info);
+                            }
                         }
                         catch { }
                     });
+                }
+                else if (info != null)
+                {
+                    AppUpdateNotifier.CancelNotification(this);
                 }
             }
             catch { }

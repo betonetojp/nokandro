@@ -23,6 +23,7 @@ namespace nokandro
         public event Action<WebSocketState>? OnStateChanged;
 
         public WebSocketState State => _ws?.State ?? WebSocketState.None;
+        public string Url => _url;
 
         public NostrWebSocketClient(string url, string tag = "NostrWebSocketClient")
         {

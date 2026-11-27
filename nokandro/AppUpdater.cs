@@ -110,6 +110,7 @@ namespace nokandro
 
         public static void ShowUpdateDialog(Activity activity, AppUpdateInfo info)
         {
+            AppUpdateNotifier.CancelNotification(activity);
             activity.RunOnUiThread(() =>
             {
                 try

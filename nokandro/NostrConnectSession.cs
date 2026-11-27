@@ -149,9 +149,13 @@ namespace nokandro
         private readonly HashSet<string> _processedEventIds = new();
         private bool _clientAuthenticated;
         private readonly bool _preAuthenticated;
+        private volatile bool _relaysSwitched;
+        private volatile bool _switchRelaysRequested;
+        private int _legacyDropScheduled;
         private string? _initialConnectResponseEvent;
 
         public bool IsRunning { get; private set; }
+        public bool IsRelaysSwitched => _relaysSwitched;
         public string ClientPubkey => _connectUri.ClientPubkey;
         public string[] Relays => _connectUri.Relays;
         public string RawUri => _connectUri.RawUri;
@@ -161,14 +165,17 @@ namespace nokandro
         public event Action<string, string?>? OnClientPaired;
         /// <summary>Client activity performed (pubkey, method summary).</summary>
         public event Action<string, string>? OnActivity;
+        /// <summary>Fired when legacy URI relays have been dropped after switch_relays.</summary>
+        public event Action<string>? OnRelaysSwitched;
 
-        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false, Nip46Permissions? initialPerms = null, IEnumerable<string>? switchRelays = null)
+        public NostrConnectSession(byte[] privKey, NostrConnectUri connectUri, bool preAuthenticated = false, Nip46Permissions? initialPerms = null, IEnumerable<string>? switchRelays = null, bool relaysSwitched = false)
         {
             _privKey = privKey;
             _connectUri = connectUri;
             _switchRelays = switchRelays?.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToArray();
             _clientAuthenticated = preAuthenticated;
             _preAuthenticated = preAuthenticated;
+            _relaysSwitched = relaysSwitched && _switchRelays != null && _switchRelays.Length > 0;
             var pubBytes = NostrCrypto.GetPublicKey(privKey);
             _signerPubkeyHex = BitConverter.ToString(pubBytes).Replace("-", "").ToLowerInvariant();
             _handler = new Nip46Handler(_privKey, _signerPubkeyHex, _connectUri.Relays, _switchRelays);
@@ -188,14 +195,29 @@ namespace nokandro
             IsRunning = true;
             _cts = new CancellationTokenSource();
 
-            var targetRelays = new List<string>(_connectUri.Relays);
-            if (_switchRelays != null)
+            var targetRelays = new List<string>();
+            if (_relaysSwitched && _switchRelays != null && _switchRelays.Length > 0)
             {
                 foreach (var relay in _switchRelays)
                 {
-                    if (!string.IsNullOrEmpty(relay) && !targetRelays.Any(r => string.Equals(r.TrimEnd('/'), relay.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                    if (!string.IsNullOrEmpty(relay) && !targetRelays.Any(r => string.Equals(NormalizeRelayUrl(r), NormalizeRelayUrl(relay), StringComparison.OrdinalIgnoreCase)))
                     {
                         targetRelays.Add(relay);
+                    }
+                }
+                Log($"Starting with switched relays only ({targetRelays.Count})");
+            }
+            else
+            {
+                targetRelays.AddRange(_connectUri.Relays);
+                if (_switchRelays != null)
+                {
+                    foreach (var relay in _switchRelays)
+                    {
+                        if (!string.IsNullOrEmpty(relay) && !targetRelays.Any(r => string.Equals(NormalizeRelayUrl(r), NormalizeRelayUrl(relay), StringComparison.OrdinalIgnoreCase)))
+                        {
+                            targetRelays.Add(relay);
+                        }
                     }
                 }
             }
@@ -267,6 +289,8 @@ namespace nokandro
             }
             _handler.DisconnectAll();
             _clientAuthenticated = false;
+            _switchRelaysRequested = false;
+            Interlocked.Exchange(ref _legacyDropScheduled, 0);
             _initialConnectResponseEvent = null;
         }
 
@@ -345,6 +369,22 @@ namespace nokandro
 
                 Log($"{method} → {(ok ? "OK" : "ERR: " + err)}");
                 if (!sent) Log($"Failed to send {method} response");
+
+                if (ok && _switchRelays != null && _switchRelays.Length > 0)
+                {
+                    if (method == "switch_relays")
+                    {
+                        _switchRelaysRequested = true;
+                        if (!_relaysSwitched && Interlocked.Exchange(ref _legacyDropScheduled, 1) == 0)
+                        {
+                            ScheduleLegacyRelayDrop(ct);
+                        }
+                    }
+                    else if (!_relaysSwitched && _switchRelaysRequested && IsSwitchRelay(client.Url))
+                    {
+                        DropLegacyRelays(requireOpenSwitchRelay: false);
+                    }
+                }
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -354,6 +394,80 @@ namespace nokandro
             {
                 Log($"NIP-46 request failed: {ex.Message}");
             }
+        }
+
+        private static string NormalizeRelayUrl(string url) => url.Trim().TrimEnd('/');
+
+        private bool IsSwitchRelay(string url)
+        {
+            if (_switchRelays == null || _switchRelays.Length == 0 || string.IsNullOrWhiteSpace(url))
+                return false;
+            var norm = NormalizeRelayUrl(url);
+            return _switchRelays.Any(r => string.Equals(NormalizeRelayUrl(r), norm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void ScheduleLegacyRelayDrop(CancellationToken ct)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                    if (!ct.IsCancellationRequested && IsRunning && !_relaysSwitched)
+                    {
+                        DropLegacyRelays(requireOpenSwitchRelay: true);
+                    }
+                }
+                catch (System.OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Log("Legacy relay drop error: " + ex.Message);
+                }
+            }, ct);
+        }
+
+        private void DropLegacyRelays(bool requireOpenSwitchRelay)
+        {
+            if (_relaysSwitched || _switchRelays == null || _switchRelays.Length == 0)
+                return;
+
+            List<NostrWebSocketClient> legacyClients;
+            lock (_wsClients)
+            {
+                if (_relaysSwitched) return;
+
+                if (requireOpenSwitchRelay)
+                {
+                    var hasOpenSwitch = _wsClients.Any(c => IsSwitchRelay(c.Url) && c.State == WebSocketState.Open);
+                    if (!hasOpenSwitch)
+                    {
+                        Log("Deferred legacy relay drop (no switch relay open yet)");
+                        return;
+                    }
+                }
+
+                legacyClients = _wsClients.Where(c => !IsSwitchRelay(c.Url)).ToList();
+                foreach (var legacy in legacyClients)
+                {
+                    _wsClients.Remove(legacy);
+                }
+                _relaysSwitched = true;
+            }
+
+            foreach (var legacy in legacyClients)
+            {
+                try
+                {
+                    legacy.Stop();
+                    legacy.Dispose();
+                }
+                catch { }
+            }
+
+            Log(legacyClients.Count > 0
+                ? $"Switched to preferred relays; disconnected {legacyClients.Count} legacy relay(s)"
+                : "Switched to preferred relays");
+            OnRelaysSwitched?.Invoke(_connectUri.ClientPubkey);
         }
 
         private string HandleConnect(string senderPubkey, JsonElement paramsArr)

@@ -13,7 +13,7 @@ Package name: `com.nokakoi.nokandro`
 ## Main Features
 
 - Connects to a Nostr relay (WebSocket) to receive events and publish status in real-time.
-- **In-App Updater**: Tap the version number to check for updates from GitHub Releases. Formatted release notes and download size are shown in an in-app dialog, allowing direct one-tap download and installation of new APKs. A gold badge indicates when a new release is available.
+- **In-App Updater & Update Notifications**: Tap the version number to check for updates from GitHub Releases. Formatted release notes and download size are shown in an in-app dialog, allowing direct one-tap download and installation of new APKs. A gold badge indicates when a new release is available. Additionally, a periodic background job checks GitHub Releases every 12 hours when online and posts a one-time Android notification (via the `App Updates` channel) when a newer release is found; tapping the notification opens the update dialog directly.
 - **Profile Avatar**: Fetches your Nostr profile metadata (kind: 0) via WebSocket and displays your profile picture as a circular avatar inside the npub field (with memory and disk caching).
 - **Text-to-Speech (TTS)**: Reads incoming posts from followed users (configurable).
 - **Now Playing**: Detects music playing on your device (via notification listener) and publishes it as a Nostr status (kind: 30315).
@@ -90,7 +90,7 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 - **Scan QR**: Scans a QR code containing a `nostrconnect://` URI, fills the input field, and shows the same **confirmation dialog** as the deep link.
 - **Client list**: Shows active nostrconnect sessions with client website icons (supports standard favicons, PWA apple-touch-icons, and repository subpaths) and recent activity details. Tap a client name to edit its label; use **Remove** to disconnect. Sessions are sorted by recent activity so obsolete entries stay at the bottom.
 - **Status**: Tap the status chip to inspect recent NostrConnect logs with Copy and Clear options.
-- **Switch relays (comma separated)**: Configures preferred relays to return when the client calls `switch_relays` upon finishing a `nostrconnect://` handshake (default: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`). Managed independently from Bunker relay to prevent local/private relay conflicts with HTTPS web apps and ensure reliable session persistence across page reloads.
+- **Switch relays (comma separated)**: Configures preferred relays to return when the client calls `switch_relays` upon finishing a `nostrconnect://` handshake (default: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`). Once the client transitions to the switched relays, nokandro automatically disconnects from legacy relays from the initial URI (such as dead/unreachable relays) and persists the switched state so future restarts connect only to the preferred relays. Managed independently from Bunker relay to prevent local/private relay conflicts with HTTPS web apps and ensure reliable session persistence across page reloads.
 - The URI must include at least one `relay` and a `secret` (NIP-46). The signer returns the `secret` in the connect response `result` field for the client to validate.
 
 **Supported NIP-46 methods**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`.
@@ -193,7 +193,7 @@ When installing an update directly from within nokandro for the first time, Andr
 ## 主な機能
 
 - リレー（WebSocket）へ接続してリアルタイムでイベント送受信を行います。
-- **アプリ内アップデーター (In-App Updater)**: バージョン番号をタップして GitHub Releases の最新版を直接チェック。マークダウン整形されたリリースノートとファイルサイズをダイアログで確認し、アプリ内から直接 APK のダウンロード・インストールを行えます。最新版がある場合は金色のバッジが表示されます。
+- **アプリ内アップデーター & 更新通知 (In-App Updater)**: バージョン番号をタップして GitHub Releases の最新版を直接チェック。マークダウン整形されたリリースノートとファイルサイズをダイアログで確認し、アプリ内から直接 APK のダウンロード・インストールを行えます。最新版がある場合は金色のバッジが表示されます。さらに、バックグラウンド定期チェック（12 時間ごと・ネットワーク接続時のみ）で新バージョンを検知すると Android 通知（`App Updates` チャンネル、同一バージョンにつき 1 回のみ）でお知らせし、通知タップでそのままアップデートダイアログを開けます。
 - **プロフィールアバター表示**: WebSocket 経由で自身の Nostr プロフィールメタデータ (kind: 0) を取得し、`Your npub` 欄の左側に円形アバター写真を表示します（メモリおよびディスクキャッシュ対応）。
 - **読み上げ (TTS)**: フォロー中のユーザー等の投稿を読み上げます（有効時）。
 - **Now Playing**: 端末で再生中の音楽（通知リスナー経由）を検知し、Nostrステータス (kind: 30315) として投稿します。
@@ -269,7 +269,7 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 - **Scan QR**: `nostrconnect://` URI を含む QR コードをスキャンし、入力欄に貼り付けたうえでディープリンクと同様の**接続確認ダイアログ**が表示されます。
 - **クライアントリスト**: アクティブな nostrconnect セッションをクライアント Web アイコンおよび直近活動状況付きで表示します。名前をタップしてラベルを編集、**Remove** で切断できます。直近に活動のあったクライアントが上位に整列されます。
 - **Status**: NostrConnect のステータス表示をタップすると、直近の送受信・接続遷移ログをダイアログ（Copy / Clear 対応）で確認できます。
-- **Switch relays（切り替え先リレー設定）**: クライアントが接続完了後に `switch_relays` を呼び出した際にサイナー側から推奨リレーとして返すリレーを設定できます（カンマ区切りで複数指定可能、デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`）。Bunker 通信用リレーとは独立して管理されるため、Bunker にローカルリレーを設定していても外部 Web アプリのブラウザ制約（HTTPS からの平文 ws 遮断など）による通信障害を防ぎ、ページリロード時にも確実にセッションが復元されます。
+- **Switch relays（切り替え先リレー設定）**: クライアントが接続完了後に `switch_relays` を呼び出した際にサイナー側から推奨リレーとして返すリレーを設定できます（カンマ区切りで複数指定可能、デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`）。クライアントが切り替え先リレーへ移行した後は、元の `nostrconnect://` URI に含まれていた旧リレー（死にリレー等）を自動切断し、次回再起動以降も推奨リレーのみに接続します。Bunker 通信用リレーとは独立して管理されるため、Bunker にローカルリレーを設定していても外部 Web アプリのブラウザ制約（HTTPS からの平文 ws 遮断など）による通信障害を防ぎ、ページリロード時にも確実にセッションが復元されます。
 - NIP-46に従い、URIには少なくとも1つ以上の `relay` と `secret` パラメータが必須です。
 
 **対応 NIP-46 メソッド**: `connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `switch_relays`, `ping`

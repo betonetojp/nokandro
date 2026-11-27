@@ -23,6 +23,17 @@ namespace nokandro
                 intent.Action != Intent.ActionMyPackageReplaced)
                 return;
 
+            if (intent.Action == Intent.ActionBootCompleted || intent.Action == Intent.ActionMyPackageReplaced)
+            {
+                try
+                {
+                    if (intent.Action == Intent.ActionMyPackageReplaced)
+                        AppUpdateNotifier.CancelNotification(context);
+                    AppUpdateNotifier.SchedulePeriodicCheck(context);
+                }
+                catch { }
+            }
+
             try
             {
                 var prefs = context.GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);

@@ -187,6 +187,35 @@ namespace nokandro
             return (rec.LastUsedAt, rec.LastMethod, rec.CreatedAt);
         }
 
+        public bool IsRelaysSwitched(string pubkey)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return false;
+            var rec = GetRecord(Normalize(pubkey));
+            return rec?.RelaysSwitched == true;
+        }
+
+        public void SetRelaysSwitched(string pubkey, bool switched)
+        {
+            if (string.IsNullOrEmpty(pubkey)) return;
+            pubkey = Normalize(pubkey);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    if (!switched) return;
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                if (rec.RelaysSwitched == switched) return;
+                rec.RelaysSwitched = switched;
+                data.Clients[pubkey] = rec;
+                SaveClientsRoot(data);
+            }
+        }
+
         public void RecordPairing(string pubkey, string? name = null)
         {
             pubkey = Normalize(pubkey);
@@ -336,6 +365,7 @@ namespace nokandro
             public long CreatedAt { get; set; }
             public long LastUsedAt { get; set; }
             public string? LastMethod { get; set; }
+            public bool RelaysSwitched { get; set; }
         }
     }
 }

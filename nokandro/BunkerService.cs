@@ -252,7 +252,12 @@ namespace nokandro
                         var storedPerms = Nip46Permissions.Parse(connectUri.Perms);
                         var switchRelaysRaw = prefs?.GetString(SettingsRepository.PREF_NOSTRCONNECT_SWITCH_RELAYS, SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS) ?? SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
                         var switchRelays = switchRelaysRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                        var session = new NostrConnectSession(privKey, connectUri, preAuthenticated: true, storedPerms, switchRelays);
+                        var relaysSwitched = store.IsRelaysSwitched(connectUri.ClientPubkey);
+                        var session = new NostrConnectSession(privKey, connectUri, preAuthenticated: true, storedPerms, switchRelays, relaysSwitched);
+                        session.OnRelaysSwitched += pk =>
+                        {
+                            try { store.SetRelaysSwitched(pk, true); } catch { }
+                        };
                         session.OnLog += msg =>
                         {
                             AddNcLog(connectUri.ClientPubkey, msg);
@@ -337,7 +342,16 @@ namespace nokandro
                 var prefs = GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
                 var switchRelaysRaw = prefs?.GetString(SettingsRepository.PREF_NOSTRCONNECT_SWITCH_RELAYS, SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS) ?? SettingsRepository.DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
                 var switchRelays = switchRelaysRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms, switchRelays);
+                if (!preAuth)
+                {
+                    try { store.SetRelaysSwitched(connectUri.ClientPubkey, false); } catch { }
+                }
+                var relaysSwitched = preAuth && store.IsRelaysSwitched(connectUri.ClientPubkey);
+                var session = new NostrConnectSession(privKey, connectUri, preAuth, storedPerms, switchRelays, relaysSwitched);
+                session.OnRelaysSwitched += pk =>
+                {
+                    try { store.SetRelaysSwitched(pk, true); } catch { }
+                };
                 session.OnClientPaired += (pk, permsStr) =>
                 {
                     try
@@ -434,6 +448,7 @@ namespace nokandro
                     AppLog.D(TAG, $"NostrConnect session removed: {clientPubkey[..Math.Min(12, clientPubkey.Length)]}...");
                 }
             }
+            try { new BunkerClientStore(this).SetRelaysSwitched(clientPubkey, false); } catch { }
 
             BroadcastNostrConnectList();
             UpdateNotification();
