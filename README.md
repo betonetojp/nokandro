@@ -113,7 +113,7 @@ Saved permissions (both granted and rejected choices when "Remember my choice" i
 - `bunker://`: New clients are auto-authorized when they present the current bunker URI secret; after pairing, the secret rotates (one new client per URI snapshot). Previously paired clients reconnect without the secret. **Remove** also rotates the secret. **Reset Secret** clears all pairings and requires a new URI for everyone.
 - `nostrconnect://`: The client must send the correct `secret` in `connect`; invalid secrets are rejected. The signer returns the URI `secret` in the connect response `result` for the client to validate.
 
-For detailed documentation on the remote signer feature, see [BUNKER.md](BUNKER.md).
+For detailed documentation on the remote signer feature, see [BUNKER.md](BUNKER.md) and the [nokakoi × nokandro NIP-46 Integration Guide (JA)](https://nokakoi.com/docs/nip46-guide.html).
 
 ## Widget & Tasker
 
@@ -296,7 +296,7 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 - bunker:// は新規接続時に現在の URI の secret が必要です。ペア成功後に secret がローテします（同じ URI を別の新規 pubkey に使い回せません）。既知クライアントは secret なしで再接続。**Remove** でもローテ。**Reset Secret** で全ペア削除＋新 URI。
 - nostrconnect:// は接続応答の `result` に URI の `secret` を返します。クライアントが検証します。
 
-リモート署名機能の詳細なドキュメントは [BUNKER.md](BUNKER.md) を参照してください。
+リモート署名機能の詳細なドキュメントは [BUNKER.md](BUNKER.md) および [nokakoi × nokandro NIP-46 連携ガイド](https://nokakoi.com/docs/nip46-guide.html) を参照してください。
 
 ## ウィジェット & Tasker
 
