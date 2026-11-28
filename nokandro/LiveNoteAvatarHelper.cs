@@ -12,6 +12,7 @@ namespace nokandro
     {
         private static readonly ConcurrentDictionary<string, Bitmap> CompositeCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, Bitmap> SmallAvatarCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, Android.Net.Uri> SmallAvatarUriCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, byte> InFlightDownloads = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, long> FailedFetchBackoffUntil = new(StringComparer.OrdinalIgnoreCase);
 
@@ -19,6 +20,7 @@ namespace nokandro
         {
             CompositeCache.Clear();
             SmallAvatarCache.Clear();
+            SmallAvatarUriCache.Clear();
         }
 
         internal static void InvalidateMemoryCacheForPubkey(string pubkeyHex)
@@ -34,6 +36,148 @@ namespace nokandro
             {
                 if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     SmallAvatarCache.TryRemove(key, out _);
+            }
+            foreach (var key in SmallAvatarUriCache.Keys)
+            {
+                if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    SmallAvatarUriCache.TryRemove(key, out _);
+            }
+        }
+
+        /// <summary>
+        /// Renders (if needed) the 32dp circular avatar to a small PNG file under
+        /// cache/profile_avatars/widget_small/ and returns a versioned ContentProvider URI.
+        /// Each pubkey and avatar revision gets a distinct file name so Android's
+        /// ImageView.setImageURI never serves a stale or recycled image.
+        /// </summary>
+        public static Android.Net.Uri? GetOrCreateSmallCircularAvatarUri(Context context, string pubkeyHex, string? authorLabel, float density)
+        {
+            try
+            {
+                UserProfileLoader.EnsureCacheVersion(context);
+
+                var cacheRoot = context.CacheDir?.AbsolutePath;
+                if (string.IsNullOrEmpty(cacheRoot)) return null;
+
+                var avatarsDir = IOPath.Combine(cacheRoot, "profile_avatars");
+                var smallDir = IOPath.Combine(avatarsDir, "widget_small");
+                Directory.CreateDirectory(smallDir);
+
+                var safePubkey = NormalizeSafeHex(pubkeyHex);
+                var srcFilePath = !string.IsNullOrEmpty(pubkeyHex)
+                    ? IOPath.Combine(avatarsDir, $"{pubkeyHex}_src.png")
+                    : null;
+                var hasSrc = !string.IsNullOrEmpty(srcFilePath) && File.Exists(srcFilePath);
+
+                string fileName;
+                string uriCacheKey;
+                if (hasSrc)
+                {
+                    var mtimeTicks = File.GetLastWriteTimeUtc(srcFilePath!).Ticks;
+                    fileName = $"p_{safePubkey}_{mtimeTicks:x}.png";
+                    uriCacheKey = $"{pubkeyHex}_src_{mtimeTicks:x}";
+                }
+                else
+                {
+                    var initial = "?";
+                    if (!string.IsNullOrWhiteSpace(authorLabel))
+                        initial = authorLabel.Trim().Substring(0, 1).ToUpperInvariant();
+                    else if (!string.IsNullOrWhiteSpace(pubkeyHex))
+                        initial = pubkeyHex.Substring(0, 1).ToUpperInvariant();
+
+                    var initialCode = ComputeShortHash($"{safePubkey}_{initial}");
+                    fileName = $"f_{safePubkey}_{initialCode:x8}.png";
+                    uriCacheKey = $"{pubkeyHex}_fallback_{initialCode:x8}";
+                }
+
+                var outPath = IOPath.Combine(smallDir, fileName);
+                if (SmallAvatarUriCache.TryGetValue(uriCacheKey, out var cachedUri) && File.Exists(outPath))
+                {
+                    return cachedUri;
+                }
+
+                if (!File.Exists(outPath))
+                {
+                    Bitmap? rawSrc = null;
+                    if (hasSrc)
+                    {
+                        try { rawSrc = BitmapFactory.DecodeFile(srcFilePath); } catch { }
+                    }
+
+                    using var bmp = RenderSmallCircular(rawSrc, authorLabel, pubkeyHex, density);
+                    rawSrc?.Recycle();
+
+                    var tmpPath = outPath + $".{Guid.NewGuid():N}.tmp";
+                    try
+                    {
+                        using (var fs = File.Create(tmpPath))
+                        {
+                            bmp.Compress(Bitmap.CompressFormat.Png!, 100, fs);
+                        }
+                        File.Move(tmpPath, outPath, overwrite: true);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tmpPath))
+                        {
+                            try { File.Delete(tmpPath); } catch { }
+                        }
+                    }
+
+                    // Clean up older rendered revisions for this pubkey to avoid unbounded cache growth
+                    try
+                    {
+                        var stalePrefix = hasSrc ? $"p_{safePubkey}_" : $"f_{safePubkey}_";
+                        foreach (var existing in Directory.EnumerateFiles(smallDir, $"{stalePrefix}*.png"))
+                        {
+                            if (!string.Equals(existing, outPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                try { File.Delete(existing); } catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                var uri = Android.Net.Uri.Parse($"content://{WidgetAvatarProvider.Authority}/{fileName}");
+                if (uri != null)
+                {
+                    SmallAvatarUriCache[uriCacheKey] = uri;
+                }
+                return uri;
+            }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn("LiveNoteAvatarHelper", $"GetOrCreateSmallCircularAvatarUri failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static string NormalizeSafeHex(string? pubkeyHex)
+        {
+            if (string.IsNullOrEmpty(pubkeyHex)) return "anon";
+            Span<char> buf = stackalloc char[Math.Min(pubkeyHex.Length, 64)];
+            int len = 0;
+            for (int i = 0; i < pubkeyHex.Length && len < buf.Length; i++)
+            {
+                var c = char.ToLowerInvariant(pubkeyHex[i]);
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+                    buf[len++] = c;
+            }
+            return len > 0 ? new string(buf[..len]) : "anon";
+        }
+
+        private static uint ComputeShortHash(string value)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                foreach (var ch in value)
+                {
+                    hash ^= ch;
+                    hash *= 16777619u;
+                }
+                return hash;
             }
         }
 

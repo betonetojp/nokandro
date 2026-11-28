@@ -15,7 +15,6 @@ namespace nokandro
     [IntentFilter(new string[] {
         "android.appwidget.action.APPWIDGET_UPDATE",
         "nokandro.ACTION_UPDATE_TIMELINE",
-        "nokandro.ACTION_UPDATE_WIDGET",
         "nokandro.ACTION_TIMELINE_ITEM_CLICK",
         "nokandro.ACTION_TIMELINE_TOGGLE_TTS",
         "nokandro.ACTION_TIMELINE_TOGGLE_OFF_TIMER",
@@ -25,7 +24,6 @@ namespace nokandro
     public class TimelineWidget : AppWidgetProvider
     {
         public const string ACTION_UPDATE_TIMELINE = "nokandro.ACTION_UPDATE_TIMELINE";
-        public const string ACTION_UPDATE_WIDGET = "nokandro.ACTION_UPDATE_WIDGET";
         public const string ACTION_ITEM_CLICK = "nokandro.ACTION_TIMELINE_ITEM_CLICK";
         public const string ACTION_TOGGLE_TTS = "nokandro.ACTION_TIMELINE_TOGGLE_TTS";
         public const string ACTION_TOGGLE_OFF_TIMER = "nokandro.ACTION_TIMELINE_TOGGLE_OFF_TIMER";
@@ -54,10 +52,6 @@ namespace nokandro
             if (ACTION_UPDATE_TIMELINE.Equals(action) || Intent.ActionBootCompleted?.Equals(action) == true)
             {
                 UpdateAllWidgets(context, mgr, ids, notifyDataChanged: true);
-            }
-            else if (ACTION_UPDATE_WIDGET.Equals(action))
-            {
-                UpdateAllWidgets(context, mgr, ids, notifyDataChanged: false);
             }
             else if (ACTION_ITEM_CLICK.Equals(action))
             {
@@ -116,9 +110,11 @@ namespace nokandro
             {
                 if (NostrService.IsRunning)
                 {
+                    var nextTts = !NostrService.IsTtsEnabled;
                     var ttsIntent = new Intent(context, typeof(NostrService));
                     ttsIntent.SetAction(NostrService.ACTION_TOGGLE_TTS);
                     context.StartService(ttsIntent);
+                    UpdateAllWidgets(context, mgr, ids, notifyDataChanged: false, overrideTts: nextTts);
                 }
                 else
                 {
@@ -133,9 +129,11 @@ namespace nokandro
             {
                 if (NostrService.IsRunning)
                 {
+                    var nextOffTimer = !NostrService.IsOffTimerActive;
                     var timerIntent = new Intent(context, typeof(NostrService));
                     timerIntent.SetAction(NostrService.ACTION_TOGGLE_OFF_TIMER);
                     context.StartService(timerIntent);
+                    UpdateAllWidgets(context, mgr, ids, notifyDataChanged: false, overrideOffTimer: nextOffTimer);
                 }
                 else
                 {
@@ -148,8 +146,9 @@ namespace nokandro
             }
             else if (ACTION_TOGGLE_SERVICE.Equals(action))
             {
+                var nextRunning = !NostrService.IsRunning;
                 LiveNoteWidget.ToggleService(context);
-                UpdateAllWidgets(context, mgr, ids, notifyDataChanged: true);
+                UpdateAllWidgets(context, mgr, ids, notifyDataChanged: true, overrideRunning: nextRunning);
                 LiveNoteWidget.UpdateAllWidgets(context);
             }
         }
@@ -191,30 +190,51 @@ namespace nokandro
 
                 try
                 {
-                    var mgr = AppWidgetManager.GetInstance(appCtx);
-                    var ids = mgr?.GetAppWidgetIds(new ComponentName(appCtx, Java.Lang.Class.FromType(typeof(TimelineWidget))));
-                    if (mgr != null && ids != null && ids.Length > 0)
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
                     {
+                        UpdateAllWidgets(appCtx, notifyDataChanged: true);
+                    }
+                    else
+                    {
+                        var mgr = AppWidgetManager.GetInstance(appCtx);
+                        var ids = mgr?.GetAppWidgetIds(new ComponentName(appCtx, Java.Lang.Class.FromType(typeof(TimelineWidget))));
+                        if (mgr != null && ids != null && ids.Length > 0)
+                        {
 #pragma warning disable CA1422
-                        mgr.NotifyAppWidgetViewDataChanged(ids, Resource.Id.timelineListView);
+                            mgr.NotifyAppWidgetViewDataChanged(ids, Resource.Id.timelineListView);
 #pragma warning restore CA1422
+                        }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Android.Util.Log.Warn("TimelineWidget", $"ScheduleDebouncedDataRefresh failed: {ex.Message}");
+                }
             });
         }
 
-        private static void UpdateAllWidgets(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds, bool notifyDataChanged)
+        private static void UpdateAllWidgets(
+            Context context,
+            AppWidgetManager appWidgetManager,
+            int[] appWidgetIds,
+            bool notifyDataChanged,
+            bool? overrideRunning = null,
+            bool? overrideTts = null,
+            bool? overrideOffTimer = null)
         {
             var prefs = context.GetSharedPreferences("nokandro_prefs", FileCreationMode.Private);
+            var defaultRelay = prefs?.GetString("pref_relay", "wss://relay-jp.nostr.wirednet.jp/");
+            var density = context.Resources?.DisplayMetrics?.Density ?? 2.0f;
 
-            bool isTts = NostrService.IsRunning
+            bool isRunning = overrideRunning ?? NostrService.IsRunning;
+
+            bool isTts = overrideTts ?? (isRunning && !overrideRunning.HasValue
                 ? NostrService.IsTtsEnabled
-                : (prefs?.GetBoolean("pref_enable_tts", true) ?? true);
+                : (prefs?.GetBoolean("pref_enable_tts", true) ?? true));
 
-            bool isOffTimer = NostrService.IsRunning
+            bool isOffTimer = overrideOffTimer ?? (isRunning && !overrideRunning.HasValue
                 ? NostrService.IsOffTimerActive
-                : (prefs?.GetBoolean("pref_off_timer_enabled", false) ?? false);
+                : (prefs?.GetBoolean("pref_off_timer_enabled", false) ?? false));
 
             var immutableFlags = PendingIntentFlags.UpdateCurrent;
 #pragma warning disable CA1416
@@ -228,6 +248,17 @@ namespace nokandro
                 templateFlags |= PendingIntentFlags.Mutable;
 #pragma warning restore CA1416
 
+            // On Android 12+ (API 31+), build RemoteCollectionItems directly so header and list
+            // update atomically in a single UpdateAppWidget call (avoids Android 16's legacy
+            // RemoteViewsService -> RemoteCollectionItems conversion glitches and stale bitmaps).
+            RemoteViews.RemoteCollectionItems? collectionItems = null;
+#pragma warning disable CA1416
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
+            {
+                collectionItems = BuildRemoteCollectionItems(context, defaultRelay, isRunning, density);
+            }
+#pragma warning restore CA1416
+
             foreach (var widgetId in appWidgetIds)
             {
                 var remoteViews = new RemoteViews(context.PackageName, Resource.Layout.widget_timeline);
@@ -238,7 +269,7 @@ namespace nokandro
                 var piToggle = PendingIntent.GetBroadcast(context, 310, intentToggle, immutableFlags);
                 remoteViews.SetOnClickPendingIntent(Resource.Id.timelineAppIcon, piToggle);
 
-                if (NostrService.IsRunning)
+                if (isRunning)
                 {
                     remoteViews.SetImageViewResource(Resource.Id.timelineAppIcon, Resource.Mipmap.ic_launcher);
                 }
@@ -258,7 +289,7 @@ namespace nokandro
                 remoteViews.SetOnClickPendingIntent(Resource.Id.timelineAppTitle, piApp);
 
                 // 3. TTS & Timer chips (visible when running)
-                if (NostrService.IsRunning)
+                if (isRunning)
                 {
                     remoteViews.SetViewVisibility(Resource.Id.timelineTtsBtn, ViewStates.Visible);
                     remoteViews.SetTextViewText(Resource.Id.timelineTtsBtn, isTts ? "TTS" : "Muted");
@@ -307,15 +338,22 @@ namespace nokandro
                 // 5. Empty state text
                 remoteViews.SetTextViewText(
                     Resource.Id.timelineEmptyView,
-                    NostrService.IsRunning ? "Listening for posts on Nostr..." : "nokandro service is stopped");
+                    isRunning ? "Listening for posts on Nostr..." : "nokandro service is stopped");
 
                 // 6. ListView RemoteAdapter & PendingIntentTemplate
-                var svcIntent = new Intent(context, typeof(TimelineWidgetService));
-                svcIntent.PutExtra(AppWidgetManager.ExtraAppwidgetId, widgetId);
-                svcIntent.SetData(Android.Net.Uri.Parse(svcIntent.ToUri(IntentUriType.Scheme)));
-#pragma warning disable CA1422
-                remoteViews.SetRemoteAdapter(Resource.Id.timelineListView, svcIntent);
-#pragma warning restore CA1422
+#pragma warning disable CA1416, CA1422
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.S && collectionItems != null)
+                {
+                    remoteViews.SetRemoteAdapter(Resource.Id.timelineListView, collectionItems);
+                }
+                else
+                {
+                    var svcIntent = new Intent(context, typeof(TimelineWidgetService));
+                    svcIntent.PutExtra(AppWidgetManager.ExtraAppwidgetId, widgetId);
+                    svcIntent.SetData(Android.Net.Uri.Parse(svcIntent.ToUri(IntentUriType.Scheme)));
+                    remoteViews.SetRemoteAdapter(Resource.Id.timelineListView, svcIntent);
+                }
+#pragma warning restore CA1416, CA1422
                 remoteViews.SetEmptyView(Resource.Id.timelineListView, Resource.Id.timelineEmptyView);
 
                 var itemTemplateIntent = new Intent(context, typeof(TimelineWidget));
@@ -327,15 +365,166 @@ namespace nokandro
                 appWidgetManager.UpdateAppWidget(widgetId, remoteViews);
             }
 
-            if (notifyDataChanged)
+            if (notifyDataChanged && Build.VERSION.SdkInt < BuildVersionCodes.S)
             {
 #pragma warning disable CA1422
                 appWidgetManager.NotifyAppWidgetViewDataChanged(appWidgetIds, Resource.Id.timelineListView);
 #pragma warning restore CA1422
             }
         }
+
+#pragma warning disable CA1416
+        private static RemoteViews.RemoteCollectionItems BuildRemoteCollectionItems(
+            Context context,
+            string? defaultRelay,
+            bool isServiceRunning,
+            float density)
+        {
+            var items = LiveNoteStore.GetSnapshot(context, 50);
+            var builder = new RemoteViews.RemoteCollectionItems.Builder();
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                var itemRv = BuildItemRemoteView(context, item, defaultRelay, isServiceRunning, density);
+                builder.AddItem(ComputeStableItemId(item.Id, i), itemRv);
+            }
+            builder.SetHasStableIds(true);
+            builder.SetViewTypeCount(1);
+            return builder.Build();
+        }
+#pragma warning restore CA1416
+
+        internal static long ComputeStableItemId(string? eventId, int fallbackPosition)
+        {
+            if (!string.IsNullOrEmpty(eventId))
+            {
+                if (eventId.Length >= 16 &&
+                    ulong.TryParse(eventId.AsSpan(0, 16), System.Globalization.NumberStyles.HexNumber, null, out var parsed))
+                {
+                    return unchecked((long)parsed);
+                }
+                unchecked
+                {
+                    ulong hash = 14695981039346656037UL;
+                    foreach (var ch in eventId)
+                    {
+                        hash ^= ch;
+                        hash *= 1099511628211UL;
+                    }
+                    return (long)hash;
+                }
+            }
+            return fallbackPosition;
+        }
+
+        internal static RemoteViews BuildItemRemoteView(
+            Context context,
+            LiveNoteItem item,
+            string? defaultRelay,
+            bool isServiceRunning,
+            float density)
+        {
+            var rv = new RemoteViews(context.PackageName, Resource.Layout.widget_timeline_item);
+
+            // Author display name: petname -> kind:0 display_name/name -> shortened pubkey
+            var cachedDisplayName = UserProfileLoader.GetCachedDisplayName(context, item.Pubkey);
+            var authorLabel = !string.IsNullOrWhiteSpace(item.Petname)
+                ? item.Petname
+                : !string.IsNullOrWhiteSpace(cachedDisplayName)
+                    ? cachedDisplayName
+                    : (!string.IsNullOrEmpty(item.Pubkey) && item.Pubkey.Length >= 12 ? item.Pubkey[..12] + "…" : "Nostr");
+            rv.SetTextViewText(Resource.Id.timelineItemAuthor, authorLabel);
+
+            // Avatar via versioned ContentProvider URI (tiny IPC payload, prevents recycled/stale bitmap drift)
+            try
+            {
+                var avatarUri = LiveNoteAvatarHelper.GetOrCreateSmallCircularAvatarUri(context, item.Pubkey, authorLabel, density);
+                if (avatarUri != null)
+                {
+                    rv.SetImageViewUri(Resource.Id.timelineItemAvatar, avatarUri);
+                }
+                else
+                {
+                    rv.SetImageViewResource(Resource.Id.timelineItemAvatar, Resource.Mipmap.ic_launcher);
+                }
+            }
+            catch
+            {
+                rv.SetImageViewResource(Resource.Id.timelineItemAvatar, Resource.Mipmap.ic_launcher);
+            }
+
+            // Trigger background kind:0 profile/avatar refresh if missing or TTL expired
+            var effectiveRelay = !string.IsNullOrWhiteSpace(item.Relay) ? item.Relay : defaultRelay;
+            LiveNoteAvatarHelper.TriggerAvatarDownloadIfNeeded(context, item.Pubkey, effectiveRelay, () =>
+            {
+                ScheduleDebouncedDataRefresh(context);
+            });
+
+            // Relative time
+            var elapsed = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - item.CreatedAt;
+            var timeStr = elapsed < 60
+                ? "Just now"
+                : elapsed < 3600
+                    ? $"{elapsed / 60}m"
+                    : elapsed < 86400
+                        ? $"{elapsed / 3600}h"
+                        : $"{elapsed / 86400}d";
+            rv.SetTextViewText(Resource.Id.timelineItemTime, timeStr);
+
+            // Body text
+            var displayText = LiveNoteWidget.ShortenUrls(item.Content);
+            rv.SetTextViewText(Resource.Id.timelineItemText, displayText);
+
+            try
+            {
+                var isFollowed = item.IsFollowed ?? !string.IsNullOrWhiteSpace(item.Petname);
+                var primaryText = isServiceRunning
+                    ? new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface))
+                    : new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                var secondaryText = new Android.Graphics.Color(context.GetColor(Resource.Color.on_surface_variant));
+                var unfollowedAuthorColor = isServiceRunning
+                    ? secondaryText
+                    : new Android.Graphics.Color(secondaryText.R, secondaryText.G, secondaryText.B, (byte)155);
+                var authorColor = isFollowed ? primaryText : unfollowedAuthorColor;
+
+                rv.SetTextColor(Resource.Id.timelineItemAuthor, authorColor);
+                rv.SetTextColor(Resource.Id.timelineItemText, primaryText);
+                rv.SetTextColor(Resource.Id.timelineItemTime, secondaryText);
+
+                if (item.IsReacted)
+                {
+                    rv.SetTextViewText(Resource.Id.timelineItemStarBtn, "★");
+                    rv.SetTextColor(Resource.Id.timelineItemStarBtn, new Android.Graphics.Color(context.GetColor(Resource.Color.update_available)));
+                }
+                else
+                {
+                    rv.SetTextViewText(Resource.Id.timelineItemStarBtn, "☆");
+                    rv.SetTextColor(Resource.Id.timelineItemStarBtn, secondaryText);
+                }
+            }
+            catch { }
+
+            // Row tap -> open in nokakoi
+            var openFillIn = new Intent();
+            openFillIn.PutExtra("itemAction", "open");
+            openFillIn.PutExtra("eventId", item.Id);
+            openFillIn.PutExtra("authorPubkey", item.Pubkey);
+            openFillIn.PutExtra("relay", effectiveRelay ?? "");
+            openFillIn.PutExtra("kind", item.Kind > 0 ? item.Kind : 1);
+            rv.SetOnClickFillInIntent(Resource.Id.timelineItemRow, openFillIn);
+
+            // Star tap -> react (+)
+            var reactFillIn = new Intent();
+            reactFillIn.PutExtra("itemAction", "react");
+            reactFillIn.PutExtra("eventId", item.Id);
+            reactFillIn.PutExtra("authorPubkey", item.Pubkey);
+            rv.SetOnClickFillInIntent(Resource.Id.timelineItemStarBtn, reactFillIn);
+
+            return rv;
+        }
     }
 
+    // Fallback RemoteViewsService for Android 7-11 (API 24-30)
     [Service(Name = "com.nokakoi.nokandro.TimelineWidgetService", Permission = "android.permission.BIND_REMOTEVIEWS", Exported = false)]
     public sealed class TimelineWidgetService : RemoteViewsService
     {
@@ -348,7 +537,7 @@ namespace nokandro
     internal sealed class TimelineRemoteViewsFactory : Java.Lang.Object, RemoteViewsService.IRemoteViewsFactory
     {
         private readonly Context _context;
-        private List<LiveNoteItem> _items = new();
+        private volatile List<LiveNoteItem> _items = new();
         private string? _defaultRelay;
         private bool _isServiceRunning;
         private float _density = 2.0f;
@@ -386,110 +575,18 @@ namespace nokandro
 
         public void OnDestroy()
         {
-            _items.Clear();
+            _items = new List<LiveNoteItem>();
         }
 
         public int Count => _items.Count;
 
         public RemoteViews GetViewAt(int position)
         {
-            var rv = new RemoteViews(_context.PackageName, Resource.Layout.widget_timeline_item);
-            if (position < 0 || position >= _items.Count)
-                return rv;
+            var snapshot = _items;
+            if (position < 0 || position >= snapshot.Count)
+                return new RemoteViews(_context.PackageName, Resource.Layout.widget_timeline_item);
 
-            var item = _items[position];
-
-            // Author display name: petname -> kind:0 display_name/name -> shortened pubkey
-            var cachedDisplayName = UserProfileLoader.GetCachedDisplayName(_context, item.Pubkey);
-            var authorLabel = !string.IsNullOrWhiteSpace(item.Petname)
-                ? item.Petname
-                : !string.IsNullOrWhiteSpace(cachedDisplayName)
-                    ? cachedDisplayName
-                    : (!string.IsNullOrEmpty(item.Pubkey) && item.Pubkey.Length >= 12 ? item.Pubkey[..12] + "…" : "Nostr");
-            rv.SetTextViewText(Resource.Id.timelineItemAuthor, authorLabel);
-
-            // Avatar (compact 32dp circular bitmap; fallback initial uses resolved display name)
-            try
-            {
-                var avatarBmp = LiveNoteAvatarHelper.GetOrCreateSmallCircularAvatar(_context, item.Pubkey, authorLabel, _density);
-                if (avatarBmp != null && !avatarBmp.IsRecycled)
-                    rv.SetImageViewBitmap(Resource.Id.timelineItemAvatar, avatarBmp);
-                else
-                    rv.SetImageViewResource(Resource.Id.timelineItemAvatar, Resource.Mipmap.ic_launcher);
-            }
-            catch
-            {
-                rv.SetImageViewResource(Resource.Id.timelineItemAvatar, Resource.Mipmap.ic_launcher);
-            }
-
-            // Trigger background kind:0 profile/avatar refresh if missing or TTL expired
-            var effectiveRelay = !string.IsNullOrWhiteSpace(item.Relay) ? item.Relay : _defaultRelay;
-            LiveNoteAvatarHelper.TriggerAvatarDownloadIfNeeded(_context, item.Pubkey, effectiveRelay, () =>
-            {
-                TimelineWidget.ScheduleDebouncedDataRefresh(_context);
-            });
-
-            // Relative time
-            var elapsed = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - item.CreatedAt;
-            var timeStr = elapsed < 60
-                ? "Just now"
-                : elapsed < 3600
-                    ? $"{elapsed / 60}m"
-                    : elapsed < 86400
-                        ? $"{elapsed / 3600}h"
-                        : $"{elapsed / 86400}d";
-            rv.SetTextViewText(Resource.Id.timelineItemTime, timeStr);
-
-            // Body text
-            var displayText = LiveNoteWidget.ShortenUrls(item.Content);
-            rv.SetTextViewText(Resource.Id.timelineItemText, displayText);
-
-            try
-            {
-                var isFollowed = item.IsFollowed ?? !string.IsNullOrWhiteSpace(item.Petname);
-                var primaryText = _isServiceRunning
-                    ? new Android.Graphics.Color(_context.GetColor(Resource.Color.on_surface))
-                    : new Android.Graphics.Color(_context.GetColor(Resource.Color.on_surface_variant));
-                var secondaryText = new Android.Graphics.Color(_context.GetColor(Resource.Color.on_surface_variant));
-                var unfollowedAuthorColor = _isServiceRunning
-                    ? secondaryText
-                    : new Android.Graphics.Color(secondaryText.R, secondaryText.G, secondaryText.B, (byte)155);
-                var authorColor = isFollowed ? primaryText : unfollowedAuthorColor;
-
-                rv.SetTextColor(Resource.Id.timelineItemAuthor, authorColor);
-                rv.SetTextColor(Resource.Id.timelineItemText, primaryText);
-                rv.SetTextColor(Resource.Id.timelineItemTime, secondaryText);
-
-                if (item.IsReacted)
-                {
-                    rv.SetTextViewText(Resource.Id.timelineItemStarBtn, "★");
-                    rv.SetTextColor(Resource.Id.timelineItemStarBtn, new Android.Graphics.Color(_context.GetColor(Resource.Color.update_available)));
-                }
-                else
-                {
-                    rv.SetTextViewText(Resource.Id.timelineItemStarBtn, "☆");
-                    rv.SetTextColor(Resource.Id.timelineItemStarBtn, secondaryText);
-                }
-            }
-            catch { }
-
-            // Row tap -> open in nokakoi
-            var openFillIn = new Intent();
-            openFillIn.PutExtra("itemAction", "open");
-            openFillIn.PutExtra("eventId", item.Id);
-            openFillIn.PutExtra("authorPubkey", item.Pubkey);
-            openFillIn.PutExtra("relay", effectiveRelay ?? "");
-            openFillIn.PutExtra("kind", item.Kind > 0 ? item.Kind : 1);
-            rv.SetOnClickFillInIntent(Resource.Id.timelineItemRow, openFillIn);
-
-            // Star tap -> react (+)
-            var reactFillIn = new Intent();
-            reactFillIn.PutExtra("itemAction", "react");
-            reactFillIn.PutExtra("eventId", item.Id);
-            reactFillIn.PutExtra("authorPubkey", item.Pubkey);
-            rv.SetOnClickFillInIntent(Resource.Id.timelineItemStarBtn, reactFillIn);
-
-            return rv;
+            return TimelineWidget.BuildItemRemoteView(_context, snapshot[position], _defaultRelay, _isServiceRunning, _density);
         }
 
         public RemoteViews? LoadingView => null;
@@ -498,11 +595,9 @@ namespace nokandro
 
         public long GetItemId(int position)
         {
-            if (position < 0 || position >= _items.Count) return position;
-            var item = _items[position];
-            if (!string.IsNullOrEmpty(item.Id))
-                return item.Id.GetHashCode(StringComparison.Ordinal);
-            return position;
+            var snapshot = _items;
+            if (position < 0 || position >= snapshot.Count) return position;
+            return TimelineWidget.ComputeStableItemId(snapshot[position].Id, position);
         }
 
         public bool HasStableIds => true;
