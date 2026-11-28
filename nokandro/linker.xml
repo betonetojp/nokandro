@@ -7,6 +7,8 @@
     <type fullname="nokandro.BunkerClientStore" preserve="all" />
     <type fullname="nokandro.BunkerClientStore+ClientsRoot" preserve="all" />
     <type fullname="nokandro.BunkerClientStore+ClientRecord" preserve="all" />
+    <type fullname="nokandro.LiveNoteItem" preserve="all" />
+    <type fullname="nokandro.UserProfileLoader+ProfileCacheMeta" preserve="all" />
   </assembly>
   <!-- Dialog/UI; assembly-wide preserve (replaces per-widget list). Button colors: SetTextColor in code. -->
   <assembly fullname="Mono.Android" preserve="all" />

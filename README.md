@@ -28,9 +28,10 @@ Package name: `com.nokakoi.nokandro`
 - **Off timer**: Automatically stops the service after a configurable number of minutes. Can be toggled ON/OFF even while the service is running (duration can be edited while stopped).
 - **Turn off Off timer when it ends**: When enabled, the Off timer switch will automatically turn OFF when the timer expires.
 - **Relay list fetch**: Fetches your relay list (kind: 10002) from known relays and lets you pick one.
-- **Home screen widgets**: Includes a 2x1 quick toggle & post widget, plus a feature-rich 4x2 **Nostr Live Note widget** featuring a real-time post stream, kind 0 author avatars with automatic EXIF orientation correction, kind 7 star reactions, one-tap button (`Open`) to open the displayed note in `nokakoi` (`https://nokakoi.com/app/nevent1...`), 50-post history navigation (expandable up to 100 posts while retaining viewed position on new arrivals, with auto-trimming upon returning to latest), one-tap jump buttons to earliest (`«`) and latest (`»`) posts, accidental-tap prevention on margins, independent service toggle, dedicated TTS/Muted controls, and a `Timer` button to toggle the Off timer on/off while running.
+- **Home screen widgets**: Includes three widgets: a 2x1 **Nostr Post** quick toggle & post widget, a 4x2 **Nostr Live Note** widget (single-post stream with history navigation, avatars, reactions, `Open` in nokakoi, and service/TTS/Timer controls), and a resizable vertically scrollable **Nostr Timeline** widget (4x4 default, up to 50 recent posts & reactions with per-row nokakoi open and star reaction).
 - **Steganography TTS decoding**: Automatically decodes and speaks hidden text embedded with Unicode Plane 14 tag characters (sexy gyouza) during text-to-speech without extra overhead.
 - **Monochrome Notification Icon**: Silhouette notification vector icon (`ic_stat_nokandro`) with dynamic tinting for full compatibility with modern Android versions (Google Pixel, Android 12-15) without solid circular masking.
+- **Quick Settings Tiles**: Adds two Android Quick Settings tiles (`nokandro` for service ON/OFF and `nokandro TTS` for speaking/mute toggle) accessible from the system notification shade; long-pressing either tile opens the app.
 - **Tasker / automation support**: Start and stop the service via broadcast intents.
 - The background service uses foreground notifications, ensuring stability and allowing stop control from the notification area.
 
@@ -116,7 +117,10 @@ For detailed documentation on the remote signer feature, see [BUNKER.md](BUNKER.
 
 ## Widget & Tasker
 
-- **Home screen widget**: Add the **Nostr Post** widget (picker name) to your home screen. The widget shows **Quick Post** on its label; tap the icon to start/stop the service, or tap the label to open the quick post dialog.
+- **Home screen widgets**: nokandro provides three home screen widgets in the Android widget picker:
+  - **Nostr Post** (2x1): Displays **Quick Post** on its label. Tap the icon to start/stop the service, or tap the label to open the quick post dialog.
+  - **Nostr Live Note** (4x2, resizable): Single-note real-time reader with circular `kind: 0` author avatars (automatic EXIF orientation correction), `kind: 7` incoming reaction display, `Open` button to view the note in `nokakoi` (`https://nokakoi.com/app/nevent1...`), `☆ React` / `★ Reacted` star button, 50-post history navigation (`«` / `‹` / `›` / `»` and left/right touch zones, expandable up to 100 posts while keeping the viewed post on new arrivals), accidental-tap prevention on margins, and top-bar controls for service toggle (icon), `TTS`/`Muted`, `Timer`, and `Post`.
+  - **Nostr Timeline** (4x4 default, resizable): Vertically scrollable timeline (`ListView`) showing up to 50 recent posts and incoming reactions in chronological order. Each row displays a circular avatar (`kind: 0` cached with 24h refresh), author name (`petname` → `kind: 0` `display_name`/`name`, with unfollowed authors dimmed in gray), relative timestamp, shortened post body (up to 4 lines), and a `☆`/`★` reaction button; tapping a row opens the note in `nokakoi`, and tapping `☆` sends a star reaction synced with Nostr Live Note. Includes top-bar controls for service toggle (icon), `TTS`/`Muted`, `Timer`, and `Post`.
 - **Tasker / automation**: Send broadcast intents to control the service:
   - `com.nokakoi.nokandro.ACTION_START` - Start the service using saved preferences.
   - `com.nokakoi.nokandro.ACTION_STOP` - Stop the service.
@@ -207,9 +211,10 @@ When installing an update directly from within nokandro for the first time, Andr
 - **オフタイマー**: 指定時間後にサービスを自動停止します。サービス起動中でもオン/オフを切り替えられます（分数の変更は停止中のみ）。
 - **Turn off Off timer when it ends**: 有効にすると、Off timer が終了した時に自動的に Off timer スイッチが OFF になります。
 - **リレーリスト取得**: リレーリスト (kind: 10002) を取得して接続先を選択できます。
-- **ホーム画面ウィジェット**: サービスのON/OFFとクイック投稿ができる 2x1 ウィジェットに加え、Nostrの最新投稿をリアルタイム表示する 4x2「**Nostr Live Note ウィジェット**」を搭載。投稿者のアイコン・アバター表示（Exif向き自動補正対応）、通常50件（過去投稿閲覧中に新着を受信した場合は最大100件キープ、最新復帰時に自動トリミング）の履歴ナビゲーション、最古（`«`）および最新（`»`）への一括ジャンプボタン、下部余白の誤タップ防止、nokakoiのイベント詳細モーダルで開くボタン（`Open`）、スターリアクション（★/☆ React）、サービス稼働（投稿受信）・音声読み上げ（TTS/Muted）・オフタイマー（`Timer`）の個別切り替えに対応しています。
+- **ホーム画面ウィジェット**: 3 種類のウィジェットを搭載しています。サービスの ON/OFF とクイック投稿ができる 2x1「**Nostr Post**」、1 件ずつじっくり読める 4x2「**Nostr Live Note**」（履歴ナビ・アバター・リアクション・`Open`・TTS/Timer 操作）、縦スクロールで直近 50 件を一覧表示できるリサイズ対応「**Nostr Timeline**」（行タップで nokakoi 表示・行ごとの `☆/★` リアクション対応）。
 - **セクシー餃子の読み上げ対応**: Unicode Plane 14 タグ文字で不可視埋め込みされた隠しテキスト（セクシー餃子）を自動復号し、音声合成（TTS）で自然に読み上げます。
 - **通知アイコンのシルエット対応**: Google Pixel や Android 12〜15 などの新しい端末で通知アイコンが丸く塗りつぶされる問題に対応した、背景透明・単色ストロークのベクターアイコン（`ic_stat_nokandro`）を搭載。
+- **クイック設定タイル（Quick Settings Tile）**: Android のクイック設定パネルから、ホーム画面やアプリへ戻らずにワンタップでサービス ON/OFF（`nokandro`）および読み上げ ON/OFF（`nokandro TTS`）を切り替えられます（タイル長押しでアプリを起動）。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスの開始・停止を制御できます。
 - バックグラウンドサービスはフォアグラウンド通知を使用し、通知領域から停止操作が可能です。
 
@@ -295,7 +300,10 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 
 ## ウィジェット & Tasker
 
-- **ホーム画面ウィジェット**: ウィジェット一覧では **Nostr Post**、画面上のラベルは **Quick Post** と表示されます。アイコンタップでサービスの ON/OFF、ラベルタップでクイック投稿ダイアログを開けます。
+- **ホーム画面ウィジェット**: Android のウィジェット一覧から用途に合わせて 3 種類を配置できます。
+  - **Nostr Post**（2x1）: 画面上のラベルは **Quick Post** と表示されます。アイコンタップでサービスの ON/OFF、ラベルタップでクイック投稿ダイアログを開けます。
+  - **Nostr Live Note**（4x2・リサイズ対応）: 1 件ずつリアルタイムに閲覧できるウィジェット。円形アバター（`kind: 0`・Exif 向き自動補正）、受信リアクション（`kind: 7`）表示、`Open`（`nokakoi` の `nevent1...` で開く）、`☆ React` / `★ Reacted` ボタン、通常 50 件（過去投稿閲覧中は新着時に最大 100 件キープして表示位置を維持、最新復帰時に自動トリミング）の履歴ナビゲーション（`«` / `‹` / `›` / `»` および左右タッチ領域）、下部余白の誤タップ防止、上部バーからのサービス ON/OFF（アイコン）・`TTS`/`Muted`・`Timer`・`Post` 操作に対応。
+  - **Nostr Timeline**（標準 4x4・縦横リサイズ対応）: 直近 50 件の投稿・受信リアクションを縦スクロール（`ListView`）で一覧表示できるタイムラインウィジェット。各行に円形アバター（`kind: 0` 24 時間 TTL 自動更新対応）・投稿者名（`petname` → `kind: 0` の `display_name`/`name`、非フォローはグレー表示で区別）・相対時刻・本文（最大 4 行・URL 短縮）・`☆`/`★` ボタンを備え、行タップでその投稿を `nokakoi` で開き、`☆` タップでスターリアクション送信（Nostr Live Note とも状態同期）が可能です。上部バーからサービス ON/OFF（アイコン）・`TTS`/`Muted`・`Timer`・`Post` 操作も行えます。
 - **Tasker / 自動化**: ブロードキャスト Intent でサービスを制御できます。
   - `com.nokakoi.nokandro.ACTION_START` - 保存済みの設定でサービスを開始。
   - `com.nokakoi.nokandro.ACTION_STOP` - サービスを停止。

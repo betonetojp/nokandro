@@ -11,10 +11,62 @@ namespace nokandro
     public static class LiveNoteAvatarHelper
     {
         private static readonly ConcurrentDictionary<string, Bitmap> CompositeCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, Bitmap> SmallAvatarCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, byte> InFlightDownloads = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, long> FailedFetchBackoffUntil = new(StringComparer.OrdinalIgnoreCase);
 
         public static void ClearMemoryCache()
         {
             CompositeCache.Clear();
+            SmallAvatarCache.Clear();
+        }
+
+        internal static void InvalidateMemoryCacheForPubkey(string pubkeyHex)
+        {
+            if (string.IsNullOrWhiteSpace(pubkeyHex)) return;
+            var prefix = $"{pubkeyHex}_";
+            foreach (var key in CompositeCache.Keys)
+            {
+                if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    CompositeCache.TryRemove(key, out _);
+            }
+            foreach (var key in SmallAvatarCache.Keys)
+            {
+                if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    SmallAvatarCache.TryRemove(key, out _);
+            }
+        }
+
+        public static Bitmap GetOrCreateSmallCircularAvatar(Context context, string pubkeyHex, string? petname, float density)
+        {
+            UserProfileLoader.EnsureCacheVersion(context);
+
+            var cacheKey = $"{pubkeyHex}_{petname ?? ""}";
+            if (SmallAvatarCache.TryGetValue(cacheKey, out var cached) && cached != null && !cached.IsRecycled)
+            {
+                return cached;
+            }
+
+            Bitmap? rawSrc = null;
+            if (!string.IsNullOrEmpty(pubkeyHex))
+            {
+                var cacheDir = IOPath.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
+                var srcFilePath = IOPath.Combine(cacheDir, $"{pubkeyHex}_src.png");
+                if (File.Exists(srcFilePath))
+                {
+                    try
+                    {
+                        rawSrc = BitmapFactory.DecodeFile(srcFilePath);
+                    }
+                    catch { }
+                }
+            }
+
+            var bmp = RenderSmallCircular(rawSrc, petname, pubkeyHex, density);
+            rawSrc?.Recycle();
+
+            SmallAvatarCache[cacheKey] = bmp;
+            return bmp;
         }
 
         public static Bitmap GetOrCreateAvatar(Context context, string pubkeyHex, string? petname, float density)
@@ -57,33 +109,78 @@ namespace nokandro
             var cacheDir = IOPath.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
             Directory.CreateDirectory(cacheDir);
             var srcFilePath = IOPath.Combine(cacheDir, $"{pubkeyHex}_src.png");
-            if (File.Exists(srcFilePath)) return;
+
+            var srcExists = File.Exists(srcFilePath);
+            var prevMeta = UserProfileLoader.GetCachedProfileMeta(context, pubkeyHex);
+            var isFresh = UserProfileLoader.IsProfileCacheFresh(context, pubkeyHex);
+            if (isFresh && (srcExists || string.IsNullOrEmpty(prevMeta?.PictureUrl)))
+                return;
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (FailedFetchBackoffUntil.TryGetValue(pubkeyHex, out var backoffUntil) && now < backoffUntil)
+                return;
+
+            if (!InFlightDownloads.TryAdd(pubkeyHex, 0)) return;
+            var appCtx = context.ApplicationContext ?? context;
 
             Task.Run(async () =>
             {
                 try
                 {
-                    var picUrl = await UserProfileLoader.FetchPictureUrlAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
-                    if (string.IsNullOrEmpty(picUrl)) return;
-
-                    var avatar = await UserProfileLoader.DownloadAndProcessAvatarAsync(picUrl, srcFilePath, context).ConfigureAwait(false);
-                    avatar?.Recycle();
-
-                    // Invalidate composite cache for this pubkey
-                    var prefix = $"{pubkeyHex}_";
-                    foreach (var key in CompositeCache.Keys)
+                    var (found, picUrl, displayName) = await UserProfileLoader.FetchProfileAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
+                    if (!found)
                     {
-                        if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                        {
-                            CompositeCache.TryRemove(key, out _);
-                        }
+                        // Retry after 5 minutes on transient network failure
+                        FailedFetchBackoffUntil[pubkeyHex] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 300;
+                        return;
                     }
 
-                    onDownloaded?.Invoke();
+                    FailedFetchBackoffUntil.TryRemove(pubkeyHex, out _);
+
+                    var prevName = prevMeta?.DisplayName;
+                    var prevPic = prevMeta?.PictureUrl;
+                    var nameChanged = !string.Equals(prevName ?? "", displayName ?? "", StringComparison.Ordinal);
+                    var picChanged = !string.Equals(prevPic ?? "", picUrl ?? "", StringComparison.Ordinal);
+                    var currentSrcExists = File.Exists(srcFilePath);
+
+                    UserProfileLoader.SaveProfileMeta(appCtx, pubkeyHex, displayName, picUrl);
+
+                    var avatarUpdated = false;
+                    if (!string.IsNullOrEmpty(picUrl) && (picChanged || !currentSrcExists))
+                    {
+                        var avatar = await UserProfileLoader.DownloadAndProcessAvatarAsync(picUrl, srcFilePath, appCtx).ConfigureAwait(false);
+                        if (avatar != null)
+                        {
+                            avatar.Recycle();
+                            InvalidateMemoryCacheForPubkey(pubkeyHex);
+                            UserProfileLoader.InvalidateAvatarMemoryCache(pubkeyHex);
+                            avatarUpdated = true;
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(picUrl) && picChanged && currentSrcExists)
+                    {
+                        try { File.Delete(srcFilePath); } catch { }
+                        InvalidateMemoryCacheForPubkey(pubkeyHex);
+                        UserProfileLoader.InvalidateAvatarMemoryCache(pubkeyHex);
+                        avatarUpdated = true;
+                    }
+                    else if (nameChanged && !currentSrcExists)
+                    {
+                        InvalidateMemoryCacheForPubkey(pubkeyHex);
+                    }
+
+                    if (avatarUpdated || nameChanged)
+                    {
+                        onDownloaded?.Invoke();
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Android.Util.Log.Debug("LiveNoteAvatarHelper", $"Avatar fetch failed: {ex.Message}");
+                    Android.Util.Log.Debug("LiveNoteAvatarHelper", $"Profile fetch failed: {ex.Message}");
+                }
+                finally
+                {
+                    InFlightDownloads.TryRemove(pubkeyHex, out _);
                 }
             });
         }
@@ -217,6 +314,70 @@ namespace nokandro
                 var fontMetrics = textPaint.GetFontMetrics();
                 var textBaseline = pillRect.CenterY() - (fontMetrics.Descent + fontMetrics.Ascent) / 2f;
                 canvas.DrawText(displayPetname, pillRect.CenterX(), textBaseline, textPaint);
+            }
+
+            return result;
+        }
+
+        private static Bitmap RenderSmallCircular(Bitmap? rawSrc, string? petname, string? pubkeyHex, float density)
+        {
+            var clampedDensity = Math.Clamp(density, 1f, 3f);
+            var size = (int)(32 * clampedDensity);
+            var radius = size / 2f;
+            var result = Bitmap.CreateBitmap(size, size, Bitmap.Config.Argb8888!)!;
+            using var canvas = new Canvas(result);
+
+            if (rawSrc != null && !rawSrc.IsRecycled)
+            {
+                using var shader = new BitmapShader(rawSrc, Shader.TileMode.Clamp!, Shader.TileMode.Clamp!);
+                using var matrix = new Matrix();
+                var scale = Math.Max((float)size / rawSrc.Width, (float)size / rawSrc.Height);
+                var dx = radius - (rawSrc.Width * scale) / 2f;
+                var dy = radius - (rawSrc.Height * scale) / 2f;
+                matrix.SetScale(scale, scale);
+                matrix.PostTranslate(dx, dy);
+                shader.SetLocalMatrix(matrix);
+
+                using var avatarPaint = new Paint(PaintFlags.AntiAlias);
+                avatarPaint.SetShader(shader);
+                canvas.DrawCircle(radius, radius, radius, avatarPaint);
+
+                using var borderPaint = new Paint(PaintFlags.AntiAlias)
+                {
+                    Color = Color.Argb(60, 255, 255, 255),
+                    StrokeWidth = 1f * clampedDensity
+                };
+                borderPaint.SetStyle(Paint.Style.Stroke);
+                canvas.DrawCircle(radius, radius, radius - 0.5f * clampedDensity, borderPaint);
+            }
+            else
+            {
+                using var bgPaint = new Paint(PaintFlags.AntiAlias)
+                {
+                    Color = Color.Argb(255, 45, 55, 72)
+                };
+                bgPaint.SetStyle(Paint.Style.Fill);
+                canvas.DrawCircle(radius, radius, radius, bgPaint);
+
+                var initial = "?";
+                if (!string.IsNullOrWhiteSpace(petname))
+                    initial = petname.Substring(0, 1).ToUpperInvariant();
+                else if (!string.IsNullOrWhiteSpace(pubkeyHex))
+                    initial = pubkeyHex.Substring(0, 1).ToUpperInvariant();
+
+                using var textPaint = new Paint(PaintFlags.AntiAlias)
+                {
+                    Color = Color.White,
+                    TextSize = 13f * clampedDensity,
+                    TextAlign = Paint.Align.Center
+                };
+                textPaint.SetTypeface(Typeface.Create(Typeface.Default, TypefaceStyle.Bold));
+                var fm = textPaint.GetFontMetrics();
+                if (fm != null)
+                {
+                    var baseline = radius - (fm.Descent + fm.Ascent) / 2f;
+                    canvas.DrawText(initial, radius, baseline, textPaint);
+                }
             }
 
             return result;

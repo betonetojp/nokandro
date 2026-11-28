@@ -30,6 +30,7 @@ namespace nokandro
                     if (intent.Action == Intent.ActionMyPackageReplaced)
                         AppUpdateNotifier.CancelNotification(context);
                     AppUpdateNotifier.SchedulePeriodicCheck(context);
+                    QuickSettingsTileHelper.RequestTileUpdates(context);
                 }
                 catch { }
             }

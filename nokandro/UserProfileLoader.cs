@@ -21,7 +21,17 @@ namespace nokandro
     /// </summary>
     public static class UserProfileLoader
     {
+        internal sealed class ProfileCacheMeta
+        {
+            public string? DisplayName { get; set; }
+            public string? PictureUrl { get; set; }
+            public long FetchedAt { get; set; }
+        }
+
+        internal const long ProfileCacheTtlSeconds = 24 * 60 * 60;
         private static readonly ConcurrentDictionary<string, Bitmap> MemoryCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, ProfileCacheMeta> MetaCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, byte> SelfRevalidateInFlight = new(StringComparer.OrdinalIgnoreCase);
         private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(6) };
 
         private static readonly string[] DefaultRelays =
@@ -49,6 +59,7 @@ namespace nokandro
                         System.IO.Directory.Delete(cacheDir, true);
                     }
                     MemoryCache.Clear();
+                    MetaCache.Clear();
                     LiveNoteAvatarHelper.ClearMemoryCache();
                     prefs?.Edit()?.PutInt(PREF_AVATAR_CACHE_VERSION, CURRENT_AVATAR_CACHE_VERSION)?.Apply();
                     Android.Util.Log.Info("UserProfileLoader", $"EnsureCacheVersion: Purged profile_avatars cache for version {CURRENT_AVATAR_CACHE_VERSION}");
@@ -82,6 +93,10 @@ namespace nokandro
             if (MemoryCache.TryGetValue(pubkeyHex, out var cached) && cached != null && !cached.IsRecycled)
             {
                 ApplyAvatar(layout, pubkeyHex, cached);
+                if (!IsProfileCacheFresh(context, pubkeyHex))
+                {
+                    RevalidateSelfAvatarInBackground(context, layout, pubkeyHex, preferredRelay);
+                }
                 return;
             }
 
@@ -110,6 +125,10 @@ namespace nokandro
                         {
                             MemoryCache[pubkeyHex] = avatarBmp;
                             ApplyAvatar(layout, pubkeyHex, avatarBmp);
+                            if (!IsProfileCacheFresh(context, pubkeyHex))
+                            {
+                                RevalidateSelfAvatarInBackground(context, layout, pubkeyHex, preferredRelay);
+                            }
                             return;
                         }
                     }
@@ -121,25 +140,122 @@ namespace nokandro
             }
 
             // 3. Fetch kind 0 metadata from relays in background
+            RevalidateSelfAvatarInBackground(context, layout, pubkeyHex, preferredRelay);
+        }
+
+        private static void RevalidateSelfAvatarInBackground(Context context, TextInputLayout layout, string pubkeyHex, string? preferredRelay)
+        {
+            if (!SelfRevalidateInFlight.TryAdd(pubkeyHex, 0)) return;
+            var appCtx = context.ApplicationContext ?? context;
+
             Task.Run(async () =>
             {
                 try
                 {
-                    var pictureUrl = await FetchPictureUrlAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
-                    if (string.IsNullOrEmpty(pictureUrl)) return;
+                    var cacheDir = System.IO.Path.Combine(appCtx.CacheDir?.AbsolutePath ?? "", "profile_avatars");
+                    System.IO.Directory.CreateDirectory(cacheDir);
+                    var srcFilePath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}_src.png");
+                    var prevMeta = GetCachedProfileMeta(appCtx, pubkeyHex);
 
-                    var bitmap = await DownloadAndProcessAvatarAsync(pictureUrl, srcFilePath, context).ConfigureAwait(false);
-                    if (bitmap != null)
+                    var (found, pictureUrl, displayName) = await FetchProfileAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
+                    if (!found) return;
+
+                    var picChanged = !string.Equals(prevMeta?.PictureUrl ?? "", pictureUrl ?? "", StringComparison.Ordinal);
+                    var srcExists = System.IO.File.Exists(srcFilePath);
+                    SaveProfileMeta(appCtx, pubkeyHex, displayName, pictureUrl);
+
+                    if (!string.IsNullOrEmpty(pictureUrl) && (picChanged || !srcExists))
                     {
-                        MemoryCache[pubkeyHex] = bitmap;
-                        ApplyAvatar(layout, pubkeyHex, bitmap);
+                        var bitmap = await DownloadAndProcessAvatarAsync(pictureUrl, srcFilePath, appCtx).ConfigureAwait(false);
+                        if (bitmap != null)
+                        {
+                            MemoryCache[pubkeyHex] = bitmap;
+                            LiveNoteAvatarHelper.InvalidateMemoryCacheForPubkey(pubkeyHex);
+                            ApplyAvatar(layout, pubkeyHex, bitmap);
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(pictureUrl) && picChanged && srcExists)
+                    {
+                        try { System.IO.File.Delete(srcFilePath); } catch { }
+                        MemoryCache.TryRemove(pubkeyHex, out _);
+                        LiveNoteAvatarHelper.InvalidateMemoryCacheForPubkey(pubkeyHex);
                     }
                 }
                 catch (Exception ex)
                 {
                     Android.Util.Log.Debug("UserProfileLoader", $"Failed to fetch avatar for {pubkeyHex}: {ex.Message}");
                 }
+                finally
+                {
+                    SelfRevalidateInFlight.TryRemove(pubkeyHex, out _);
+                }
             });
+        }
+
+        internal static ProfileCacheMeta? GetCachedProfileMeta(Context context, string pubkeyHex)
+        {
+            if (string.IsNullOrWhiteSpace(pubkeyHex)) return null;
+            if (MetaCache.TryGetValue(pubkeyHex, out var cached))
+                return cached;
+
+            try
+            {
+                var cacheDir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
+                var metaPath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}_meta.json");
+                if (System.IO.File.Exists(metaPath))
+                {
+                    var json = System.IO.File.ReadAllText(metaPath);
+                    var meta = JsonSerializer.Deserialize<ProfileCacheMeta>(json);
+                    if (meta != null)
+                    {
+                        MetaCache[pubkeyHex] = meta;
+                        return meta;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
+        internal static string? GetCachedDisplayName(Context context, string pubkeyHex)
+        {
+            var name = GetCachedProfileMeta(context, pubkeyHex)?.DisplayName;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+
+        internal static bool IsProfileCacheFresh(Context context, string pubkeyHex)
+        {
+            var meta = GetCachedProfileMeta(context, pubkeyHex);
+            if (meta == null || meta.FetchedAt <= 0) return false;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            return (now - meta.FetchedAt) < ProfileCacheTtlSeconds;
+        }
+
+        internal static void SaveProfileMeta(Context context, string pubkeyHex, string? displayName, string? pictureUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pubkeyHex)) return;
+            var meta = new ProfileCacheMeta
+            {
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+                PictureUrl = string.IsNullOrWhiteSpace(pictureUrl) ? null : pictureUrl.Trim(),
+                FetchedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            };
+            MetaCache[pubkeyHex] = meta;
+            try
+            {
+                var cacheDir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? "", "profile_avatars");
+                System.IO.Directory.CreateDirectory(cacheDir);
+                var metaPath = System.IO.Path.Combine(cacheDir, $"{pubkeyHex}_meta.json");
+                System.IO.File.WriteAllText(metaPath, JsonSerializer.Serialize(meta));
+            }
+            catch { }
+        }
+
+        internal static void InvalidateAvatarMemoryCache(string pubkeyHex)
+        {
+            if (!string.IsNullOrWhiteSpace(pubkeyHex))
+                MemoryCache.TryRemove(pubkeyHex, out _);
         }
 
         private static string? ResolvePubkeyHex(string? input)
@@ -196,6 +312,12 @@ namespace nokandro
 
         internal static async Task<string?> FetchPictureUrlAsync(string pubkeyHex, string? preferredRelay)
         {
+            var (_, pictureUrl, _) = await FetchProfileAsync(pubkeyHex, preferredRelay).ConfigureAwait(false);
+            return pictureUrl;
+        }
+
+        internal static async Task<(bool found, string? pictureUrl, string? displayName)> FetchProfileAsync(string pubkeyHex, string? preferredRelay)
+        {
             var relays = new List<string>();
             if (!string.IsNullOrWhiteSpace(preferredRelay) &&
                 (preferredRelay.StartsWith("wss://", StringComparison.OrdinalIgnoreCase) || preferredRelay.StartsWith("ws://", StringComparison.OrdinalIgnoreCase)))
@@ -240,11 +362,11 @@ namespace nokandro
 
                             if (msg.Contains("\"EVENT\""))
                             {
-                                var picture = ParsePictureFromEvent(msg);
-                                if (!string.IsNullOrEmpty(picture))
+                                var (parsed, picture, displayName) = ParseProfileFromEvent(msg);
+                                if (parsed)
                                 {
-                                    Android.Util.Log.Info("UserProfileLoader", $"Found avatar picture URL: {picture}");
-                                    return picture;
+                                    Android.Util.Log.Info("UserProfileLoader", $"Found kind 0 profile: name={displayName ?? "(none)"}, picture={picture ?? "(none)"}");
+                                    return (true, picture, displayName);
                                 }
                                 break;
                             }
@@ -257,10 +379,10 @@ namespace nokandro
                 }
             }
 
-            return null;
+            return (false, null, null);
         }
 
-        private static string? ParsePictureFromEvent(string json)
+        private static (bool parsed, string? pictureUrl, string? displayName) ParseProfileFromEvent(string json)
         {
             try
             {
@@ -276,21 +398,45 @@ namespace nokandro
                         if (!string.IsNullOrEmpty(content))
                         {
                             using var profileDoc = JsonDocument.Parse(content);
-                            if (profileDoc.RootElement.TryGetProperty("picture", out var picProp) &&
+                            var pRoot = profileDoc.RootElement;
+
+                            string? pictureUrl = null;
+                            if (pRoot.TryGetProperty("picture", out var picProp) &&
                                 picProp.ValueKind == JsonValueKind.String)
                             {
-                                var url = picProp.GetString();
-                                if (!string.IsNullOrEmpty(url) && (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+                                var url = picProp.GetString()?.Trim();
+                                if (!string.IsNullOrEmpty(url) &&
+                                    (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                                     url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
                                 {
-                                    return url;
+                                    pictureUrl = url;
                                 }
                             }
+
+                            string? displayName = null;
+                            if (pRoot.TryGetProperty("display_name", out var dnProp) &&
+                                dnProp.ValueKind == JsonValueKind.String)
+                            {
+                                var dn = dnProp.GetString()?.Trim();
+                                if (!string.IsNullOrEmpty(dn))
+                                    displayName = dn;
+                            }
+                            if (string.IsNullOrEmpty(displayName) &&
+                                pRoot.TryGetProperty("name", out var nameProp) &&
+                                nameProp.ValueKind == JsonValueKind.String)
+                            {
+                                var n = nameProp.GetString()?.Trim();
+                                if (!string.IsNullOrEmpty(n))
+                                    displayName = n;
+                            }
+
+                            return (true, pictureUrl, displayName);
                         }
                     }
                 }
             }
             catch { }
-            return null;
+            return (false, null, null);
         }
 
         internal static async Task<Bitmap?> DownloadAndProcessAvatarAsync(string pictureUrl, string diskCachePath, Context context)
@@ -305,10 +451,10 @@ namespace nokandro
 
                 rawBitmap = ApplyExifOrientation(rawBitmap, bytes);
 
-                // Save to disk cache for instant offline restore
+                // Save to disk cache for instant offline restore (truncate/overwrite cleanly)
                 try
                 {
-                    using var fs = System.IO.File.OpenWrite(diskCachePath);
+                    using var fs = System.IO.File.Create(diskCachePath);
                     rawBitmap.Compress(Bitmap.CompressFormat.Png, 100, fs);
                 }
                 catch { }

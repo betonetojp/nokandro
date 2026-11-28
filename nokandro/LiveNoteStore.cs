@@ -32,6 +32,9 @@ namespace nokandro
 
         [JsonPropertyName("kind")]
         public int Kind { get; set; } = 1;
+
+        [JsonPropertyName("isFollowed")]
+        public bool? IsFollowed { get; set; }
     }
 
     public static class LiveNoteStore
@@ -81,7 +84,7 @@ namespace nokandro
             }
         }
 
-        public static void AddPost(Context context, string id, string pubkey, string content, string? petname, long createdAt, string? relay = null, int kind = 1)
+        public static void AddPost(Context context, string id, string pubkey, string content, string? petname, long createdAt, string? relay = null, int kind = 1, bool? isFollowed = null)
         {
             if (string.IsNullOrWhiteSpace(id) && string.IsNullOrWhiteSpace(content)) return;
 
@@ -109,7 +112,8 @@ namespace nokandro
                     CreatedAt = createdAt > 0 ? createdAt : DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     IsReacted = false,
                     Relay = string.IsNullOrWhiteSpace(relay) ? null : relay.Trim(),
-                    Kind = kind > 0 ? kind : 1
+                    Kind = kind > 0 ? kind : 1,
+                    IsFollowed = isFollowed
                 };
 
                 Posts.Insert(0, item);
@@ -159,6 +163,33 @@ namespace nokandro
                 if (Posts.Count == 0) return null;
                 if (_currentIndex >= Posts.Count) _currentIndex = 0;
                 return Posts[_currentIndex];
+            }
+        }
+
+        public static List<LiveNoteItem> GetSnapshot(Context context, int maxCount = MAX_POSTS)
+        {
+            lock (Lock)
+            {
+                EnsureInitialized(context);
+                var count = Math.Min(Posts.Count, Math.Max(0, maxCount));
+                var result = new List<LiveNoteItem>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    var p = Posts[i];
+                    result.Add(new LiveNoteItem
+                    {
+                        Id = p.Id,
+                        Pubkey = p.Pubkey,
+                        Content = p.Content,
+                        Petname = p.Petname,
+                        CreatedAt = p.CreatedAt,
+                        IsReacted = p.IsReacted,
+                        Relay = p.Relay,
+                        Kind = p.Kind,
+                        IsFollowed = p.IsFollowed
+                    });
+                }
+                return result;
             }
         }
 

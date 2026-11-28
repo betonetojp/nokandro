@@ -105,6 +105,7 @@ namespace nokandro
 
                     LiveNoteStore.MarkReacted(context, eventId);
                     UpdateAllWidgets(context, mgr, ids);
+                    TimelineWidget.UpdateAllWidgets(context, notifyDataChanged: true);
 
                     Task.Run(async () =>
                     {
@@ -429,7 +430,7 @@ namespace nokandro
             }
         }
 
-        private static void ToggleService(Context context)
+        internal static void ToggleService(Context context)
         {
             if (NostrService.IsRunning)
             {
@@ -500,7 +501,7 @@ namespace nokandro
             }
         }
 
-        private static async Task SendReactionAsync(Context context, string eventId, string authorPubkey)
+        internal static async Task SendReactionAsync(Context context, string eventId, string authorPubkey)
         {
             var nsec = SecurePreferences.GetNsec(context);
             if (string.IsNullOrEmpty(nsec))
@@ -572,7 +573,7 @@ namespace nokandro
             }
         }
 
-        private static void ShowToast(Context context, string message)
+        internal static void ShowToast(Context context, string message)
         {
             try
             {
@@ -585,7 +586,7 @@ namespace nokandro
             catch { }
         }
 
-        private static string ShortenUrls(string text)
+        internal static string ShortenUrls(string text)
         {
             if (string.IsNullOrEmpty(text)) return string.Empty;
             return Regex.Replace(text, @"https?://[^\s]+", match =>

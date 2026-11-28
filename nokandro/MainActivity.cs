@@ -15,6 +15,7 @@ using System.Text.Json;
 namespace nokandro
 {
     [Activity(Label = "@string/app_name", MainLauncher = true, LaunchMode = Android.Content.PM.LaunchMode.SingleTop)]
+    [IntentFilter([Android.Service.QuickSettings.TileService.ActionQsTilePreferences])]
     public partial class MainActivity : AppCompatActivity
     {
         const string PREFS_NAME = "nokandro_prefs";
@@ -2336,6 +2337,10 @@ namespace nokandro
             else if (action == "pin_post_widget")
             {
                 TryPinWidget(typeof(PostWidget));
+            }
+            else if (action == "pin_timeline")
+            {
+                TryPinWidget(typeof(TimelineWidget));
             }
 
             if (intent.GetBooleanExtra(AppUpdateNotifier.ExtraOpenUpdateDialog, false))

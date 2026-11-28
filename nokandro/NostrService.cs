@@ -237,6 +237,8 @@ namespace nokandro
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
                 LiveNoteWidget.UpdateAllWidgets(this);
+                TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: false);
+                QuickSettingsTileHelper.RequestTileUpdates(this);
                 return StartCommandResult.Sticky;
             }
 
@@ -416,6 +418,8 @@ namespace nokandro
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
                 LiveNoteWidget.UpdateAllWidgets(this);
+                TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: true);
+                QuickSettingsTileHelper.RequestTileUpdates(this);
             }
             catch { }
 
@@ -492,6 +496,7 @@ namespace nokandro
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
                 LiveNoteWidget.UpdateAllWidgets(this);
+                TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: false);
             }
             catch { }
         }
@@ -528,6 +533,8 @@ namespace nokandro
                 w.SetPackage(PackageName);
                 SendBroadcast(w);
                 LiveNoteWidget.UpdateAllWidgets(this);
+                TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: true);
+                QuickSettingsTileHelper.RequestTileUpdates(this);
             }
             catch { }
             try { if (_localReceiver != null) LocalBroadcast.UnregisterReceiver(_localReceiver); } catch { }
@@ -1092,8 +1099,9 @@ namespace nokandro
                 var createdAt = eventObj.TryGetProperty("created_at", out var createdEl) && createdEl.TryGetInt64(out var ca) ? ca : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 if (!string.IsNullOrEmpty(eventId))
                 {
-                    LiveNoteStore.AddPost(this, eventId, pubkey, content, petname, createdAt, _relay);
+                    LiveNoteStore.AddPost(this, eventId, pubkey, content, petname, createdAt, _relay, isFollowed: isFollowed);
                     LiveNoteWidget.UpdateAllWidgets(this);
+                    TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: true);
                 }
             }
             catch (Exception ex) { AppLog.W(TAG, "LiveNoteStore.AddPost failed: " + ex.Message); }
@@ -1192,8 +1200,9 @@ namespace nokandro
                     : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 if (!string.IsNullOrEmpty(eventId))
                 {
-                    LiveNoteStore.AddPost(this, eventId, pubkey, widgetContent, petname, createdAt, _relay, 7);
+                    LiveNoteStore.AddPost(this, eventId, pubkey, widgetContent, petname, createdAt, _relay, 7, isFollowed: isFollowed);
                     LiveNoteWidget.UpdateAllWidgets(this);
+                    TimelineWidget.UpdateAllWidgets(this, notifyDataChanged: true);
                 }
             }
             catch (Exception ex) { AppLog.W(TAG, "LiveNoteStore.AddPost (reaction) failed: " + ex.Message); }
