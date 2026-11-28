@@ -166,7 +166,8 @@ nostrconnect カード内の **Switch relays** 欄で、接続完了後にクラ
 - **カンマ区切りで複数指定可能**: デフォルトは `wss://ephemeral.snowflare.cc/, wss://yabu.me/`。
 - **Bunker relay との分離**: Bunker リレー（ローカルリレー等も設定可）とは独立して管理されるため、Bunker 待受にローカルリレーを使っていても外部 Web アプリがブラウザの Mixed Content 制約（HTTPS からの ws 遮断）等で通信不能になる心配がありません。
 - **冗長化**: 複数指定しておくことで、いずれかのリレーがダウン・メンテナンス中であっても安全に通信が継続されます。
-- **Web クライアント（Streets や nostr-login 等）の永続化**: Streets などのクライアントは接続完了後に `switch_relays` を呼び出し、サイナーから提案されたリレーをセッションに永続化してリロード後の再接続にも使用します。高速でブロックされていない専用リレーを返すことで、リロード時にも確実にセッションが復元されます。
+- **Web クライアント（nokakoi / Streets / nostr-login 等）の永続化**: クライアントが接続完了後に `switch_relays` を呼び出すと、サイナーから提案されたリレーをセッションに永続化してリロード後の再接続にも使用します。高速でブロックされていない専用リレーを返すことで、リロード時にも確実にセッションが復元されます。
+- **旧リレーの自動切断と切替状態の永続化**: クライアントが `switch_relays` を呼び出した後、切り替え先リレー経由での通信を確認した時点（または 10 秒経過時点で切り替え先リレーが 1 本以上 OPEN の場合）で、初期 `nostrconnect://` URI に含まれていた旧リレー接続を自動的に切断します。切り替え完了状態（`RelaysSwitched`）は `BunkerClientStore` に保存されるため、アプリ再起動・セッション復元時は最初から Switch relays のみに接続して無駄な通信とバッテリー消費を抑えます。
 
 ---
 
@@ -206,7 +207,7 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 
 | メソッド | 説明 | パラメータ | 戻り値 |
 |---|---|---|---|
-| `connect` | クライアントの接続認証 | `[client_pubkey, secret?]` | `"ack"` またはシークレット |
+| `connect` | クライアントの接続認証 | `[client_pubkey, secret?, perms?]` | `"ack"` またはシークレット |
 | `get_public_key` | Bunker の公開鍵を取得 | なし | hex 公開鍵 |
 | `sign_event` | イベントに署名 | `[unsigned_event_json]` | 署名済みイベント JSON |
 | `nip04_encrypt` | NIP-04 暗号化 | `[third_party_pubkey, plaintext]` | 暗号化文字列 |
@@ -214,8 +215,9 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 | `nip44_encrypt` | NIP-44 暗号化 | `[third_party_pubkey, plaintext]` | 暗号化文字列 |
 | `nip44_decrypt` | NIP-44 復号 | `[third_party_pubkey, ciphertext]` | 復号平文 |
 | `ping` | 接続確認 | なし | `"pong"` |
+| `get_relays` | セッションのリレー一覧を取得 | なし | リレー URL 配列 JSON |
 | `switch_relays` | 推奨リレーへの切り替え提案 | なし | リレー URL 配列または `"null"` |
-| `describe` | サポートメソッド一覧の取得 | なし | メソッド名配列 |
+| `describe` | サポートメソッド一覧の取得 | なし | メソッド名配列（`switch_relays` / `get_relays` 等を含む） |
 | `disconnect` / `logout` | セッションの切断 | なし | `"ack"` |
 
 ### sign_event の動作
@@ -365,7 +367,7 @@ MainActivity (Signer タブ)
 
 ### 暗号化の自動検出
 
-kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 準拠）。
+kind:24133 のリクエストペイロードは `?iv=` の有無で NIP-04 / NIP-44 を自動判別して復号し、レスポンスもクライアントが使用した方式（NIP-44 または NIP-04）に合わせて暗号化して返却します。`nostrconnect://` の初回接続応答（secret 返却）は NIP-44（NIP-46 準拠）で暗号化します。
 
 ### JSON 処理
 
@@ -462,7 +464,7 @@ kind 24133 のペイロードは NIP-44 で暗号化・復号します（NIP-46 
 
 - **単一秘密鍵**: 1つの nsec のみサポートします。複数アカウントの同時使用はできません。
 - **自動承認**: bunker:// では新規クライアントは現在の secret で自動ペアリングされ、成功直後に secret をローテ（1 URI = 1 新規）。既知クライアントはシークレットなしで再接続。**Remove** でもローテ。**Reset Secret** で全ペア削除＋次回起動で新 URI。NIP-46 の各メソッドごとの確認ダイアログはありません（NIP-55 とは別）。
-- **bunker:// クライアント管理**: `BunkerClientStore` に pubkey・名前・perms のみ保存（per-client secret は保持しない）。Bunker 停止後もペアリングは残り、既知クライアントは secret なしで再接続可能です。
-- **nostrconnect:// セッション永続化**: nostrconnect:// セッションは SharedPreferences に保存され、アプリ再起動後も自動復元・再接続されます。クライアントリストからの手動削除は即座に反映されます。
+- **bunker:// クライアント管理**: `BunkerClientStore` に pubkey・表示名・perms・活動履歴（ペアリング日時・最終利用日時・直近メソッド）・`RelaysSwitched` フラグ等を保存します（per-client secret は保持しません）。Bunker 停止後もペアリングは残り、既知クライアントは secret なしで再接続可能です。
+- **nostrconnect:// セッション永続化**: nostrconnect:// セッションは SharedPreferences に保存され、アプリ再起動後も自動復元・再接続されます（`switch_relays` 完了済みのセッションは Switch relays のみに再接続）。クライアントリストからの手動削除は即座に反映されます。
 - **メソッド制限**: `create_account` などの一部 NIP-46 メソッドは未実装です。
 - **ネットワーク依存**: リレーが利用できない場合、クライアントとの通信はできません。
