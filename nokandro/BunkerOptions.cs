@@ -7,5 +7,6 @@ namespace nokandro
         public Action<string, string?, bool>? OnClientPaired { get; init; }
         public Func<string, Nip46Permissions?>? GetPermissions { get; init; }
         public Action<string, string?>? SavePermissions { get; init; }
+        public Action<string, Nip46ClientMetadata>? SaveClientMetadata { get; init; }
     }
 }

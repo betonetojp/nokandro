@@ -156,6 +156,57 @@ namespace nokandro
             UpdateClientRecord(Normalize(pubkey), null, perms);
         }
 
+        public (string? url, string? image) GetClientMetadata(string pubkey)
+        {
+            var rec = GetRecord(Normalize(pubkey));
+            if (rec == null) return (null, null);
+            return (rec.Url, rec.Image);
+        }
+
+        public void SetClientMetadata(string pubkey, Nip46ClientMetadata metadata)
+        {
+            if (string.IsNullOrEmpty(pubkey) || metadata == null) return;
+            pubkey = Normalize(pubkey);
+            lock (_clientsLock)
+            {
+                var data = LoadClientsRoot();
+                if (!data.Clients.TryGetValue(pubkey, out var rec))
+                {
+                    rec = new ClientRecord
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                else if (rec.CreatedAt == 0)
+                {
+                    rec.CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+
+                var changed = false;
+                if (string.IsNullOrWhiteSpace(rec.Name) && !string.IsNullOrWhiteSpace(metadata.Name))
+                {
+                    rec.Name = metadata.Name;
+                    changed = true;
+                }
+                if (!string.IsNullOrWhiteSpace(metadata.Url) && !string.Equals(rec.Url, metadata.Url, StringComparison.Ordinal))
+                {
+                    rec.Url = metadata.Url;
+                    changed = true;
+                }
+                if (!string.IsNullOrWhiteSpace(metadata.Image) && !string.Equals(rec.Image, metadata.Image, StringComparison.Ordinal))
+                {
+                    rec.Image = metadata.Image;
+                    changed = true;
+                }
+
+                if (changed || !data.Clients.ContainsKey(pubkey))
+                {
+                    data.Clients[pubkey] = rec;
+                    SaveClientsRoot(data);
+                }
+            }
+        }
+
         public void RecordActivity(string pubkey, string methodSummary)
         {
             pubkey = Normalize(pubkey);
@@ -362,6 +413,8 @@ namespace nokandro
         {
             public string? Name { get; set; }
             public string? Perms { get; set; }
+            public string? Url { get; set; }
+            public string? Image { get; set; }
             public long CreatedAt { get; set; }
             public long LastUsedAt { get; set; }
             public string? LastMethod { get; set; }

@@ -47,7 +47,7 @@ namespace nokandro
                 var nsec = SecurePreferences.GetNsec(context);
                 if (!NostrKeyDecoder.TryDecodeNsecToHex(nsec, out var nsecHex) || string.IsNullOrEmpty(nsecHex)) return;
 
-                var relay = prefs.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+                var relay = prefs.GetString(PREF_BUNKER_RELAY, SettingsRepository.DEFAULT_BUNKER_RELAYS) ?? SettingsRepository.DEFAULT_BUNKER_RELAYS;
                 var secret = prefs.GetString(PREF_BUNKER_SECRET, null);
 
                 var serviceIntent = new Intent(context, typeof(BunkerService));

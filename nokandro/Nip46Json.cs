@@ -139,12 +139,8 @@ namespace nokandro
 
             var kind = ev.TryGetProperty("kind", out var kEl) && kEl.TryGetInt32(out var k) ? k : 1;
             var createdAt = ev.TryGetProperty("created_at", out var ctEl) && ctEl.TryGetInt64(out var ct) ? ct : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var eventPubkey = ev.TryGetProperty("pubkey", out var pkEl) ? pkEl.GetString() : null;
-            if (string.IsNullOrWhiteSpace(eventPubkey) || eventPubkey.Length != 64)
-            {
-                eventPubkey = pubkeyHex;
-            }
-            eventPubkey = eventPubkey.ToLowerInvariant();
+            // NIP-46: Always sign with the signer's public key so id, pubkey, and sig match.
+            var eventPubkey = pubkeyHex.ToLowerInvariant();
 
             var content = ev.TryGetProperty("content", out var cEl) ? cEl.GetString() ?? "" : "";
             var tagsList = ev.TryGetProperty("tags", out var tEl) ? ParseTags(tEl) : [];

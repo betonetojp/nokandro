@@ -51,14 +51,19 @@ namespace nokandro
             set => _prefs.Edit()?.PutBoolean(PREF_BUNKER_ENABLED, value).Apply();
         }
 
+        public const string PREF_NOSTRCONNECT_SWITCH_RELAYS = "pref_nostrconnect_switch_relays";
+        public const string DEFAULT_NOSTRCONNECT_SWITCH_RELAYS = "wss://ephemeral.snowflare.cc/, wss://yabu.me/";
+        public const string DEFAULT_BUNKER_RELAYS = DEFAULT_NOSTRCONNECT_SWITCH_RELAYS;
+
         public string BunkerRelay
         {
-            get => _prefs.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+            get => _prefs.GetString(PREF_BUNKER_RELAY, DEFAULT_BUNKER_RELAYS) ?? DEFAULT_BUNKER_RELAYS;
             set => _prefs.Edit()?.PutString(PREF_BUNKER_RELAY, value).Apply();
         }
 
-        public const string PREF_NOSTRCONNECT_SWITCH_RELAYS = "pref_nostrconnect_switch_relays";
-        public const string DEFAULT_NOSTRCONNECT_SWITCH_RELAYS = "wss://ephemeral.snowflare.cc/, wss://yabu.me/";
+        public static string[] ParseRelayList(string? raw) => NostrBunker.ParseRelayList(raw);
+
+        public string[] GetBunkerRelaysList() => ParseRelayList(BunkerRelay);
 
         public string NostrConnectSwitchRelays
         {
@@ -66,14 +71,7 @@ namespace nokandro
             set => _prefs.Edit()?.PutString(PREF_NOSTRCONNECT_SWITCH_RELAYS, value).Apply();
         }
 
-        public string[] GetNostrConnectSwitchRelaysList()
-        {
-            var raw = NostrConnectSwitchRelays;
-            if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
-            return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                      .Where(r => !string.IsNullOrWhiteSpace(r))
-                      .ToArray();
-        }
+        public string[] GetNostrConnectSwitchRelaysList() => ParseRelayList(NostrConnectSwitchRelays);
 
         public string? BunkerSecret
         {

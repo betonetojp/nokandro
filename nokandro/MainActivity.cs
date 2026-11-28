@@ -1013,15 +1013,15 @@ namespace nokandro
                 };
             }
 
-            // restore bunker relay from prefs
+            // restore bunker relays from prefs
             if (bunkerRelayEdit != null)
             {
                 try
                 {
                     var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
-                    bunkerRelayEdit.Text = prefs?.GetString(PREF_BUNKER_RELAY, "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+                    bunkerRelayEdit.Text = prefs?.GetString(PREF_BUNKER_RELAY, SettingsRepository.DEFAULT_BUNKER_RELAYS) ?? SettingsRepository.DEFAULT_BUNKER_RELAYS;
                 }
-                catch { bunkerRelayEdit.Text = "wss://ephemeral.snowflare.cc/"; }
+                catch { bunkerRelayEdit.Text = SettingsRepository.DEFAULT_BUNKER_RELAYS; }
 
                 bunkerRelayEdit.FocusChange += (s, e) =>
                 {
@@ -1029,7 +1029,9 @@ namespace nokandro
                     {
                         try
                         {
-                            var val = bunkerRelayEdit.Text ?? "wss://ephemeral.snowflare.cc/";
+                            var val = bunkerRelayEdit.Text?.Trim();
+                            if (string.IsNullOrWhiteSpace(val))
+                                val = SettingsRepository.DEFAULT_BUNKER_RELAYS;
                             var prefs = GetSharedPreferences(PREFS_NAME, FileCreationMode.Private);
                             var edit = prefs?.Edit();
                             if (edit != null) { edit.PutString(PREF_BUNKER_RELAY, val); edit.Apply(); }
@@ -2788,7 +2790,8 @@ namespace nokandro
                         if (avatarImg != null && avatarTv != null)
                         {
                             var matchedUri = FindUriForPubkey(pk);
-                            ClientIconLoader.LoadIcon(this, avatarImg, avatarTv, matchedUri, displayName);
+                            var (clientUrl, clientImage) = store.GetClientMetadata(pk);
+                            ClientIconLoader.LoadIcon(this, avatarImg, avatarTv, matchedUri, displayName, clientImage, clientUrl);
                         }
 
                         var tv = row.FindViewById<TextView>(Resource.Id.clientNameText);

@@ -87,9 +87,10 @@ nokandro の **Signer** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 ### 2. Bunker リレーの設定
 
-**Signer タブ**を開き、Bunker リレーの URL を設定します（デフォルト: `wss://ephemeral.snowflare.cc/`）。
+**Signer タブ**を開き、Bunker リレーの URL を設定します（カンマ区切りで複数指定可能、デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`）。
 
 - Bunker リレーは nokandro と外部クライアントの通信を中継するためのリレーです。
+- 1 つだけ指定した場合（Citrine などのローカルリレーを含む）は単一リレー接続で動作し、カンマ区切りで複数指定した場合はすべてのリレーへ同時接続して応答をブロードキャスト（重複イベントは自動除外）します。
 - メインのリレー（Main タブ）とは別のリレーを使用できます。
 - リレーの編集は Bunker が停止している間のみ可能です。
 
@@ -98,8 +99,8 @@ nokandro の **Signer** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 **NIP-46 Bunker** スイッチを ON にします。
 
 起動すると以下が表示されます：
-- **Bunker URI**: `bunker://` で始まる URI
-- **Status**: 接続状態（`Connected to relay` -> `Subscribed (kind:24133)` の順に表示）
+- **Bunker URI**: `bunker://` で始まる URI（複数リレー設定時は `relay=` パラメータが複数含まれます）
+- **Status**: 接続状態（`Connected to ...` -> `Subscribed (kind:24133)` の順に表示）
 
 ### 4. URI の共有
 
@@ -107,12 +108,12 @@ nokandro の **Signer** 機能は、[NIP-46 (Nostr Connect)](https://github.com/
 
 URI の形式:
 ```
-bunker://<pubkey_hex>?relay=<relay_url>&secret=<secret>
+bunker://<pubkey_hex>?relay=<relay_url_1>&relay=<relay_url_2>&secret=<secret>
 ```
 
 ### 5. クライアントからの接続
 
-クライアント側で bunker URI を入力すると、`connect` リクエストが送信されます。nokandro がシークレットを検証し、成功すると Status に `Client connected: xxxx... (total: N)` と表示されます。
+クライアント側で bunker URI を入力すると、`connect` リクエストが送信されます。nokandro がシークレットを検証し、成功すると Status に `Client connected: xxxx... (total: N)` と表示されます。また、`connect` の第 4 パラメータ（`optional_client_metadata` JSON: `name` / `url` / `image`）が送られた場合は、クライアントの表示名（未設定時）や Web アイコンが自動反映されます。
 
 ---
 
@@ -207,7 +208,7 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 
 | メソッド | 説明 | パラメータ | 戻り値 |
 |---|---|---|---|
-| `connect` | クライアントの接続認証 | `[client_pubkey, secret?, perms?]` | `"ack"` またはシークレット |
+| `connect` | クライアントの接続認証 | `[remote_signer_pubkey, secret?, perms?, metadata_json?]` | `"ack"` またはシークレット |
 | `get_public_key` | Bunker の公開鍵を取得 | なし | hex 公開鍵 |
 | `sign_event` | イベントに署名 | `[unsigned_event_json]` | 署名済みイベント JSON |
 | `nip04_encrypt` | NIP-04 暗号化 | `[third_party_pubkey, plaintext]` | 暗号化文字列 |
@@ -223,7 +224,7 @@ nokandro は、Android 端末上の他アプリから安全に署名を行うた
 ### sign_event の動作
 
 1. クライアントから未署名のイベント JSON を受信
-2. nokandro が `id`（SHA-256 ハッシュ）を計算
+2. イベントの `pubkey` は常に署名者自身の公開鍵で上書きし、整合する `id`（SHA-256 ハッシュ）を計算
 3. 秘密鍵で BIP-340 Schnorr 署名を生成
 4. 署名済みイベント JSON を返却
 

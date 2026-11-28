@@ -75,10 +75,16 @@ namespace nokandro
         /// Generates a prioritized list of candidate image URLs to fetch for the client.
         /// Supports domain-root and subpath-hosted PWAs (e.g., GitHub Pages).
         /// </summary>
-        public static List<string> ResolveIconCandidates(string? rawUri, string? clientName)
+        public static List<string> ResolveIconCandidates(string? rawUri, string? clientName, string? clientImage = null, string? clientUrl = null)
         {
             var candidates = new List<string>();
             var targets = new List<string>();
+
+            if (!string.IsNullOrEmpty(clientImage) && IsHttpUrl(clientImage))
+                candidates.Add(clientImage);
+
+            if (!string.IsNullOrEmpty(clientUrl) && IsHttpUrl(clientUrl))
+                targets.Add(clientUrl);
 
             if (!string.IsNullOrEmpty(rawUri) && NostrConnectUri.TryParse(rawUri, out var parsed) && parsed != null)
             {
@@ -259,12 +265,15 @@ namespace nokandro
         /// <summary>
         /// Loads and applies the client icon asynchronously into an ImageView, falling back to initial TextView.
         /// </summary>
-        public static void LoadIcon(Context context, ImageView imageView, TextView fallbackAvatar, string? rawUri, string? clientName)
+        public static void LoadIcon(Context context, ImageView imageView, TextView fallbackAvatar, string? rawUri, string? clientName, string? clientImage = null, string? clientUrl = null)
         {
-            var candidates = ResolveIconCandidates(rawUri, clientName);
-            var cacheKey = !string.IsNullOrEmpty(rawUri)
-                ? ComputeHash(rawUri)
-                : ComputeHash(clientName ?? Guid.NewGuid().ToString());
+            var candidates = ResolveIconCandidates(rawUri, clientName, clientImage, clientUrl);
+            var cacheSeed = !string.IsNullOrEmpty(rawUri)
+                ? rawUri
+                : !string.IsNullOrEmpty(clientImage) || !string.IsNullOrEmpty(clientUrl)
+                    ? $"{clientImage}|{clientUrl}|{clientName}"
+                    : clientName ?? Guid.NewGuid().ToString();
+            var cacheKey = ComputeHash(cacheSeed);
 
             imageView.Tag = cacheKey;
 

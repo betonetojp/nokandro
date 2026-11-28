@@ -145,8 +145,8 @@ namespace nokandro
             for (int i = 0; i < 32; i++)
                 privKey[i] = Convert.ToByte(nsecHex!.Substring(i * 2, 2), 16);
 
-            if (string.IsNullOrEmpty(relay))
-                relay = "wss://ephemeral.snowflare.cc/";
+            if (string.IsNullOrWhiteSpace(relay))
+                relay = SettingsRepository.DEFAULT_BUNKER_RELAYS;
 
             // Build foreground notification
             StartForegroundNotification();
@@ -160,7 +160,8 @@ namespace nokandro
 
             var bunkerOptions = CreateBunkerOptions(store);
             var savedClients = store.GetAuthorized().Concat(BunkerClientStore.LoadNostrConnectClientPubkeys(this)).Distinct().ToList();
-            _bunker = new NostrBunker(privKey, relay, secret, savedClients, bunkerOptions);
+            var bunkerRelays = SettingsRepository.ParseRelayList(relay);
+            _bunker = new NostrBunker(privKey, bunkerRelays, secret, savedClients, bunkerOptions);
             CurrentBunkerInstance = _bunker;
             _bunker.OnLog += msg =>
             {
@@ -673,6 +674,7 @@ namespace nokandro
             IsAuthorized = store.IsAuthorized,
             GetPermissions = store.GetPermissions,
             SavePermissions = store.SetPermissions,
+            SaveClientMetadata = store.SetClientMetadata,
             OnClientPaired = (pk, perms, isNew) =>
             {
                 if (isNew)
@@ -758,7 +760,7 @@ namespace nokandro
             if (!NostrKeyDecoder.TryDecodeNsecToHex(nsec, out nsecHex) || string.IsNullOrEmpty(nsecHex) || nsecHex.Length != 64)
                 return false;
 
-            relay = prefs.GetString("pref_bunker_relay", "wss://ephemeral.snowflare.cc/") ?? "wss://ephemeral.snowflare.cc/";
+            relay = prefs.GetString("pref_bunker_relay", SettingsRepository.DEFAULT_BUNKER_RELAYS) ?? SettingsRepository.DEFAULT_BUNKER_RELAYS;
             secret = prefs.GetString("pref_bunker_secret", null);
             return true;
         }

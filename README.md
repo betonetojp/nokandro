@@ -74,13 +74,13 @@ The Signer tab provides remote signing capabilities for both NIP-46 (Bunker / no
 
 ### bunker:// (Signer-initiated)
 
-- **Bunker relay**: The relay used for bunker communication (editable only when the bunker is stopped).
+- **Bunker relays (comma separated)**: One or more relays used for bunker communication (default: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`, editable only when the bunker is stopped). Specifying a single relay (such as a local Citrine relay) opens one connection; specifying multiple relays connects to all of them with event deduplication and broadcast responses.
 - **NIP-46 Bunker switch**: Starts or stops the bunker service.
 - **Auto start bunker on device boot**: When enabled, bunker starts automatically after reboot if bunker was enabled and valid `nsec`/relay are saved.
 - **Bunker URI**: The `bunker://` URI to paste into a NIP-46 compatible client. Displayed when the bunker is running. The secret is **one-time for each new pairing** (URI updates after each successful new client connect and when you **Remove** a client). Share the latest URI from the screen for the next new client.
 - **Copy bunker URI**: Copies the current URI (including the active secret) to the clipboard.
 - **Reset Secret**: Resets the bunker secret, removes **all** paired clients, and stops the bunker. After you turn the bunker on again, share the new URI with every client.
-- **Authorized clients**: Lists paired clients with website icons, names, and recent activity (relative time and last method). Tap a name to edit its label; use **Remove** to revoke one client (rotates the bunker URI secret and updates the display/copy; other paired clients can reconnect without the new URI). Sessions are sorted with recently active clients on top to help identify abandoned or reset clients.
+- **Authorized clients**: Lists paired clients with website icons, names (automatically populated from NIP-46 `connect` client metadata when provided, without overwriting manual renames), and recent activity (relative time and last method). Tap a name to edit its label; use **Remove** to revoke one client (rotates the bunker URI secret and updates the display/copy; other paired clients can reconnect without the new URI). Sessions are sorted with recently active clients on top to help identify abandoned or reset clients.
 - **Status**: Shows bunker connection status and client activity. Tap the status chip to open a scrollable in-memory log history dialog with Copy and Clear controls.
 
 ### nostrconnect:// (Client-initiated)
@@ -257,13 +257,13 @@ Signer タブは NIP-46 リモート署名および NIP-55 外部署名機能を
 
 ### bunker://（署名者起点）
 
-- **Bunker relay**: Bunker 通信に使用するリレー（Bunker停止中のみ編集可能）。
+- **Bunker relays（カンマ区切り）**: Bunker 通信に使用するリレー（デフォルト: `wss://ephemeral.snowflare.cc/, wss://yabu.me/`、Bunker 停止中のみ編集可能）。1 つだけ指定した場合（Citrine ローカルリレー等）は単一接続で動作し、複数指定時はすべてのリレーに同時接続（重複イベント除外＋応答ブロードキャスト）します。
 - **NIP-46 Bunker スイッチ**: Bunker サービスの開始/停止。
 - **Auto start bunker on device boot**: 有効にすると、Bunker が ON の状態かつ有効な `nsec`/relay が保存されている場合、端末再起動後に自動起動します。
 - **Bunker URI**: NIP-46 対応クライアントに貼り付ける `bunker://` URI。Bunker 実行中に表示されます。**新規ペア成功ごと**に secret がローテし URI が更新されます（1 URI = 1 新規クライアント。次の新規には画面の最新 URI を Copy）。**Remove** 時も同様に更新されます。
 - **Copy bunker URI**: 現在の URI（secret 含む）をクリップボードにコピーします。
 - **Reset Secret**: シークレットをリセットし、**すべて**のペア済みクライアントを削除して Bunker を停止します。再度 ON にしたら全クライアントに新 URI を共有してください。
-- **Authorized clients**: 認証済みクライアントを Web アイコン・名前・直近活動状況（相対時間と実行メソッド）付きで一覧表示します。名前タップでラベル編集、**Remove** で当該クライアントのみ削除（bunker URI の secret がローテし表示・コピーも更新。他のペア済みクライアントは新 URI なしで再接続可能）。直近に活動のあったクライアントが上位に整列されます。
+- **Authorized clients**: 認証済みクライアントを Web アイコン・名前（NIP-46 `connect` のクライアントメタデータから自動取得、手動リネーム済みなら上書きしない）・直近活動状況（相対時間と実行メソッド）付きで一覧表示します。名前タップでラベル編集、**Remove** で当該クライアントのみ削除（bunker URI の secret がローテし表示・コピーも更新。他のペア済みクライアントは新 URI なしで再接続可能）。直近に活動のあったクライアントが上位に整列されます。
 - **Status**: Bunker の接続状態やクライアントの動作状況を表示します。ステータス表示をタップすると、直近の送受信・接続遷移ログをダイアログ（Copy / Clear 対応）で確認できます。
 
 ### nostrconnect://（クライアント起点）

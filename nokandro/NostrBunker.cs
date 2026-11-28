@@ -11,13 +11,16 @@ namespace nokandro
     public sealed class NostrBunker
     {
         private const string TAG = "NostrBunker";
-        private NostrWebSocketClient? _wsClient;
+        public static readonly string[] DefaultRelays = ["wss://ephemeral.snowflare.cc/", "wss://yabu.me/"];
+
+        private readonly List<NostrWebSocketClient> _wsClients = [];
         private CancellationTokenSource? _cts;
         private readonly byte[] _privKey;
         private readonly string _pubkeyHex;
         private readonly string[] _relays;
         private string _secret;
         private readonly Nip46Handler _handler;
+        private readonly object _authLock = new();
         private readonly HashSet<string> _authorizedClients;
         private readonly BunkerOptions? _options;
         private readonly HashSet<string> _processedEventIds = new();
@@ -26,6 +29,7 @@ namespace nokandro
         private int _connectedCount;
         public int ConnectedClientCount => _connectedCount;
         public string BunkerUri => Nip46Json.BuildBunkerUri(_pubkeyHex, _relays, _secret);
+        public string[] Relays => [.. _relays];
         public string CurrentSecret => _secret;
 
         public event Action<string>? OnLog;
@@ -36,12 +40,30 @@ namespace nokandro
         /// <summary>Client activity performed (pubkey, method summary).</summary>
         public event Action<string, string>? OnActivity;
 
-        public IReadOnlyCollection<string> GetAuthorizedClientPubkeys() => _authorizedClients;
+        public static string[] ParseRelayList(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return [];
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<string>();
+            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (string.IsNullOrWhiteSpace(part)) continue;
+                var norm = part.TrimEnd('/');
+                if (seen.Add(norm))
+                    list.Add(part);
+            }
+            return [.. list];
+        }
+
+        public IReadOnlyCollection<string> GetAuthorizedClientPubkeys()
+        {
+            lock (_authLock) { return [.. _authorizedClients]; }
+        }
 
         public void AddAuthorizedClient(string pubkey, Nip46Permissions? perms = null)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
-            _authorizedClients.Add(pubkey);
+            lock (_authLock) { _authorizedClients.Add(pubkey); }
             _handler.MarkConnected(pubkey);
             if (perms != null)
                 _handler.SetPermissions(pubkey, perms);
@@ -51,7 +73,7 @@ namespace nokandro
         public void RemoveAuthorizedClient(string pubkey)
         {
             if (string.IsNullOrEmpty(pubkey)) return;
-            _authorizedClients.Remove(pubkey);
+            lock (_authLock) { _authorizedClients.Remove(pubkey); }
             if (_handler.DisconnectClient(pubkey))
                 _connectedCount = Math.Max(0, _connectedCount - 1);
             Log($"Authorized client removed: {pubkey[..Math.Min(12, pubkey.Length)]}...");
@@ -68,7 +90,7 @@ namespace nokandro
         public static string GenerateBunkerSecret() => GenerateSecret();
 
         public NostrBunker(byte[] privKey, string relay, string? secret = null, IEnumerable<string>? authorizedClients = null, BunkerOptions? options = null)
-            : this(privKey, [relay], secret, authorizedClients, options)
+            : this(privKey, ParseRelayList(relay), secret, authorizedClients, options)
         {
         }
 
@@ -76,9 +98,21 @@ namespace nokandro
         {
             _privKey = privKey;
             _options = options;
-            _relays = relays.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToArray();
-            if (_relays.Length == 0)
-                _relays = ["wss://ephemeral.snowflare.cc/"];
+
+            var parsedRelays = new List<string>();
+            var seenRelays = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (relays != null)
+            {
+                foreach (var entry in relays)
+                {
+                    foreach (var r in ParseRelayList(entry))
+                    {
+                        if (seenRelays.Add(r.TrimEnd('/')))
+                            parsedRelays.Add(r);
+                    }
+                }
+            }
+            _relays = parsedRelays.Count > 0 ? [.. parsedRelays] : [.. DefaultRelays];
 
             _authorizedClients = authorizedClients != null
                 ? new HashSet<string>(authorizedClients, StringComparer.OrdinalIgnoreCase)
@@ -119,38 +153,83 @@ namespace nokandro
         {
             IsRunning = false;
             try { _cts?.Cancel(); } catch { }
-            try { _wsClient?.Stop(); _wsClient?.Dispose(); } catch { }
-            _wsClient = null;
+            StopAllClients();
             _handler.DisconnectAll();
             _connectedCount = 0;
         }
 
+        private void StopAllClients()
+        {
+            List<NostrWebSocketClient> clients;
+            lock (_wsClients)
+            {
+                clients = [.. _wsClients];
+                _wsClients.Clear();
+            }
+            foreach (var client in clients)
+            {
+                try { client.Stop(); client.Dispose(); } catch { }
+            }
+        }
+
         private async Task RunAsync(CancellationToken ct)
         {
-            Log("Bunker starting...");
-            var relay = _relays[0];
+            Log(_relays.Length == 1
+                ? $"Bunker starting ({_relays[0]})..."
+                : $"Bunker starting ({_relays.Length} relays)...");
 
-            _wsClient = new NostrWebSocketClient(relay, "NostrBunker");
-            _wsClient.OnMessageReceived += async msg =>
+            StopAllClients();
+            var created = new List<NostrWebSocketClient>(_relays.Length);
+            foreach (var relay in _relays)
             {
-                try { await HandleRawMessage(msg, ct); }
-                catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
-            };
-            _wsClient.OnStateChanged += async state =>
-            {
-                if (state == WebSocketState.Open)
+                var r = relay;
+                var tag = _relays.Length == 1 ? "NostrBunker" : $"NostrBunker_{r.GetHashCode():x}";
+                var client = new NostrWebSocketClient(r, tag);
+                client.OnMessageReceived += async msg =>
                 {
-                    Log("Connected to relay");
-                    var subId = "bunker";
-                    var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
-                    var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"#p\":[\"{_pubkeyHex}\"],\"since\":{since}}}]";
-                    await SendTextAsync(reqJson, ct);
-                    Log("Subscribed (kind:24133)");
-                }
-            };
-            _wsClient.OnLog += msg => Log(msg);
+                    try { await HandleRawMessage(msg, ct); }
+                    catch (System.OperationCanceledException) { }
+                    catch (Exception ex) { Log("HandleRawMessage error: " + ex.Message); }
+                };
+                client.OnStateChanged += async state =>
+                {
+                    if (state == WebSocketState.Open)
+                    {
+                        Log(_relays.Length == 1 ? "Connected to relay" : $"Connected to {r}");
+                        var subId = _relays.Length == 1 ? "bunker" : "bunker_" + r.GetHashCode().ToString("x");
+                        var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+                        var reqJson = $"[\"REQ\",\"{subId}\",{{\"kinds\":[24133],\"#p\":[\"{_pubkeyHex}\"],\"since\":{since}}}]";
+                        await client.SendTextAsync(reqJson, ct);
+                        Log(_relays.Length == 1 ? "Subscribed (kind:24133)" : $"Subscribed (kind:24133) on {r}");
+                    }
+                };
+                client.OnLog += msg => Log(msg);
+                created.Add(client);
+            }
 
-            _wsClient.Start();
+            bool canceled;
+            lock (_wsClients)
+            {
+                canceled = ct.IsCancellationRequested;
+                if (!canceled)
+                    _wsClients.AddRange(created);
+            }
+
+            if (canceled)
+            {
+                foreach (var client in created)
+                {
+                    try { client.Stop(); client.Dispose(); } catch { }
+                }
+                IsRunning = false;
+                Log("Bunker stopped");
+                return;
+            }
+
+            foreach (var client in created)
+            {
+                client.Start();
+            }
 
             try
             {
@@ -159,9 +238,7 @@ namespace nokandro
             catch (System.OperationCanceledException) { }
             finally
             {
-                _wsClient.Stop();
-                _wsClient.Dispose();
-                _wsClient = null;
+                StopAllClients();
             }
 
             IsRunning = false;
@@ -202,8 +279,11 @@ namespace nokandro
                 var evId = evIdEl.GetString();
                 if (!string.IsNullOrEmpty(evId))
                 {
-                    if (!_processedEventIds.Add(evId)) return;
-                    if (_processedEventIds.Count > 1000) _processedEventIds.Clear();
+                    lock (_processedEventIds)
+                    {
+                        if (!_processedEventIds.Add(evId)) return;
+                        if (_processedEventIds.Count > 1000) _processedEventIds.Clear();
+                    }
                 }
             }
 
@@ -248,31 +328,36 @@ namespace nokandro
                 Log($"Known client reconnecting: {senderPubkey[..12]}... (secret check skipped)");
             }
 
-            var connectPerms = Nip46Permissions.FromConnectParams(paramsArr);
+            var permsStr = Nip46Permissions.ExtractPermsString(paramsArr);
+            var connectPerms = Nip46Permissions.Parse(permsStr);
             var storedPerms = _options?.GetPermissions?.Invoke(senderPubkey);
             var perms = connectPerms ?? storedPerms;
             if (connectPerms != null)
             {
-                var permsStr = PermsToString(paramsArr);
                 _options?.SavePermissions?.Invoke(senderPubkey, permsStr);
             }
             _handler.SetPermissions(senderPubkey, perms ?? storedPerms);
 
+            var clientMeta = Nip46ClientMetadata.FromConnectParams(paramsArr);
+            if (clientMeta != null)
+            {
+                _options?.SaveClientMetadata?.Invoke(senderPubkey, clientMeta);
+            }
+
             if (!_handler.IsClientConnected(senderPubkey))
                 _connectedCount++;
             _handler.MarkConnected(senderPubkey);
-            _authorizedClients.Add(senderPubkey);
+            lock (_authLock) { _authorizedClients.Add(senderPubkey); }
 
-            var permsStrForPair = PermsToString(paramsArr);
             if (isNew)
             {
                 Log($"New client paired: {senderPubkey[..12]}...");
-                _options?.OnClientPaired?.Invoke(senderPubkey, permsStrForPair, true);
+                _options?.OnClientPaired?.Invoke(senderPubkey, permsStr, true);
                 OnClientAuthorized?.Invoke(senderPubkey);
             }
             else
             {
-                _options?.OnClientPaired?.Invoke(senderPubkey, permsStrForPair, false);
+                _options?.OnClientPaired?.Invoke(senderPubkey, permsStr, false);
                 OnClientReconnected?.Invoke(senderPubkey);
             }
 
@@ -282,22 +367,11 @@ namespace nokandro
 
         private bool IsKnownClient(string senderPubkey)
         {
-            if (_authorizedClients.Contains(senderPubkey)) return true;
-            return _options?.IsAuthorized?.Invoke(senderPubkey) == true;
-        }
-
-        private static string? PermsToString(JsonElement paramsArr)
-        {
-            if (paramsArr.ValueKind != JsonValueKind.Array) return null;
-            foreach (var el in paramsArr.EnumerateArray())
+            lock (_authLock)
             {
-                if (el.ValueKind != JsonValueKind.String) continue;
-                var s = el.GetString();
-                if (string.IsNullOrEmpty(s)) continue;
-                if (s.Contains(',') || s.Contains("sign_event") || s.Contains("nip44") || s.Contains("nip04"))
-                    return s;
+                if (_authorizedClients.Contains(senderPubkey)) return true;
             }
-            return null;
+            return _options?.IsAuthorized?.Invoke(senderPubkey) == true;
         }
 
         private static bool ParamsContainSecret(JsonElement paramsArr, string secret)
@@ -313,9 +387,19 @@ namespace nokandro
 
         private async Task<bool> SendTextAsync(string text, CancellationToken ct)
         {
-            var client = _wsClient;
-            if (client == null) return false;
-            return await client.SendTextAsync(text, ct);
+            List<NostrWebSocketClient> clients;
+            lock (_wsClients) { clients = [.. _wsClients]; }
+            var anySent = false;
+            foreach (var client in clients)
+            {
+                try
+                {
+                    if (await client.SendTextAsync(text, ct))
+                        anySent = true;
+                }
+                catch { }
+            }
+            return anySent;
         }
 
         public void DisconnectAllClients()
